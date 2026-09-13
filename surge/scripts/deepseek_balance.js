@@ -71,15 +71,11 @@ function fail(message) {
   finish(`❌ ${message}`, ERROR_ICON, ERROR_COLOR);
 }
 
-/* 12 小时制查询时间，手动格式化以兼容 JSCore */
+/* 查询时间只保留时分（24 小时制），手动格式化以兼容 JSCore */
 function formatTime() {
   const date = new Date();
   const pad = (number) => String(number).padStart(2, "0");
-  const hours = date.getHours();
-  const period = hours < 12 ? "AM" : "PM";
-  const hour12 = hours % 12 === 0 ? 12 : hours % 12;
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
-    `${pad(hour12)}:${pad(date.getMinutes())}:${pad(date.getSeconds())} ${period}`;
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function renderPanel(json, infos) {
@@ -87,17 +83,19 @@ function renderPanel(json, infos) {
   if (json.is_available === false) lines.push("⚠️ 余额不足，API 调用已不可用");
   if (infos.length === 1) {
     const info = infos[0];
-    lines.push(`当前余额：${money(info.currency, info.total_balance)}`);
-    lines.push(`赠送金额：${money(info.currency, info.granted_balance)}`);
+    lines.push(
+      `余额 ${money(info.currency, info.total_balance)} · ` +
+      `赠送 ${money(info.currency, info.granted_balance)}`
+    );
   } else {
     infos.forEach((info) => {
       lines.push(
-        `${info.currency}：当前余额 ${money(info.currency, info.total_balance)}` +
-        `（赠送金额 ${money(info.currency, info.granted_balance)}）`
+        `${info.currency} 余额 ${money(info.currency, info.total_balance)} · ` +
+        `赠送 ${money(info.currency, info.granted_balance)}`
       );
     });
   }
-  lines.push(`查询时间：${formatTime()}`);
+  lines.push(`更新 ${formatTime()}`);
   if (WARN_BALANCE > 0) {
     infos.forEach((info) => {
       const amount = Number(info.total_balance);
