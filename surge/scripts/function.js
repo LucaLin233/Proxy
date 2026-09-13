@@ -25,7 +25,7 @@ function icon_status(status){
   if (status){
     return "\u2611";
   } else {
-      return "\u2757"
+      return "\u2612"
     }
 }
 function timeTransform(dateNow,dateTime) {

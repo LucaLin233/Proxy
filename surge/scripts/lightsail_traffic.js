@@ -427,17 +427,17 @@ function renderPanel(groups) {
   groups.forEach((group, index) => {
     if (index > 0) lines.push("");
     const countSuffix = group.instances.length > 1 ? `（${group.instances.length} 个实例）` : "";
-    lines.push(`配额组：${regionLabel(group.region)} · ${group.bundleId}${countSuffix}`);
+    lines.push(`${regionLabel(group.region)} · ${group.bundleId}${countSuffix}`);
     const quotaText = group.quotaBytes > 0 ? formatBytes(group.quotaBytes) : "未知";
     const percentText = group.quotaBytes > 0 ? `${group.percent.toFixed(2)}%` : "--";
-    lines.push(`流量情况：${formatBytes(group.usedBytes)} / ${quotaText}（${percentText}）`);
+    lines.push(`当月 ${formatBytes(group.usedBytes)} / ${quotaText} · ${percentText}`);
 
     if (group.instances.length === 1) {
       const instance = group.instances[0];
       if (instance.ip && IP_MODE !== "hide") {
-        lines.push(`公网 IP：${IP_MODE === "mask" ? maskIp(instance.ip) : instance.ip}`);
+        lines.push(`公网 IP ${IP_MODE === "mask" ? maskIp(instance.ip) : instance.ip}`);
       }
-      if (instance.geo) lines.push(`地区：${instance.geo}`);
+      if (instance.geo) lines.push(`地区 ${instance.geo}`);
       return;
     }
 

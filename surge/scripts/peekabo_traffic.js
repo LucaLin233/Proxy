@@ -121,10 +121,12 @@ function fail(message) {
     notifyExpiring(daysLeft, expireTimestamp);
 
     const percent = (used / total) * 100;
+    const remainText = remainingMs <= 0
+      ? "已到期"
+      : daysLeft > 0 ? `剩 ${daysLeft} 天` : `剩 ${formatRemaining(remainingMs)}`;
     finish([
-      `流量情况：${formatBytes(used)} / ${formatBytes(total)}（${percent.toFixed(2)}%）`,
-      `到期日期：${formatDate(expireTimestamp)}`,
-      `剩余时间：${formatRemaining(remainingMs)}`,
+      `已用 ${formatBytes(used)} / ${formatBytes(total)}（${percent.toFixed(2)}%）`,
+      `到期 ${formatDate(expireTimestamp)}（${remainText}）`,
     ].join("\n"));
   } catch (error) {
     fail(String(error?.message || error));

@@ -11,7 +11,7 @@
 - **Quantumult X**：重写 `quantumultx/apps_js.conf`；
 - **Sub-Store**：`substore/rename.js`，节点名称与地区文案规范化脚本（同目录附测试）；
 - **代理服务端**：`systemd/*.service` 单元模板（Snell、Hysteria2，Debian/Ubuntu）；
-- **面板脚本**：需要较新的 Surge 版本（模块参数 `#!arguments` 需 Surge 5 及以上）；DeepSeek、CCH、AWS Lightsail、Peekabo 四个面板还需要各自服务的 API Key 或 Token，仅保存在 Surge 本地模块参数中；
+- **面板脚本**：需要较新的 Surge 版本（模块参数 `#!arguments` 需 Surge 5 及以上）；DeepSeek、CCH、AWS Lightsail、Peekabo、Sub2API 面板还需要各自服务的 API Key 或 Token，仅保存在 Surge 本地模块参数中；
 - 本仓库**不提供** Quantumult X 的完整配置文件，只提供重写与分流规则；
 - 所有文件通过 `raw.githubusercontent.com` 直接引用，仓库不提供额外加速方式。
 
@@ -101,11 +101,9 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 
 | 模块 | 功能 | 参数 |
 | --- | --- | --- |
-| `panels.sgmodule` | 汇总面板：功能开关检测、DeepSeek 余额、CCH 配额与调用、AWS Lightsail 流量、Peekabo 流量 | 需要，见模块内 `#!arguments-desc` |
-| `deepseek_balance.sgmodule` | DeepSeek API 余额、赠送金额与查询时间；支持查询间隔、低余额提醒、每日日报 | 需要 |
-| `cch_monitor.sgmodule` | CCH 供应商额度与今日调用、消费、RPM、并发、错误率、平均响应时间 | 需要 |
-| `lightsail_traffic.sgmodule` | AWS Lightsail 当月流量、配额占比与中文地区；支持多区域多实例、用量提醒、每日日报 | 需要 |
-| `peekabo_traffic.sgmodule` | Peekabo 已用/总流量、到期日期与剩余时间；支持查询间隔与到期提醒 | 需要 |
+| `surge_status.sgmodule` | Surge 运行时长与 MITM、Rewrite、Scripting 状态；点击面板可重载配置 | 不需要 |
+| `server.sgmodule` | AWS Lightsail 当月流量、配额占比与中文地区（多区域多实例），Peekabo 已用/总流量与到期时间 | 需要，见模块内 `#!arguments-desc` |
+| `ai.sgmodule` | DeepSeek 余额与赠送金额，CCH 总额度与并发 session，Sub2API 多站点余额 | 需要，见模块内 `#!arguments-desc` |
 | `app_js.sgmodule` | APP JS 重写合集：Netflix 评分与单集评分、淘票票豆瓣评分、TestFlight 账户管理、彩云天气 SVIP | 不需要 |
 | `bilibili_cdn.sgmodule` | 哔哩哔哩 CDN 优化 | 不需要 |
 | `block_startup.sgmodule` | 开屏与启动广告拦截 | 不需要 |
@@ -117,11 +115,12 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 
 | 脚本 | 用途 | 来源 |
 | --- | --- | --- |
-| `cch_monitor.js` | CCH 配额与调用监控面板 | 自建 |
+| `cch_monitor.js` | CCH 总额度与并发 session 面板（普通用户 Key，走 `/api/v1/me/quota`） | 自建 |
+| `sub2api_balance.js` | Sub2API 多站点余额面板（一行一个站点，取自 `/v1/usage`） | 自建 |
 | `deepseek_balance.js` | DeepSeek 余额信息面板 | 自建 |
 | `lightsail_traffic.js` | AWS Lightsail 流量信息面板 | 自建 |
 | `peekabo_traffic.js` | Peekabo 流量信息面板 | 自建 |
-| `function.js` | Surge 功能开关与运行状态检测面板 | 参考 chaizia/Profiles |
+| `function.js` | Surge 运行时长与功能开关状态面板，点击重载配置 | 参考 chaizia/Profiles |
 | `ip_check.js` | 当前节点详情面板 | 感谢 @congcong |
 | `sub_info.js` | 订阅流量与到期信息面板 | 模板来自 @mieqq |
 | `reload.js` | 配置重载面板 | Author: Pysta |
@@ -129,7 +128,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 | `stream_check.js` | 奈飞、油管解锁检测 | 上游通用脚本 |
 | `stream_all.js` | 流媒体全量解锁检测 | 上游通用脚本 |
 
-`panels` 与四个独立面板模块引用的就是前四个脚本，单独引用脚本时请注意与模块二选一。
+`server.sgmodule` 引用 `lightsail_traffic.js`、`peekabo_traffic.js`，`ai.sgmodule` 引用 `deepseek_balance.js`、`cch_monitor.js`、`sub2api_balance.js`，`surge_status.sgmodule` 引用 `function.js`；单独引用脚本时请与对应模块二选一，避免同一面板重复。
 
 ## 分流规则一览
 
