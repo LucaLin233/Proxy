@@ -123,7 +123,7 @@ function fail(message) {
     const percent = (used / total) * 100;
     const remainText = remainingMs <= 0
       ? "已到期"
-      : daysLeft > 0 ? `剩 ${daysLeft} 天` : `剩 ${formatRemaining(remainingMs)}`;
+      : remainingMs < 86400000 ? `剩 ${formatRemaining(remainingMs)}` : `剩 ${daysLeft} 天`;
     finish([
       `已用 ${formatBytes(used)} / ${formatBytes(total)}（${percent.toFixed(2)}%）`,
       `到期 ${formatDate(expireTimestamp)}（${remainText}）`,
