@@ -14,7 +14,8 @@ const ERROR_ICON = "exclamationmark.triangle.fill";
 const ERROR_COLOR = "#EF4444";
 const iconColorRaw = String(ARGS["icon-color"] || "").trim();
 const PANEL_ICON_COLOR = /^[0-9a-fA-F]{6}$/.test(iconColorRaw) ? `#${iconColorRaw}` : "#FF9900";
-const notifyRaw = Number(ARGS["notify-percent"]);
+const notifyText = String(ARGS["notify-percent"] === undefined ? "" : ARGS["notify-percent"]).trim();
+const notifyRaw = notifyText === "" ? NaN : Number(notifyText);
 const NOTIFY_PERCENT = Number.isFinite(notifyRaw) ? Math.max(0, Math.min(100, notifyRaw)) : 80;
 const IP_MODE = normalizeIpMode(ARGS["ip-mode"]);
 

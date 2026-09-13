@@ -2,7 +2,7 @@
 
 const ARGS = parseArgs($argument || "");
 const API_KEY = String(ARGS.cch_api_key || "").trim();
-const PANEL_TITLE = String(ARGS.cch_title || "CCH").trim() || "CCH";
+const PANEL_TITLE = "CCH";
 const PANEL_ICON = String(ARGS.cch_icon || "chart.bar.fill").trim() || "chart.bar.fill";
 const iconColorRaw = String(ARGS.cch_icon_color || "").trim();
 const PANEL_ICON_COLOR = /^[0-9a-fA-F]{6}$/.test(iconColorRaw) ? `#${iconColorRaw}` : "#34C759";
@@ -155,9 +155,7 @@ function renderPanel(quota) {
     lines.push("并发 未设置");
   }
 
-  const identity = [quota.userName, quota.keyName].filter(Boolean).join(" · ");
-  if (identity) lines.push(`${identity} · ${formatTime()}`);
-  else lines.push(`更新 ${formatTime()}`);
+  lines.push(`更新 ${formatTime()}`);
 
   return lines.join("\n");
 }

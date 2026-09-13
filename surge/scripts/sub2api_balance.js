@@ -77,6 +77,13 @@ function httpGet(url, headers) {
   });
 }
 
+/* null 与 0 必须区分：未返回的字段不能当成 0 展示或判断 */
+function numeric(value) {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function formatAmount(value) {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "-";
@@ -154,24 +161,25 @@ async function fetchSite(site) {
 function summaryText(json) {
   const quota = json.quota;
   if (quota) {
-    const limit = Number(quota.limit);
-    const remaining = Number(quota.remaining);
-    if (Number.isFinite(limit) && limit > 0) return `${money(remaining)} / ${money(limit)}`;
+    const limit = numeric(quota.limit);
+    const remaining = numeric(quota.remaining);
+    if (limit !== null && limit > 0 && remaining !== null) return `${money(remaining)} / ${money(limit)}`;
   }
   if (json.subscription) {
-    const remaining = Number(json.remaining);
-    if (Number.isFinite(remaining) && remaining >= 0) return `剩余 ${money(remaining)}`;
+    const remaining = numeric(json.remaining);
+    if (remaining !== null && remaining >= 0) return `剩余 ${money(remaining)}`;
     return "无周期限额";
   }
-  if (json.balance !== undefined) return money(json.balance);
-  const remaining = Number(json.remaining);
-  if (Number.isFinite(remaining) && remaining >= 0) return money(remaining);
+  const balance = numeric(json.balance);
+  if (balance !== null) return money(balance);
+  const remaining = numeric(json.remaining);
+  if (remaining !== null && remaining >= 0) return money(remaining);
   return "无余额字段";
 }
 
 function expirySuffix(json) {
-  const days = Number(json.days_until_expiry);
-  if (!Number.isFinite(days)) return "";
+  const days = numeric(json.days_until_expiry);
+  if (days === null) return "";
   if (days <= 0) return " · 已到期";
   if (days <= 30) return ` · 剩 ${days} 天`;
   return "";
@@ -201,9 +209,9 @@ function healthRatio(results) {
   let min = null;
   for (const item of results) {
     if (!item.ok || !item.data || !item.data.quota) continue;
-    const limit = Number(item.data.quota.limit);
-    const remaining = Number(item.data.quota.remaining);
-    if (!Number.isFinite(limit) || limit <= 0 || !Number.isFinite(remaining)) continue;
+    const limit = numeric(item.data.quota.limit);
+    const remaining = numeric(item.data.quota.remaining);
+    if (limit === null || limit <= 0 || remaining === null) continue;
     const ratio = remaining / limit;
     if (min === null || ratio < min) min = ratio;
   }
@@ -224,10 +232,10 @@ function lowBalanceSites(results) {
   for (const item of results) {
     if (!item.ok || !item.data) continue;
     let amount = null;
-    if (item.data.quota) amount = Number(item.data.quota.remaining);
-    else if (item.data.balance !== undefined) amount = Number(item.data.balance);
-    else amount = Number(item.data.remaining);
-    if (Number.isFinite(amount) && amount < WARN_BALANCE) hits.push(`${item.site.name} ${money(amount)}`);
+    if (item.data.quota) amount = numeric(item.data.quota.remaining);
+    else if (item.data.balance !== undefined) amount = numeric(item.data.balance);
+    else amount = numeric(item.data.remaining);
+    if (amount !== null && amount < WARN_BALANCE) hits.push(`${item.site.name} ${money(amount)}`);
   }
   return hits;
 }
@@ -247,10 +255,10 @@ function notifyLowBalance(results) {
   for (const item of results) {
     if (!item.ok || !item.data) continue;
     let amount = null;
-    if (item.data.quota) amount = Number(item.data.quota.remaining);
-    else if (item.data.balance !== undefined) amount = Number(item.data.balance);
-    else amount = Number(item.data.remaining);
-    if (Number.isFinite(amount) && amount < NOTIFY_BALANCE) hits.push(`${item.site.name} ${money(amount)}`);
+    if (item.data.quota) amount = numeric(item.data.quota.remaining);
+    else if (item.data.balance !== undefined) amount = numeric(item.data.balance);
+    else amount = numeric(item.data.remaining);
+    if (amount !== null && amount < NOTIFY_BALANCE) hits.push(`${item.site.name} ${money(amount)}`);
   }
   if (!hits.length) return;
   const key = `sub2api_balance_notice_${todayLocal()}`;

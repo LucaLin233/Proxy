@@ -45,8 +45,8 @@ Proxy/
 https://raw.githubusercontent.com/LucaLin233/Proxy/main/surge/modules/<模块名>.sgmodule
 ```
 
-`panels` 模块需要参数（API Key、Token、查询间隔等），安装时按提示填写；参数说明写在模块的
-`#!arguments-desc` 中，安装界面可直接看到。需要单独某个面板时，改装对应的独立模块。
+`server`、`ai` 模块需要参数（API Key、Token、查询间隔等），安装时按提示填写；参数说明写在模块的
+`#!arguments-desc` 中，安装界面可直接看到。只需要其中一类面板时，改装对应的那一个模块即可。
 
 ### Surge 分流规则
 
@@ -158,8 +158,9 @@ Skicat、Godetia（猫熊和 3DM）。
 
 | 想要的 | 用 | 不要同时用 |
 | --- | --- | --- |
-| 全部面板 | `panels.sgmodule` | 四个独立面板模块 |
-| 单个面板 | 对应的独立模块 | `panels.sgmodule` |
+| 服务器流量面板 | `server.sgmodule` | 与单独引用 `lightsail_traffic.js` / `peekabo_traffic.js` 二选一 |
+| AI 余额与额度面板 | `ai.sgmodule` | 与单独引用 `deepseek_balance.js` / `cch_monitor.js` / `sub2api_balance.js` 二选一 |
+| Surge 运行状态面板 | `surge_status.sgmodule` | 与单独引用 `function.js` 二选一 |
 | 只做 APP 重写 | `app_js.sgmodule` | 与本仓库其它重写模块重复的部分 |
 
 ## 高风险与注意事项

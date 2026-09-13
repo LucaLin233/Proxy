@@ -9,7 +9,8 @@ const ERROR_ICON = "exclamationmark.triangle.fill";
 const ERROR_COLOR = "#EF4444";
 const color = String(ARGS["icon-color"] || "").trim();
 const PANEL_ICON_COLOR = /^[0-9a-fA-F]{6}$/.test(color) ? `#${color}` : "#3B82F6";
-const notifyDaysRaw = Number(ARGS["notify-days"]);
+const notifyDaysText = String(ARGS["notify-days"] === undefined ? "" : ARGS["notify-days"]).trim();
+const notifyDaysRaw = notifyDaysText === "" ? NaN : Number(notifyDaysText);
 const NOTIFY_DAYS = Number.isFinite(notifyDaysRaw)
   ? Math.max(0, Math.floor(notifyDaysRaw))
   : 3;
