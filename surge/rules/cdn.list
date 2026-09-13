@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-09-06T14:00:17Z
-# Total:   6732
+# Updated: 2026-09-13T14:00:16Z
+# Total:   6735
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -3493,6 +3493,7 @@ DOMAIN-SUFFIX,resources.allstate.com
 DOMAIN-SUFFIX,resources.chessbase.com
 DOMAIN-SUFFIX,resources.digital-cloud.medallia.com
 DOMAIN-SUFFIX,resources.help.salesforce.com
+DOMAIN-SUFFIX,resources.redbull.tv
 DOMAIN-SUFFIX,resources.whatwg.org
 DOMAIN-SUFFIX,rest.happierleads.com
 DOMAIN-SUFFIX,reviews-badge.capterra.com
@@ -4334,6 +4335,7 @@ DOMAIN-SUFFIX,themes.hibootstrap.com
 DOMAIN-SUFFIX,thesourcemediaassets.com
 DOMAIN-SUFFIX,thirdwebcdn.com
 DOMAIN-SUFFIX,thisiscdn.com
+DOMAIN-SUFFIX,thumb.wikimedia.org
 DOMAIN-SUFFIX,thumbnail.missav.com
 DOMAIN-SUFFIX,thumbnailer.mixcloud.com
 DOMAIN-SUFFIX,thumbnails.applegamingwiki.com
@@ -5105,6 +5107,7 @@ DOMAIN-SUFFIX,dl.dropboxusercontent.com
 DOMAIN-SUFFIX,dl.elementary.io
 DOMAIN-SUFFIX,dl.flathub.org
 DOMAIN-SUFFIX,dl.getaurora.dev
+DOMAIN-SUFFIX,dl.gl-inet.com
 DOMAIN-SUFFIX,dl.google.com
 DOMAIN-SUFFIX,dl.iina.io
 DOMAIN-SUFFIX,dl.imobie.com
