@@ -95,6 +95,7 @@ function unwrap(json) {
 async function fetchQuota(base) {
   const headers = { Accept: "application/json" };
   if (AUTH_MODE === "cookie") headers.Cookie = `auth-token=${API_KEY}`;
+  else if (AUTH_MODE === "admin") headers.Authorization = `Bearer ${API_KEY}`;
   else headers["X-API-Key"] = API_KEY;
 
   const response = await httpGet(`${base}/api/v1/me/quota`, headers);
