@@ -459,24 +459,28 @@ function fail(message) {
 }
 
 function renderUserSite(site, data, showName) {
-  const lines = [];
   const prefix = showName ? `${site.name} · ` : "";
+  const parts = [];
 
   if (data.total) {
     /* 只展示剩余额度；上限与百分比不显示，风险色仍按剩余比例计算 */
-    lines.push(`${prefix}剩余 ${money(data.total.limit - data.total.used)}`);
+    parts.push(`剩余 ${money(data.total.limit - data.total.used)}`);
   } else {
-    lines.push(`${prefix}剩余 未设置`);
+    parts.push("剩余 未设置");
   }
 
   const session = data.session;
   if (session) {
     /* limit 为 null 表示未设上限（CCH 里留空/0 即不限） */
-    lines.push(session.limit === null ? `并发 ${session.current}/不限` : `并发 ${session.current}/${session.limit}`);
+    parts.push(session.limit === null ? `并发 ${session.current}/不限` : `并发 ${session.current}/${session.limit}`);
   } else {
-    lines.push("并发 未设置");
+    parts.push("并发 未设置");
   }
-  return lines;
+  parts.push(formatTime());
+
+  /* 尽量并成一行，超宽才折行；站名只加在首行 */
+  return layoutRows(parts, Math.max(16, PANEL_ROW_WIDTH - measure(prefix)))
+    .map((row, index) => (index === 0 ? prefix + row : row));
 }
 
 function renderAdminSite(site, data, showName) {
@@ -535,6 +539,7 @@ function renderAdminSite(site, data, showName) {
   }
 
   if (data.stale) lines.push("⚠️ 额度来自缓存");
+  lines.push(`更新 ${formatTime()}`);
   return lines;
 }
 
@@ -607,8 +612,6 @@ function siteRisk(data) {
       for (const line of block) lines.push(line);
     });
     if (dropped) lines.push(`另有 ${dropped} 个站点未显示`);
-    if (showName) lines.push("");
-    lines.push(`更新 ${formatTime()}`);
 
     let risk = results.some((item) => item.error) ? 1 : 0;
     for (const item of succeeded) risk = Math.max(risk, siteRisk(item.data));
