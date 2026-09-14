@@ -395,6 +395,8 @@ function renderAdminSite(site, data, showName) {
   const liveConcurrency = numeric(overview.concurrentSessions);
   if (liveConcurrency !== null) header += ` · 并发 ${liveConcurrency}`;
   lines.push(prefix + header);
+  /* 概况与明细之间留白，避免整块文字挤在一起 */
+  lines.push("");
 
   /* 只列设了限额或并发上限的供应商，按使用率从高到低 */
   const limited = providers
@@ -408,16 +410,17 @@ function renderAdminSite(site, data, showName) {
   if (!limited.length) {
     lines.push("未设置供应商限额");
   } else {
-    /* 供应商行只放使用率与并发，金额另起一行，避免单行过长被折行 */
+    /* 一个供应商一行：使用率与并发上限，宽度控制在一行内 */
     for (const provider of limited.slice(0, ADMIN_MAX)) {
       const parts = [];
       if (provider.quota) parts.push(formatUsagePercent(provider.quota.ratio));
       if (provider.concurrency) parts.push(`并发 ${provider.concurrency.current}/${provider.concurrency.limit}`);
       lines.push(parts.length ? `${provider.name} ${parts.join(" · ")}` : provider.name);
-      if (provider.quota) lines.push(`额度 ${money(provider.quota.current)}/${money(provider.quota.limit)}`);
     }
     if (limited.length > ADMIN_MAX) lines.push(`另有 ${limited.length - ADMIN_MAX} 个限额供应商`);
   }
+
+  lines.push("");
 
   const requests = numeric(overview.todayRequests);
   const cost = numeric(overview.todayCost);
