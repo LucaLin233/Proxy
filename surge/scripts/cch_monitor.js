@@ -463,14 +463,10 @@ function renderUserSite(site, data, showName) {
   const prefix = showName ? `${site.name} · ` : "";
 
   if (data.total) {
-    const remaining = Math.max(0, data.total.limit - data.total.used);
-    /* 用户视角展示剩余额度；admin 视角的“额度”是已用/上限，两者标签须区分 */
-    const amount = `剩余 ${money(remaining)}/${money(data.total.limit)}`;
-    const percent = (Math.max(0, Math.min(1, remaining / data.total.limit)) * 100).toFixed(1);
-    const line = `${prefix}${amount} · ${percent}%`;
-    lines.push(measure(line) <= PANEL_ROW_WIDTH ? line : `${prefix}${amount}`);
+    /* 只展示剩余额度；上限与百分比不显示，风险色仍按剩余比例计算 */
+    lines.push(`${prefix}剩余 ${money(data.total.limit - data.total.used)}`);
   } else {
-    lines.push(`${prefix}额度 未设置`);
+    lines.push(`${prefix}剩余 未设置`);
   }
 
   const session = data.session;
