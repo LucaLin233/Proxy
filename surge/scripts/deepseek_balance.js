@@ -140,44 +140,13 @@ async function fetchBalance() {
   return { json, infos };
 }
 
-function dailySubtitle(json, infos) {
-  const prefix = json.is_available === false ? "⚠️ 余额不足 · " : "";
-  return prefix + infos.map((info) => money(info.currency, info.total_balance)).join(" · ");
-}
-
-function renderDaily(infos) {
-  return infos.map((info) => (
-    `${info.currency}：当前余额 ${money(info.currency, info.total_balance)}`
-  )).join("\n");
-}
-
 (async () => {
-  const mode = String(ARGS.mode || "panel").trim().toLowerCase();
-  const isDaily = mode === "daily";
   try {
-    if (!API_KEY) {
-      if (isDaily) return $done(); // 未配置密钥时日报静默跳过，避免每日骚扰
-      return fail("缺少 deepseek_key 参数");
-    }
-    if (isDaily && String(ARGS.deepseek_daily_notify || "true").trim().toLowerCase() === "false") {
-      return $done();
-    }
-
+    if (!API_KEY) return fail("缺少 deepseek_key 参数");
     const { json, infos } = await fetchBalance();
-
-    if (isDaily) {
-      $notification.post("DeepSeek 余额日报", dailySubtitle(json, infos), renderDaily(infos));
-      return $done();
-    }
-
     notifyLowBalance(infos);
     finish(renderPanel(json, infos));
   } catch (error) {
-    const message = String((error && error.message) || error);
-    if (isDaily) {
-      $notification.post("DeepSeek 余额日报", "查询失败", message);
-      return $done();
-    }
-    fail(message);
+    fail(String((error && error.message) || error));
   }
 })();

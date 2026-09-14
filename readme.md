@@ -103,7 +103,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 | --- | --- | --- |
 | `surge_status.sgmodule` | Surge 运行时长与 MITM、Rewrite、Scripting 状态；点击面板可重载配置 | 不需要 |
 | `server.sgmodule` | AWS Lightsail 当月流量、配额占比与中文地区（多区域多实例），Peekabo 已用/总流量与到期时间 | 需要，见模块内 `#!arguments-desc` |
-| `ai.sgmodule` | DeepSeek 余额，CCH 多站点额度（用户与管理员两种视图），Sub2API 多站点余额 | 需要，见模块内 `#!arguments-desc` |
+| `aiapi.sgmodule` | 中转站余额与额度（Sub2API + CCH 合并为一个面板）、DeepSeek 余额 | 需要，见模块内 `#!arguments-desc` |
 | `app_js.sgmodule` | APP JS 重写合集：Netflix 评分与单集评分、淘票票豆瓣评分、TestFlight 账户管理、彩云天气 SVIP | 不需要 |
 | `bilibili_cdn.sgmodule` | 哔哩哔哩 CDN 优化 | 不需要 |
 | `block_startup.sgmodule` | 开屏与启动广告拦截 | 不需要 |
@@ -115,8 +115,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 
 | 脚本 | 用途 | 来源 |
 | --- | --- | --- |
-| `cch_monitor.js` | CCH 多站点额度与并发面板：user/cookie 模式走 `/api/v1/me/quota`，admin 模式走 `/api/v1/providers` 与 `/api/v1/dashboard/overview` | 自建 |
-| `sub2api_balance.js` | Sub2API 多站点余额面板（一行一个站点，取自 `/v1/usage`） | 自建 |
+| `aiapi_relay.js` | 中转站面板：Sub2API 各站余额（`/v1/usage`）+ CCH 各站额度与并发（user/cookie/login 走 `/api/v1/me/quota`，admin 走 `/api/v1/providers`）；同一脚本供 cron 日报汇总三类余额 | 自建 |
 | `deepseek_balance.js` | DeepSeek 余额信息面板 | 自建 |
 | `lightsail_traffic.js` | AWS Lightsail 流量信息面板 | 自建 |
 | `peekabo_traffic.js` | Peekabo 流量信息面板 | 自建 |
@@ -128,7 +127,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 | `stream_check.js` | 奈飞、油管解锁检测 | 上游通用脚本 |
 | `stream_all.js` | 流媒体全量解锁检测 | 上游通用脚本 |
 
-`server.sgmodule` 引用 `lightsail_traffic.js`、`peekabo_traffic.js`，`ai.sgmodule` 引用 `deepseek_balance.js`、`cch_monitor.js`、`sub2api_balance.js`，`surge_status.sgmodule` 引用 `function.js`；单独引用脚本时请与对应模块二选一，避免同一面板重复。
+`server.sgmodule` 引用 `lightsail_traffic.js`、`peekabo_traffic.js`，`aiapi.sgmodule` 引用 `deepseek_balance.js`、`aiapi_relay.js`，`surge_status.sgmodule` 引用 `function.js`；单独引用脚本时请与对应模块二选一，避免同一面板重复。
 
 ## 分流规则一览
 
@@ -159,7 +158,7 @@ Skicat、Godetia（猫熊和 3DM）。
 | 想要的 | 用 | 不要同时用 |
 | --- | --- | --- |
 | 服务器流量面板 | `server.sgmodule` | 与单独引用 `lightsail_traffic.js` / `peekabo_traffic.js` 二选一 |
-| AI 余额与额度面板 | `ai.sgmodule` | 与单独引用 `deepseek_balance.js` / `cch_monitor.js` / `sub2api_balance.js` 二选一 |
+| AI 余额与额度面板 | `aiapi.sgmodule` | 与单独引用 `deepseek_balance.js` / `aiapi_relay.js` 二选一 |
 | Surge 运行状态面板 | `surge_status.sgmodule` | 与单独引用 `function.js` 二选一 |
 | 只做 APP 重写 | `app_js.sgmodule` | 与本仓库其它重写模块重复的部分 |
 

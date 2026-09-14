@@ -1,0 +1,16 @@
+#!name=AI 中转站
+#!desc=Sub2API 与 CCH 中转站余额/额度、并发 session，以及 DeepSeek 余额
+#!category=System
+#!system=ios
+
+#!arguments=aiapi_query_interval:300,aiapi_daily_notify:false,aiapi_icon:dollarsign.circle,aiapi_icon_color:5B8DEF,sub2api_endpoints,sub2api_warn_balance:1,sub2api_notify_balance:1,cch_endpoints,cch_admin_max:4,cch_row_width:38,cch_quota_interval:300,deepseek_key,deepseek_query_interval:3600,deepseek_notify_balance:5,deepseek_warn_balance:5,deepseek_icon:yensign.circle,deepseek_icon_color:4D6BFE
+#!arguments-desc=Sub2API 中转站:\n    ├ 站点：一行一个，名称@域名=Key，多个用竖线分隔，最多 5 个\n    ├ 例：kcne@api.example.com=sk-xxx|backup@api.example.net=sk-yyy\n    └ 余额提醒与通知阈值默认 1\n\nCCH:\n    ├ 站点：一行一个，名称@地址=凭据:模式，多个用竖线分隔，最多 5 个\n    ├ 模式：直接接在凭据后面，不要加括号，如 =<凭据>:admin；省略即 user\n    ├ user 普通用户 Key | cookie 会话 auth-token | admin 管理员令牌 | login Key 自动登录\n    ├ 例：luca@cch.example.com=<用户 Key>:login\n    ├ login 模式：站点只认会话时，用 Key 自动登录换取会话 Cookie 并缓存 7 天\n    ├ admin 模式展示各供应商限额与并发上限，其余模式展示剩余额度与并发 session\n    └ 额度缓存默认 300 秒\n\nDeepSeek:\n    ├ API Key：platform.deepseek.com → API keys\n    ├ 查询间隔默认 3600 秒，提醒阈值默认 5\n    └ 关闭低余额提醒时阈值填 0\n\n其余参数:\n    ├ 面板刷新间隔默认 300 秒\n    ├ 日报默认关闭；开启后每天 23:50 推送一条，含中转站、CCH、DeepSeek 三类余额\n    └ 图标使用 SF Symbol 名称与六位 HEX 颜色
+
+[Panel]
+API 中转站概览 = title="API 中转站概览",content="正在获取...",style=info,script-name=aiapi-relay-panel,update-interval={{{aiapi_query_interval}}}
+DeepSeek 余额 = title="DeepSeek",content="正在获取...",style=info,script-name=deepseek-balance-panel,update-interval={{{deepseek_query_interval}}}
+
+[Script]
+aiapi-relay-panel = type=generic,script-path=https://raw.githubusercontent.com/LucaLin233/Proxy/main/surge/scripts/aiapi_relay.js,timeout=30,argument="sub2api_endpoints={{{sub2api_endpoints}}}&sub2api_warn_balance={{{sub2api_warn_balance}}}&sub2api_notify_balance={{{sub2api_notify_balance}}}&cch_endpoints={{{cch_endpoints}}}&cch_admin_max={{{cch_admin_max}}}&cch_row_width={{{cch_row_width}}}&cch_quota_interval={{{cch_quota_interval}}}&aiapi_icon={{{aiapi_icon}}}&aiapi_icon_color={{{aiapi_icon_color}}}"
+aiapi-relay-daily = type=cron,cronexp="50 23 * * *",wake-system=true,timeout=30,script-path=https://raw.githubusercontent.com/LucaLin233/Proxy/main/surge/scripts/aiapi_relay.js,argument="sub2api_endpoints={{{sub2api_endpoints}}}&cch_endpoints={{{cch_endpoints}}}&cch_admin_max={{{cch_admin_max}}}&cch_row_width={{{cch_row_width}}}&deepseek_key={{{deepseek_key}}}&aiapi_daily_notify={{{aiapi_daily_notify}}}&mode=daily"
+deepseek-balance-panel = type=generic,script-path=https://raw.githubusercontent.com/LucaLin233/Proxy/main/surge/scripts/deepseek_balance.js,timeout=30,argument="deepseek_key={{{deepseek_key}}}&deepseek_notify_balance={{{deepseek_notify_balance}}}&deepseek_warn_balance={{{deepseek_warn_balance}}}&deepseek_icon={{{deepseek_icon}}}&deepseek_icon_color={{{deepseek_icon_color}}}"
