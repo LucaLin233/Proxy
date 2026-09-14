@@ -23,13 +23,18 @@ def included(path:Path)->bool:
 
 def digest(data:bytes)->str: return hashlib.sha256(data).hexdigest()
 
+FORBIDDEN_ROOTS=[Path(p) for p in ("/etc","/bin","/sbin","/usr","/boot","/sys","/proc","/lib","/lib64","/dev","/root")]
+
 def main():
+    resolved_output=OUTPUT.resolve()
     try:
-        OUTPUT.resolve().relative_to(SOURCE.resolve())
+        resolved_output.relative_to(SOURCE.resolve())
     except ValueError:
         pass
     else:
         raise SystemExit("Output ZIP must be outside the Skill directory")
+    if any(resolved_output==root or root in resolved_output.parents for root in FORBIDDEN_ROOTS):
+        raise SystemExit("Output ZIP must not be written to a sensitive system directory")
     files=[]
     for p in SOURCE.rglob("*"):
         if p.is_symlink():
