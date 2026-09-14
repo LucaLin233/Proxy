@@ -366,10 +366,12 @@ function renderUserSite(site, data, showName) {
 
   if (data.total) {
     const remaining = Math.max(0, data.total.limit - data.total.used);
+    const amount = `额度 ${money(remaining)}/${money(data.total.limit)}`;
+    /* 多站点时行首已有站名，省略百分比，保证整行不折行 */
     const percent = (Math.max(0, Math.min(1, remaining / data.total.limit)) * 100).toFixed(1);
-    lines.push(`${prefix}总额度 ${money(remaining)}/${money(data.total.limit)} · ${percent}%`);
+    lines.push(showName ? `${prefix}${amount}` : `${amount} · ${percent}%`);
   } else {
-    lines.push(`${prefix}总额度 未设置`);
+    lines.push(`${prefix}额度 未设置`);
   }
 
   const session = data.session;
@@ -487,14 +489,15 @@ function siteRisk(data) {
     if (!succeeded.length) {
       const first = results[0];
       const detail = String((first.error && first.error.message) || first.error);
-      return fail(sites.length > 1 ? `${first.site.name}：${detail}` : detail);
+      return fail(sites.length > 1 ? `${first.site.name}\n${detail}` : detail);
     }
 
     /* 单站点时不加站名前缀，与旧配置的观感保持一致 */
     const showName = sites.length > 1;
     const blocks = results.map((item) => {
       if (item.error) {
-        return [`❌ ${item.site.name} · ${String((item.error && item.error.message) || item.error)}`];
+        /* 站名与错误各占一行，避免单行折行 */
+        return [`❌ ${item.site.name}`, String((item.error && item.error.message) || item.error)];
       }
       return item.data.kind === "admin"
         ? renderAdminSite(item.site, item.data, showName)
