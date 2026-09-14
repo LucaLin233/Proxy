@@ -874,9 +874,9 @@ async function runPanel() {
   if (!sub2Results.length && !cchResults.length && !deepseek) return finish("未配置", PANEL_ICON, "8E8E93");
 
   const lines = [];
+  /* 三类之间不留空行，保持整体统一；只有更新时间前留白 */
   const addBlock = (block) => {
     if (!block || !block.length) return;
-    if (lines.length) lines.push("");
     for (const line of block) lines.push(line);
   };
 
@@ -910,6 +910,7 @@ async function runPanel() {
 
   if (deepseek) addBlock(deepseekPanelLines(deepseek));
 
+  lines.push("");
   lines.push(`更新 ${formatTime()}`);
 
   /* 风险色取各部分最高值 */
