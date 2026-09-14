@@ -367,7 +367,7 @@ function renderUserSite(site, data, showName) {
   if (data.total) {
     const remaining = Math.max(0, data.total.limit - data.total.used);
     const percent = (Math.max(0, Math.min(1, remaining / data.total.limit)) * 100).toFixed(1);
-    lines.push(`${prefix}总额度 ${money(remaining)} / ${money(data.total.limit)} · ${percent}%`);
+    lines.push(`${prefix}总额度 ${money(remaining)}/${money(data.total.limit)} · ${percent}%`);
   } else {
     lines.push(`${prefix}总额度 未设置`);
   }
@@ -375,7 +375,7 @@ function renderUserSite(site, data, showName) {
   const session = data.session;
   if (session) {
     /* limit 为 null 表示未设上限（CCH 里留空/0 即不限） */
-    lines.push(session.limit === null ? `并发 ${session.current} / 不限` : `并发 ${session.current} / ${session.limit}`);
+    lines.push(session.limit === null ? `并发 ${session.current}/不限` : `并发 ${session.current}/${session.limit}`);
   } else {
     lines.push("并发 未设置");
   }
@@ -406,32 +406,36 @@ function renderAdminSite(site, data, showName) {
   if (!limited.length) {
     lines.push("未设置供应商限额");
   } else {
+    /* 供应商行只放使用率与并发，金额另起一行，避免单行过长被折行 */
     for (const provider of limited.slice(0, ADMIN_MAX)) {
       const parts = [];
-      if (provider.quota) {
-        parts.push(formatUsagePercent(provider.quota.ratio));
-        parts.push(`${money(provider.quota.current)} / ${money(provider.quota.limit)}`);
-      }
-      if (provider.concurrency) {
-        parts.push(`并发 ${provider.concurrency.current}/${provider.concurrency.limit}`);
-      }
-      lines.push(`${provider.name} · ${parts.join(" · ")}`);
+      if (provider.quota) parts.push(formatUsagePercent(provider.quota.ratio));
+      if (provider.concurrency) parts.push(`并发 ${provider.concurrency.current}/${provider.concurrency.limit}`);
+      lines.push(parts.length ? `${provider.name} ${parts.join(" · ")}` : provider.name);
+      if (provider.quota) lines.push(`额度 ${money(provider.quota.current)}/${money(provider.quota.limit)}`);
     }
     if (limited.length > ADMIN_MAX) lines.push(`另有 ${limited.length - ADMIN_MAX} 个限额供应商`);
   }
 
-  const monitor = [];
   const requests = numeric(overview.todayRequests);
-  if (requests !== null) monitor.push(`今日 ${formatInteger(requests)} 次`);
   const cost = numeric(overview.todayCost);
-  if (cost !== null) monitor.push(money(cost));
-  const errorRate = numeric(overview.todayErrorRate);
-  if (errorRate !== null) monitor.push(`错误 ${formatPercent(errorRate)}`);
-  const responseTime = numeric(overview.avgResponseTime);
-  if (responseTime !== null) monitor.push(`响应 ${formatDuration(responseTime)}`);
-  if (monitor.length) lines.push(monitor.join(" · "));
+  if (requests !== null || cost !== null) {
+    const head = [];
+    if (requests !== null) head.push(`今日 ${formatInteger(requests)} 次`);
+    if (cost !== null) head.push(money(cost));
+    lines.push(head.join(" · "));
+  }
 
-  if (data.stale) lines.push("⚠️ 额度数据来自缓存");
+  const errorRate = numeric(overview.todayErrorRate);
+  const responseTime = numeric(overview.avgResponseTime);
+  if (errorRate !== null || responseTime !== null) {
+    const tail = [];
+    if (errorRate !== null) tail.push(`错误 ${formatPercent(errorRate)}`);
+    if (responseTime !== null) tail.push(`响应 ${formatDuration(responseTime)}`);
+    lines.push(tail.join(" · "));
+  }
+
+  if (data.stale) lines.push("⚠️ 额度来自缓存");
   return lines;
 }
 
