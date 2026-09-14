@@ -163,7 +163,7 @@ function summaryText(json) {
   if (quota) {
     const limit = numeric(quota.limit);
     const remaining = numeric(quota.remaining);
-    if (limit !== null && limit > 0 && remaining !== null) return `${money(remaining)} / ${money(limit)}`;
+    if (limit !== null && limit > 0 && remaining !== null) return `余额 ${money(remaining)} / ${money(limit)}`;
   }
   if (json.subscription) {
     const remaining = numeric(json.remaining);
@@ -171,9 +171,9 @@ function summaryText(json) {
     return "无周期限额";
   }
   const balance = numeric(json.balance);
-  if (balance !== null) return money(balance);
+  if (balance !== null) return `余额 ${money(balance)}`;
   const remaining = numeric(json.remaining);
-  if (remaining !== null && remaining >= 0) return money(remaining);
+  if (remaining !== null && remaining >= 0) return `余额 ${money(remaining)}`;
   return "无余额字段";
 }
 

@@ -426,22 +426,25 @@ function renderPanel(groups) {
   const lines = [];
   groups.forEach((group, index) => {
     if (index > 0) lines.push("");
-    const countSuffix = group.instances.length > 1 ? `（${group.instances.length} 个实例）` : "";
-    lines.push(`${regionLabel(group.region)} · ${group.bundleId}${countSuffix}`);
     const quotaText = group.quotaBytes > 0 ? formatBytes(group.quotaBytes) : "未知";
     const percentText = group.quotaBytes > 0 ? `${group.percent.toFixed(2)}%` : "--";
+    const single = group.instances.length === 1 ? group.instances[0] : null;
+    const region = regionLabel(group.region);
+
+    /* 首行放地区与 IP，第二行放流量；型号与 geo 不再重复展示 */
+    if (single) {
+      const head = [region];
+      if (single.ip && IP_MODE !== "hide") {
+        head.push(IP_MODE === "mask" ? maskIp(single.ip) : single.ip);
+      }
+      lines.push(head.join(" · "));
+    } else {
+      lines.push(`${region}（${group.instances.length} 个实例）`);
+    }
+
     lines.push(`${formatBytes(group.usedBytes)} / ${quotaText} · ${percentText}`);
 
-    if (group.instances.length === 1) {
-      const instance = group.instances[0];
-      const tail = [];
-      if (instance.ip && IP_MODE !== "hide") {
-        tail.push(IP_MODE === "mask" ? maskIp(instance.ip) : instance.ip);
-      }
-      if (instance.geo) tail.push(instance.geo);
-      if (tail.length) lines.push(tail.join(" · "));
-      return;
-    }
+    if (single) return;
 
     group.instances.forEach((instance, position) => {
       const branch = position === group.instances.length - 1 ? "└" : "├";
@@ -449,7 +452,6 @@ function renderPanel(groups) {
       if (instance.ip && IP_MODE !== "hide") {
         parts.push(IP_MODE === "mask" ? maskIp(instance.ip) : instance.ip);
       }
-      if (instance.geo) parts.push(instance.geo);
       lines.push(`    ${branch} ${parts.join(" · ")}`);
     });
   });
