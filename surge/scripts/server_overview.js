@@ -1,23 +1,24 @@
-/* AWS Lightsail 流量信息面板：展示当月流量使用情况与配额占比。 */
+/* 服务器概览面板：AWS Lightsail 实例流量 + Peekabo 服务器流量与到期，合并为一个面板。
+   参数带前缀（lightsail_* / peekabo_*），模块级用 server_*。 */
 
 const ARGS = parseArgs($argument || "");
-const ACCESS_KEY = ARGS.ak || "";
-const SECRET_KEY = ARGS.sk || "";
+const ACCESS_KEY = String(ARGS.lightsail_ak || "").trim();
+const SECRET_KEY = String(ARGS.lightsail_sk || "").trim();
 /* 模块参数用逗号分隔参数名，默认值里的多区域改用竖线或分号 */
-const REGIONS = String(ARGS.region || "ap-east-1|ap-northeast-1")
+const REGIONS = String(ARGS.lightsail_region || "ap-east-1|ap-northeast-1")
   .split(/[,;|]/)
   .map((item) => item.trim())
   .filter(Boolean);
-const PANEL_TITLE = "AWS Lightsail";
-const PANEL_ICON = ARGS.icon || "cloud";
+const PANEL_TITLE = "服务器概览";
+const PANEL_ICON = String(ARGS.server_icon || "cloud").trim() || "cloud";
 const ERROR_ICON = "exclamationmark.triangle.fill";
 const ERROR_COLOR = "#EF4444";
-const iconColorRaw = String(ARGS["icon-color"] || "").trim();
+const iconColorRaw = String(ARGS.server_icon_color || "").trim();
 const PANEL_ICON_COLOR = /^[0-9a-fA-F]{6}$/.test(iconColorRaw) ? `#${iconColorRaw}` : "#FF9900";
-const notifyText = String(ARGS["notify-percent"] === undefined ? "" : ARGS["notify-percent"]).trim();
+const notifyText = String(ARGS.lightsail_notify_percent || "").trim();
 const notifyRaw = notifyText === "" ? NaN : Number(notifyText);
 const NOTIFY_PERCENT = Number.isFinite(notifyRaw) ? Math.max(0, Math.min(100, notifyRaw)) : 80;
-const IP_MODE = normalizeIpMode(ARGS["ip-mode"]);
+const IP_MODE = normalizeIpMode(ARGS.lightsail_ip_mode);
 
 const SERVICE = "lightsail";
 const TARGET_PREFIX = "Lightsail_20161128.";
@@ -78,6 +79,12 @@ function normalizeIpMode(raw) {
 function maskIp(ip) {
   const parts = String(ip).split(".");
   return parts.length === 4 ? `${parts[0]}.${parts[1]}.*.*` : ip;
+}
+
+function formatTime() {
+  const date = new Date();
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function formatBytes(bytes) {
@@ -424,8 +431,7 @@ function renderPanel(groups) {
   if (!groups.length) return "未找到 Lightsail 实例";
 
   const lines = [];
-  groups.forEach((group, index) => {
-    if (index > 0) lines.push("");
+  groups.forEach((group) => {
     const quotaText = group.quotaBytes > 0 ? formatBytes(group.quotaBytes) : "未知";
     const percentText = group.quotaBytes > 0 ? `${group.percent.toFixed(2)}%` : "--";
     const single = group.instances.length === 1 ? group.instances[0] : null;
@@ -456,6 +462,90 @@ function renderPanel(groups) {
     });
   });
   return lines.join("\n");
+}
+
+
+/* ===== Peekabo：服务器流量与到期 ===== */
+
+const PEEKABO_TOKEN = String(ARGS.peekabo_token || "").trim();
+const PEEKABO_ID = String(ARGS.peekabo_id || "").trim();
+const peekaboNotifyText = String(ARGS.peekabo_notify_days || "").trim();
+const peekaboNotifyRaw = peekaboNotifyText === "" ? NaN : Number(peekaboNotifyText);
+const PEEKABO_NOTIFY_DAYS = Number.isFinite(peekaboNotifyRaw) ? Math.max(0, Math.floor(peekaboNotifyRaw)) : 3;
+
+function formatDate(timestamp) {
+  const date = new Date(timestamp);
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function formatRemaining(milliseconds) {
+  if (milliseconds <= 0) return "已到期";
+  const totalMinutes = Math.floor(milliseconds / 60000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days} 天 ${hours} 小时`;
+  if (hours > 0) return `${hours} 小时 ${minutes} 分钟`;
+  return `${Math.max(1, minutes)} 分钟`;
+}
+
+/* 拉取 Peekabo 流量与到期；失败时返回错误，不阻塞其它部分 */
+async function fetchPeekabo() {
+  if (!PEEKABO_TOKEN || !PEEKABO_ID) return { ok: false, error: "未配置" };
+  try {
+    const response = await httpGet(
+      `https://vf-hk.peekabo.io/api/server/${encodeURIComponent(PEEKABO_ID)}?state=true`,
+      { Accept: "application/json", Authorization: `Bearer ${PEEKABO_TOKEN}` }
+    );
+    if (response.status !== 200) return { ok: false, error: `HTTP ${response.status}` };
+
+    let json;
+    try { json = JSON.parse(response.body); }
+    catch (_) { return { ok: false, error: "响应解析失败" }; }
+
+    const used = Number(json && json.data && json.data.state && json.data.state.network && json.data.state.network.primary && json.data.state.network.primary.traffic && json.data.state.network.primary.traffic.tx);
+    const limitRaw = String((json && json.data && json.data.network && json.data.network.primary && json.data.network.primary.limit) || "").trim();
+    const limitMatch = limitRaw.match(/^(\d+(?:\.\d+)?)\s*GB$/i);
+    const total = limitMatch ? Number(limitMatch[1]) * BYTES_PER_GB : NaN;
+    const expireTimestamp = Date.parse(json && json.data && json.data.currentMonthlyPeriod && json.data.currentMonthlyPeriod.end);
+    if (!Number.isFinite(used) || used < 0 || !Number.isFinite(total) || total <= 0 || !Number.isFinite(expireTimestamp)) {
+      return { ok: false, error: "流量或到期信息不完整" };
+    }
+    return { ok: true, used, total, expireTimestamp };
+  } catch (error) {
+    const text = String((error && error.message) || error);
+    return { ok: false, error: /timeout|timed out/i.test(text) ? "超时" : "连接失败" };
+  }
+}
+
+function peekaboLines(result) {
+  if (!result.ok) return [`Peekabo · ❌ ${result.error}`];
+  const percent = (result.used / result.total) * 100;
+  const remainingMs = result.expireTimestamp - Date.now();
+  const daysLeft = Math.max(0, Math.ceil(remainingMs / 86400000));
+  const remainText = remainingMs <= 0
+    ? "已到期"
+    : remainingMs < 86400000 ? `剩 ${formatRemaining(remainingMs)}` : `剩 ${daysLeft} 天`;
+  return [
+    `Peekabo · 已用 ${formatBytes(result.used)} / ${formatBytes(result.total)} · ${percent.toFixed(2)}%`,
+    `到期 ${formatDate(result.expireTimestamp)}（${remainText}）`,
+  ];
+}
+
+function notifyPeekaboExpiring(result) {
+  if (!result.ok || PEEKABO_NOTIFY_DAYS === 0) return;
+  const remainingMs = result.expireTimestamp - Date.now();
+  const daysLeft = Math.max(0, Math.ceil(remainingMs / 86400000));
+  if (daysLeft > PEEKABO_NOTIFY_DAYS) return;
+  const today = formatDate(Date.now());
+  const expiry = formatDate(result.expireTimestamp);
+  const key = `peekabo_expiry_notice_${PEEKABO_ID}_${expiry}_${today}`;
+  try {
+    if ($persistentStore.read(key)) return;
+    $notification.post("Peekabo 到期提醒", remainingMs <= 0 ? "已到期" : `剩余 ${daysLeft} 天`, `到期日期：${expiry}`);
+    $persistentStore.write("1", key);
+  } catch (_) {}
 }
 
 /* ===== 每日日报 ===== */
@@ -576,29 +666,71 @@ function notifyOveruse(groups) {
 (async () => {
   const mode = String(ARGS.mode || "panel").trim().toLowerCase();
   const isDaily = mode === "daily";
+  const lightsailReady = Boolean(ACCESS_KEY && SECRET_KEY);
+  const peekaboReady = Boolean(PEEKABO_TOKEN && PEEKABO_ID);
   try {
-    if (!ACCESS_KEY || !SECRET_KEY) {
-      if (isDaily) return $done(); // 未配置密钥时日报静默跳过，避免每日骚扰
-      return fail("缺少 ak / sk 参数");
+    if (!lightsailReady && !peekaboReady) {
+      if (isDaily) return $done(); // 未配置时日报静默跳过，避免每日骚扰
+      return finish("未配置", PANEL_ICON, "8E8E93");
     }
-    if (isDaily && String(ARGS["daily-notify"] || "true").trim().toLowerCase() === "false") {
+    if (isDaily && String(ARGS.server_daily_notify || "true").trim().toLowerCase() === "false") {
       return $done();
     }
 
-    const groups = await collectGroups(isDaily);
+    /* 一侧失败不影响另一侧展示 */
+    const [lightResult, peekabo] = await Promise.all([
+      lightsailReady
+        ? collectGroups(isDaily).then(
+          (groups) => ({ ok: true, groups }),
+          (error) => ({ ok: false, error: error || new Error("查询失败") })
+        )
+        : Promise.resolve({ ok: false, skipped: true }),
+      peekaboReady ? fetchPeekabo() : Promise.resolve({ ok: false, error: "未配置" }),
+    ]);
+    const groups = lightResult.ok ? lightResult.groups : [];
+    const lightError = String((lightResult.error && lightResult.error.message) || lightResult.error);
 
     if (isDaily) {
-      $notification.post("AWS Lightsail 流量日报", dailySubtitle(groups), renderDaily(groups));
+      const sections = [];
+      if (lightsailReady) {
+        sections.push(lightResult.ok
+          ? ["【Lightsail】", renderDaily(groups)]
+          : ["【Lightsail】", `❌ ${lightError}`]);
+      }
+      if (peekabo.ok) {
+        const percent = (peekabo.used / peekabo.total) * 100;
+        sections.push([
+          "【Peekabo】",
+          `已用 ${formatBytes(peekabo.used)} / ${formatBytes(peekabo.total)} · ${percent.toFixed(2)}%`,
+          `到期 ${formatDate(peekabo.expireTimestamp)}`,
+        ]);
+      } else if (peekaboReady) {
+        sections.push(["【Peekabo】", `❌ ${peekabo.error}`]);
+      }
+      if (!sections.length) return $done();
+      const body = sections.map((block) => block.join("\n")).join("\n\n");
+      const subtitle = `Lightsail ${groups.length} 组 · Peekabo ${peekabo.ok ? 1 : 0}`;
+      $notification.post("服务器流量日报", subtitle, body);
       return $done();
     }
 
-    if (IP_MODE !== "hide") await fillGeo(groups);
-    notifyOveruse(groups);
-    finish(renderPanel(groups));
+    if (lightsailReady && lightResult.ok && IP_MODE !== "hide") await fillGeo(groups);
+    if (lightsailReady && lightResult.ok) notifyOveruse(groups);
+    notifyPeekaboExpiring(peekabo);
+
+    const lines = [];
+    if (lightsailReady) {
+      if (lightResult.ok) for (const line of renderPanel(groups).split("\n")) lines.push(line);
+      else lines.push(`Lightsail · ❌ ${lightError}`);
+    }
+    if (peekaboReady) for (const line of peekaboLines(peekabo)) lines.push(line);
+    lines.push("");
+    lines.push(`更新 ${formatTime()}`);
+    finish(lines.join("\n"));
   } catch (error) {
     const message = String((error && error.message) || error);
     if (isDaily) {
-      $notification.post("AWS Lightsail 流量日报", "查询失败", message);
+      $notification.post("服务器流量日报", "查询失败", message);
       return $done();
     }
     fail(message);
