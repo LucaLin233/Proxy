@@ -162,7 +162,8 @@ function renderPanel(quota) {
 
   const session = concurrency(quota);
   if (session) {
-    lines.push(session.limit === null ? `并发 ${session.current}` : `并发 ${session.current} / ${session.limit}`);
+    /* limit 为 null 表示未设上限（CCH 里留空/0 即不限） */
+    lines.push(session.limit === null ? `并发 ${session.current} / 不限` : `并发 ${session.current} / ${session.limit}`);
   } else {
     lines.push("并发 未设置");
   }
