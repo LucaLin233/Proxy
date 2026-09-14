@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-09-13T14:00:16Z
-# Total:   6735
+# Updated: 2026-09-14T14:00:19Z
+# Total:   6741
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -358,6 +358,7 @@ DOMAIN-SUFFIX,assets.polarbyte.com
 DOMAIN-SUFFIX,assets.poool.fr
 DOMAIN-SUFFIX,assets.porndig.com
 DOMAIN-SUFFIX,assets.positional-bucket.com
+DOMAIN-SUFFIX,assets.production.linktr.ee
 DOMAIN-SUFFIX,assets.prowritingaid.com
 DOMAIN-SUFFIX,assets.pscp.tv
 DOMAIN-SUFFIX,assets.queue-it.net
@@ -476,6 +477,7 @@ DOMAIN-SUFFIX,awsstatic.com
 DOMAIN-SUFFIX,awxcdn.com
 DOMAIN-SUFFIX,ax1x.com
 DOMAIN-SUFFIX,axiecdn.axieinfinity.com
+DOMAIN-SUFFIX,axiom-cdn.io
 DOMAIN-SUFFIX,axis-cdn.net
 DOMAIN-SUFFIX,az700632.vo.msecnd.net
 DOMAIN-SUFFIX,azurestaticapps.net
@@ -1476,6 +1478,7 @@ DOMAIN-SUFFIX,code.upscope.io
 DOMAIN-SUFFIX,codeberg.page
 DOMAIN-SUFFIX,codeforces.org
 DOMAIN-SUFFIX,codepenassets.com
+DOMAIN-SUFFIX,coin-images.coingecko.com
 DOMAIN-SUFFIX,colliderimages.com
 DOMAIN-SUFFIX,combinatronics.io
 DOMAIN-SUFFIX,comm.res.easebar.com
@@ -4011,6 +4014,7 @@ DOMAIN-SUFFIX,static.izanmei.icu
 DOMAIN-SUFFIX,static.j51.net
 DOMAIN-SUFFIX,static.javhd.com
 DOMAIN-SUFFIX,static.jsbin.com
+DOMAIN-SUFFIX,static.jup.ag
 DOMAIN-SUFFIX,static.k2s.cc
 DOMAIN-SUFFIX,static.killedbygoogle.com
 DOMAIN-SUFFIX,static.klaviyo.com
@@ -4340,6 +4344,7 @@ DOMAIN-SUFFIX,thumbnail.missav.com
 DOMAIN-SUFFIX,thumbnailer.mixcloud.com
 DOMAIN-SUFFIX,thumbnails.applegamingwiki.com
 DOMAIN-SUFFIX,thumbnails.cbsig.net
+DOMAIN-SUFFIX,thumbnails.padre.gg
 DOMAIN-SUFFIX,thumbor.4gamers.com.tw
 DOMAIN-SUFFIX,thumbor.forbes.com
 DOMAIN-SUFFIX,thumbs.onlyfans.com
@@ -4482,6 +4487,7 @@ DOMAIN-SUFFIX,ubistatic2-a.ubisoft.com
 DOMAIN-SUFFIX,ucarecdn.com
 DOMAIN-SUFFIX,udata.namespace.so
 DOMAIN-SUFFIX,udify.app
+DOMAIN-SUFFIX,ugc.production.linktr.ee
 DOMAIN-SUFFIX,uhf.microsoft.com
 DOMAIN-SUFFIX,ui-cdn.digitalocean-ui.com
 DOMAIN-SUFFIX,ui-cdn.digitalocean.com
