@@ -2,6 +2,8 @@
 
 const ARGS = parseArgs($argument || "");
 const API_KEY = String(ARGS.cch_api_key || "").trim();
+/* api_key：官方推荐的 X-Api-Key；cookie：浏览器登录后的 auth-token，用于站点只认会话的场景 */
+const AUTH_MODE = String(ARGS.cch_auth || "api_key").trim().toLowerCase();
 const PANEL_TITLE = "CCH";
 const PANEL_ICON = String(ARGS.cch_icon || "chart.bar.fill").trim() || "chart.bar.fill";
 const iconColorRaw = String(ARGS.cch_icon_color || "").trim();
@@ -91,10 +93,11 @@ function unwrap(json) {
 }
 
 async function fetchQuota(base) {
-  const response = await httpGet(`${base}/api/v1/me/quota`, {
-    Accept: "application/json",
-    "X-API-Key": API_KEY,
-  });
+  const headers = { Accept: "application/json" };
+  if (AUTH_MODE === "cookie") headers.Cookie = `auth-token=${API_KEY}`;
+  else headers["X-API-Key"] = API_KEY;
+
+  const response = await httpGet(`${base}/api/v1/me/quota`, headers);
   if (response.status === 401) throw new Error(`Key 被拒${problemCode(response.body)}`);
   if (response.status === 403) throw new Error("无 read 权限，请检查 Key 权限");
   if (response.status === 404) throw new Error("接口不存在，请检查 CCH 地址与版本");

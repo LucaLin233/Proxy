@@ -433,16 +433,16 @@ function renderPanel(groups) {
 
     /* 首行放地区与 IP，第二行放流量；型号与 geo 不再重复展示 */
     if (single) {
-      const head = [region];
+      const head = [`地区 ${region}`];
       if (single.ip && IP_MODE !== "hide") {
-        head.push(IP_MODE === "mask" ? maskIp(single.ip) : single.ip);
+        head.push(`公网 ${IP_MODE === "mask" ? maskIp(single.ip) : single.ip}`);
       }
       lines.push(head.join(" · "));
     } else {
-      lines.push(`${region}（${group.instances.length} 个实例）`);
+      lines.push(`地区 ${region}（${group.instances.length} 台）`);
     }
 
-    lines.push(`${formatBytes(group.usedBytes)} / ${quotaText} · ${percentText}`);
+    lines.push(`流量 ${formatBytes(group.usedBytes)} / ${quotaText} · ${percentText}`);
 
     if (single) return;
 
