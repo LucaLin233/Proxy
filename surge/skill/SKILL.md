@@ -85,7 +85,7 @@ Controller 不可用、需要 `/v1/*` 接口或 Prometheus 指标时走 HTTP API
 
 - 安装、只读验收、打包分享与上游同步脚本清单及用法见 `references/SOURCE.md`；执行上述任一操作前先读该文件，同步后人工合并，不盲目覆盖本 `SKILL.md`。
 - 禁止打包凭据、profile、抓包、请求正文、数据库与运行输出。
-- 模块推送（仅自有仓库 `LucaLin233/Proxy`）：凭据不入命令行；用临时 git-cred-helper 从 `$GH_TOKEN` 读取（细粒度、按仓库收窄），用后立即删除；推送结果以 `gh api` 回读为准（raw CDN 缓存 2–7 分钟）。
+- 模块推送（仅自有仓库 `LucaLin233/Proxy`）：凭据不入命令行；用临时 git-cred-helper 从 `$GH_TOKEN` 读取，用后立即删除；推送结果以 `gh api` 回读为准（raw CDN 缓存 2–7 分钟）。
 - 输出默认含：**结论、修改/操作、验证、回滚/注意**；实际执行与仅建议的命令必须区分。
 
 ## 参考按需加载
