@@ -418,27 +418,11 @@ function cchTotalQuota(quota) {
   return null;
 }
 
-/* 并发 session：上限与占用同样要求同源 */
-function cchConcurrency(quota) {
-  const keyLimit = numeric(quota.keyLimitConcurrentSessions);
-  if (keyLimit !== null && keyLimit > 0) {
-    return { limit: keyLimit, current: num(quota.keyCurrentConcurrentSessions) };
-  }
-  const userLimit = numeric(quota.userLimitConcurrentSessions);
-  if (userLimit !== null && userLimit > 0) {
-    return { limit: userLimit, current: num(quota.userCurrentConcurrentSessions) };
-  }
-  const keyCurrent = numeric(quota.keyCurrentConcurrentSessions);
-  const userCurrent = numeric(quota.userCurrentConcurrentSessions);
-  if (keyCurrent === null && userCurrent === null) return null;
-  return { limit: null, current: keyCurrent !== null ? keyCurrent : userCurrent };
-}
-
 async function fetchCchUserSite(site, headers) {
   const response = await request("get", `${site.base}/api/v1/me/quota`, headers);
   checkStatus(response, site.mode === "user" ? "Key" : "会话");
   const quota = unwrap(parseBody(response));
-  return { kind: "user", total: cchTotalQuota(quota), session: cchConcurrency(quota) };
+  return { kind: "user", total: cchTotalQuota(quota) };
 }
 
 /* 供应商限额：取各类窗口中使用率最高的一项；未设限额返回 null */
@@ -453,14 +437,6 @@ function cchProviderQuota(usage) {
     if (!best || ratio > best.ratio) best = { limit, current, ratio };
   }
   return best;
-}
-
-/* 供应商并发上限：limit 为 0 表示不限，不展示 */
-function cchProviderConcurrency(usage) {
-  const window = usage && usage.concurrentSessions;
-  const limit = numeric(window && window.limit);
-  if (limit === null || limit <= 0) return null;
-  return { limit, current: num(window && window.current) };
 }
 
 function quotaCacheKey(base) {
@@ -514,7 +490,6 @@ async function fetchCchAdminQuota(site, headers) {
         name: String(item.name || `#${item.id}`),
         enabled: item.isEnabled !== false,
         quota: cchProviderQuota(usage),
-        concurrency: cchProviderConcurrency(usage),
       };
     });
 
@@ -625,25 +600,12 @@ function formatUsagePercent(ratio) {
 
 /* CCH 站点始终带站名，方便与 Sub2API 站点并列时区分 */
 function cchUserLines(site, data) {
+  /* 与另外两类统一用“余额”；并发已在 CCH 侧配置好，不做实时展示 */
   const prefix = `${site.name} · `;
-  const parts = [];
-  if (data.total) {
-    /* 只展示剩余额度；上限与百分比不显示，风险色仍按剩余比例计算 */
-    parts.push(`剩余 ${money(data.total.limit - data.total.used)}`);
-  } else {
-    parts.push("剩余 未设置");
-  }
-
-  const session = data.session;
-  if (session) {
-    /* limit 为 null 表示未设上限（CCH 里留空/0 即不限） */
-    parts.push(session.limit === null ? `并发 ${session.current}/不限` : `并发 ${session.current}/${session.limit}`);
-  } else {
-    parts.push("并发 未设置");
-  }
-
-  return layoutRows(parts, Math.max(16, CCH_ROW_WIDTH - measure(prefix)))
-    .map((row, index) => (index === 0 ? prefix + row : row));
+  const amount = data.total
+    ? `余额 ${money(data.total.limit - data.total.used)}`
+    : "余额 未设置";
+  return [`${prefix}${amount}`];
 }
 
 function cchAdminLines(site, data) {
@@ -653,14 +615,12 @@ function cchAdminLines(site, data) {
   const providers = Array.isArray(data.quota && data.quota.providers) ? data.quota.providers : [];
   const total = Number(data.quota && data.quota.total);
 
-  let header = `供应商 ${Number.isFinite(total) ? total : providers.length}`;
-  const liveConcurrency = numeric(overview.concurrentSessions);
-  if (liveConcurrency !== null) header += ` · 并发 ${liveConcurrency}`;
+  const header = `供应商 ${Number.isFinite(total) ? total : providers.length}`;
   lines.push(prefix + header);
 
   /* 只列设了限额或并发上限的供应商，按使用率从高到低 */
   const limited = providers
-    .filter((provider) => provider.quota || provider.concurrency)
+    .filter((provider) => provider.quota)
     .sort((a, b) => {
       const left = a.quota ? a.quota.ratio : 0;
       const right = b.quota ? b.quota.ratio : 0;
@@ -673,9 +633,7 @@ function cchAdminLines(site, data) {
     /* 供应商名与使用率固定同一行；并发与金额放不下时自动落到下一行 */
     const budget = Math.max(16, CCH_ROW_WIDTH - measure(prefix));
     for (const provider of limited.slice(0, CCH_ADMIN_MAX)) {
-      const parts = [provider.quota ? `${provider.name} ${formatUsagePercent(provider.quota.ratio)}` : provider.name];
-      if (provider.concurrency) parts.push(`并发 ${provider.concurrency.current}/${provider.concurrency.limit}`);
-      if (provider.quota) parts.push(`额度 ${money(provider.quota.current)}/${money(provider.quota.limit)}`);
+      const parts = [`${provider.name} ${formatUsagePercent(provider.quota.ratio)}`, `额度 ${money(provider.quota.current)}/${money(provider.quota.limit)}`];
       for (const row of layoutRows(parts, budget)) lines.push(row);
     }
     if (limited.length > CCH_ADMIN_MAX) lines.push(`另有 ${limited.length - CCH_ADMIN_MAX} 个限额供应商`);
@@ -946,11 +904,8 @@ function cchDailyText(data) {
     if (errorRate !== null) parts.push(`错误 ${formatPercent(errorRate)}`);
     return parts.join(" · ");
   }
-  const parts = [];
-  if (data.total) parts.push(`剩余 ${money(data.total.limit - data.total.used)}`);
-  const session = data.session;
-  if (session) parts.push(session.limit === null ? `并发 ${session.current}/不限` : `并发 ${session.current}/${session.limit}`);
-  return parts.join(" · ");
+  if (data.total) return `余额 ${money(data.total.limit - data.total.used)}`;
+  return "余额 未设置";
 }
 
 async function runDaily() {
