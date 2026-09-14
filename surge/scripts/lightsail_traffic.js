@@ -52,8 +52,7 @@ const REGION_NAMES = {
 };
 
 function regionLabel(region) {
-  const name = REGION_NAMES[region];
-  return name ? `${name} ${region}` : region;
+  return REGION_NAMES[region] || region;
 }
 
 function safeDecode(value) {
@@ -431,14 +430,16 @@ function renderPanel(groups) {
     lines.push(`${regionLabel(group.region)} · ${group.bundleId}${countSuffix}`);
     const quotaText = group.quotaBytes > 0 ? formatBytes(group.quotaBytes) : "未知";
     const percentText = group.quotaBytes > 0 ? `${group.percent.toFixed(2)}%` : "--";
-    lines.push(`当月 ${formatBytes(group.usedBytes)} / ${quotaText} · ${percentText}`);
+    lines.push(`${formatBytes(group.usedBytes)} / ${quotaText} · ${percentText}`);
 
     if (group.instances.length === 1) {
       const instance = group.instances[0];
+      const tail = [];
       if (instance.ip && IP_MODE !== "hide") {
-        lines.push(`公网 IP ${IP_MODE === "mask" ? maskIp(instance.ip) : instance.ip}`);
+        tail.push(IP_MODE === "mask" ? maskIp(instance.ip) : instance.ip);
       }
-      if (instance.geo) lines.push(`地区 ${instance.geo}`);
+      if (instance.geo) tail.push(instance.geo);
+      if (tail.length) lines.push(tail.join(" · "));
       return;
     }
 

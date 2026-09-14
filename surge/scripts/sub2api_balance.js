@@ -1,7 +1,7 @@
 /* Sub2API 余额面板（多站点聚合）：一行一个站点，展示余额/额度与到期时间。 */
 
 const ARGS = parseArgs($argument || "");
-const TITLE = String(ARGS.sub2api_title || "Sub2API").trim() || "Sub2API";
+const TITLE = String(ARGS.sub2api_title || "API 中转站").trim() || "API 中转站";
 const RAW_ENDPOINTS = String(ARGS.sub2api_endpoints || "").trim();
 const PANEL_ICON = String(ARGS.sub2api_icon || "dollarsign.circle").trim() || "dollarsign.circle";
 const iconColorRaw = String(ARGS.sub2api_icon_color || "").trim();
@@ -190,17 +190,12 @@ function siteLine(result) {
   return `${result.site.name}  ${summaryText(result.data)}${expirySuffix(result.data)}`;
 }
 
-function padNames(results) {
-  let width = 0;
-  for (const item of results) {
-    const length = String(item.site.name).length;
-    if (length > width) width = length;
-  }
+/* 面板字体为比例字体，空格无法对齐，统一用分隔点 */
+function siteLines(results) {
   return results.map((item) => {
     const name = String(item.site.name);
-    const pad = " ".repeat(Math.max(1, width - name.length + 2));
-    if (!item.ok) return `${name}${pad}❌ ${item.error}`;
-    return `${name}${pad}${summaryText(item.data)}${expirySuffix(item.data)}`;
+    if (!item.ok) return `${name} · ❌ ${item.error}`;
+    return `${name} · ${summaryText(item.data)}${expirySuffix(item.data)}`;
   });
 }
 
@@ -241,7 +236,7 @@ function lowBalanceSites(results) {
 }
 
 function renderPanel(results, extraLines) {
-  const lines = padNames(results);
+  const lines = siteLines(results);
   const hits = lowBalanceSites(results);
   if (hits.length) lines.push(`⚠️ 余额偏低：${hits.join(" · ")}`);
   if (extraLines && extraLines.length) for (const line of extraLines) lines.push(line);

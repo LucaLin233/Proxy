@@ -70,6 +70,14 @@ function fail(message) {
   finish(`❌ ${message}`, ERROR_ICON, DANGER_ICON_COLOR);
 }
 
+/* 取出 CCH problem+json 里的 errorCode，便于区分“没带凭据”与“凭据无效” */
+function problemCode(body) {
+  try {
+    const json = JSON.parse(body);
+    return json && json.errorCode ? `（${json.errorCode}）` : "";
+  } catch (_) { return ""; }
+}
+
 function numeric(value) {
   if (value === null || value === undefined) return null;
   const parsed = Number(value);
@@ -87,7 +95,7 @@ async function fetchQuota(base) {
     Accept: "application/json",
     "X-API-Key": API_KEY,
   });
-  if (response.status === 401) throw new Error("API Key 无效");
+  if (response.status === 401) throw new Error(`Key 被拒${problemCode(response.body)}`);
   if (response.status === 403) throw new Error("无 read 权限，请检查 Key 权限");
   if (response.status === 404) throw new Error("接口不存在，请检查 CCH 地址与版本");
   if (response.status !== 200) throw new Error(`API 请求失败 (HTTP ${response.status})`);

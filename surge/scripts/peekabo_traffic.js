@@ -81,7 +81,16 @@ function notifyExpiring(daysLeft, expireTimestamp) {
   } catch (_) {}
 }
 
+let GUARD_TIMER = null;
+function clearGuard() {
+  if (GUARD_TIMER !== null) {
+    try { clearTimeout(GUARD_TIMER); } catch (_) {}
+    GUARD_TIMER = null;
+  }
+}
+
 function finish(content, icon = PANEL_ICON, iconColor = PANEL_ICON_COLOR) {
+  clearGuard();
   $done({ title: PANEL_TITLE, content, icon, "icon-color": iconColor });
 }
 
@@ -90,6 +99,8 @@ function fail(message) {
 }
 
 (async () => {
+  /* 请求异常或接口无响应时也要给出结果，否则面板会停在“正在获取...” */
+  GUARD_TIMER = setTimeout(() => fail("请求超时"), 25000);
   try {
     if (!API_TOKEN || !SERVER_ID) return fail("缺少 id / token 参数");
 
