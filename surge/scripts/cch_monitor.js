@@ -8,6 +8,8 @@ const ARGS = parseArgs($argument || "");
 const RAW_ENDPOINTS = String(ARGS.cch_endpoints || "").trim();
 const ADMIN_MAX = intArg(ARGS.cch_admin_max, 4, 1, 20);
 const QUOTA_CACHE_SECONDS = intArg(ARGS.cch_quota_interval, 300, 60, 3600);
+/* 面板一行可容纳的半角宽度，超出部分由 layoutRows 自动换行 */
+const PANEL_ROW_WIDTH = intArg(ARGS.cch_row_width, 34, 20, 60);
 const PANEL_TITLE = "CCH";
 const PANEL_ICON = String(ARGS.cch_icon || "chart.bar.fill").trim() || "chart.bar.fill";
 const iconColorRaw = String(ARGS.cch_icon_color || "").trim();
@@ -333,6 +335,30 @@ function formatPercent(value) {
   return `${number.toFixed(number >= 10 ? 0 : 2)}%`;
 }
 
+/* 面板单行宽度估算：中日韩字符按两个半角计 */
+function measure(text) {
+  let width = 0;
+  for (const char of String(text)) width += char.codePointAt(0) > 0x2000 ? 2 : 1;
+  return width;
+}
+
+/* 按宽度拼行，放不下的片段自动另起一行 */
+function layoutRows(parts, budget) {
+  const rows = [];
+  let row = "";
+  for (const part of parts) {
+    const candidate = row ? `${row} · ${part}` : part;
+    if (row && measure(candidate) > budget) {
+      rows.push(row);
+      row = part;
+    } else {
+      row = candidate;
+    }
+  }
+  if (row) rows.push(row);
+  return rows;
+}
+
 /* 额度使用率保留一位小数，便于看出 68.2% 与 68% 的差别 */
 function formatUsagePercent(ratio) {
   const value = Number(ratio);
@@ -367,9 +393,9 @@ function renderUserSite(site, data, showName) {
   if (data.total) {
     const remaining = Math.max(0, data.total.limit - data.total.used);
     const amount = `额度 ${money(remaining)}/${money(data.total.limit)}`;
-    /* 多站点时行首已有站名，省略百分比，保证整行不折行 */
     const percent = (Math.max(0, Math.min(1, remaining / data.total.limit)) * 100).toFixed(1);
-    lines.push(showName ? `${prefix}${amount}` : `${amount} · ${percent}%`);
+    const line = `${prefix}${amount} · ${percent}%`;
+    lines.push(measure(line) <= PANEL_ROW_WIDTH ? line : `${prefix}${amount}`);
   } else {
     lines.push(`${prefix}额度 未设置`);
   }
@@ -408,12 +434,13 @@ function renderAdminSite(site, data, showName) {
   if (!limited.length) {
     lines.push("未设置供应商限额");
   } else {
-    /* 一个供应商一行：使用率与并发上限，宽度控制在一行内 */
+    /* 供应商名与使用率固定同一行；并发与金额放不下时自动落到下一行 */
+    const budget = Math.max(16, PANEL_ROW_WIDTH - measure(prefix));
     for (const provider of limited.slice(0, ADMIN_MAX)) {
-      const parts = [];
-      if (provider.quota) parts.push(formatUsagePercent(provider.quota.ratio));
+      const parts = [provider.quota ? `${provider.name} ${formatUsagePercent(provider.quota.ratio)}` : provider.name];
       if (provider.concurrency) parts.push(`并发 ${provider.concurrency.current}/${provider.concurrency.limit}`);
-      lines.push(parts.length ? `${provider.name} ${parts.join(" · ")}` : provider.name);
+      if (provider.quota) parts.push(`额度 ${money(provider.quota.current)}/${money(provider.quota.limit)}`);
+      for (const row of layoutRows(parts, budget)) lines.push(row);
     }
     if (limited.length > ADMIN_MAX) lines.push(`另有 ${limited.length - ADMIN_MAX} 个限额供应商`);
   }
