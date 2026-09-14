@@ -395,8 +395,6 @@ function renderAdminSite(site, data, showName) {
   const liveConcurrency = numeric(overview.concurrentSessions);
   if (liveConcurrency !== null) header += ` · 并发 ${liveConcurrency}`;
   lines.push(prefix + header);
-  /* 概况与明细之间留白，避免整块文字挤在一起 */
-  lines.push("");
 
   /* 只列设了限额或并发上限的供应商，按使用率从高到低 */
   const limited = providers
