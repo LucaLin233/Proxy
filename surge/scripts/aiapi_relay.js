@@ -41,6 +41,8 @@ function intArg(value, fallback, min, max) {
 
 const SUB2API_WARN_BALANCE = numberArg(ARGS.sub2api_warn_balance, 1);
 const SUB2API_NOTIFY_BALANCE = numberArg(ARGS.sub2api_notify_balance, 1);
+const DEEPSEEK_WARN_BALANCE = numberArg(ARGS.deepseek_warn_balance, 5);
+const DEEPSEEK_NOTIFY_BALANCE = numberArg(ARGS.deepseek_notify_balance, 5);
 
 /* ── 通用工具 ── */
 function safeDecode(value) {
@@ -782,6 +784,57 @@ async function fetchDeepSeek() {
   }
 }
 
+/* DeepSeek 面板行：余额一行，低于阈值补一行提示 */
+function deepseekPanelLines(result) {
+  if (!result.ok) return [`DeepSeek · ❌ ${result.error}`];
+  const lines = [];
+  if (result.infos.length === 1) {
+    const info = result.infos[0];
+    lines.push(`DeepSeek · 余额 ${deepseekMoney(info.currency, info.total_balance)}`);
+  } else {
+    for (const info of result.infos) {
+      lines.push(`DeepSeek · ${info.currency} 余额 ${deepseekMoney(info.currency, info.total_balance)}`);
+    }
+  }
+  for (const info of result.infos) {
+    const amount = Number(info.total_balance);
+    if (DEEPSEEK_WARN_BALANCE > 0 && Number.isFinite(amount) && amount < DEEPSEEK_WARN_BALANCE) {
+      lines.push(`⚠️ DeepSeek 余额低于 ${deepseekMoney(info.currency, DEEPSEEK_WARN_BALANCE)}`);
+    }
+  }
+  return lines;
+}
+
+function deepseekLowRisk(result) {
+  if (!result || !result.ok) return 0;
+  for (const info of result.infos) {
+    const amount = Number(info.total_balance);
+    if (DEEPSEEK_WARN_BALANCE > 0 && Number.isFinite(amount) && amount < DEEPSEEK_WARN_BALANCE) return 1;
+  }
+  return 0;
+}
+
+/* 低余额通知按天去重，避免每次刷新都提醒 */
+function notifyDeepSeekLowBalance(result) {
+  if (!result || !result.ok || DEEPSEEK_NOTIFY_BALANCE === 0) return;
+  const today = todayLocal();
+  for (const info of result.infos) {
+    const amount = Number(info.total_balance);
+    if (!Number.isFinite(amount) || amount >= DEEPSEEK_NOTIFY_BALANCE) continue;
+    const currency = String(info.currency || "").toUpperCase();
+    const key = `deepseek_notice_${currency}_${today}`;
+    try {
+      if ($persistentStore.read(key)) continue;
+      $notification.post(
+        "DeepSeek 余额提醒",
+        `${currency} 余额 ${deepseekMoney(currency, info.total_balance)}，低于 ${deepseekMoney(currency, DEEPSEEK_NOTIFY_BALANCE)}`,
+        `充值余额：${deepseekMoney(currency, info.topped_up_balance)}`
+      );
+      $persistentStore.write("1", key);
+    } catch (_) {}
+  }
+}
+
 /* ── 取数 ── */
 
 function collectCchSites() {
@@ -800,7 +853,7 @@ async function collectPanelData() {
   const cchDropped = Math.max(0, cchAll.length - 5);
   const cchSites = cchAll.slice(0, 5);
 
-  const [sub2Results, cchResults] = await Promise.all([
+  const [sub2Results, cchResults, deepseek] = await Promise.all([
     sub2Sites.length ? Promise.all(sub2Sites.map((site) => fetchSub2Site(site))) : Promise.resolve([]),
     cchSites.length
       ? Promise.all(cchSites.map((site) => fetchCchSite(site).then(
@@ -808,16 +861,17 @@ async function collectPanelData() {
         (error) => ({ site, error: error || new Error("请求失败") })
       )))
       : Promise.resolve([]),
+    DEEPSEEK_KEY ? fetchDeepSeek() : Promise.resolve(null),
   ]);
 
-  return { sub2Results, sub2Dropped, cchResults, cchDropped };
+  return { sub2Results, sub2Dropped, cchResults, cchDropped, deepseek };
 }
 
 /* ── 面板 ── */
 
 async function runPanel() {
-  const { sub2Results, sub2Dropped, cchResults, cchDropped } = await collectPanelData();
-  if (!sub2Results.length && !cchResults.length) return finish("未配置", PANEL_ICON, "8E8E93");
+  const { sub2Results, sub2Dropped, cchResults, cchDropped, deepseek } = await collectPanelData();
+  if (!sub2Results.length && !cchResults.length && !deepseek) return finish("未配置", PANEL_ICON, "8E8E93");
 
   const lines = [];
   const addBlock = (block) => {
@@ -854,6 +908,8 @@ async function runPanel() {
   if (cchDropped > 0 && cchBlocks.length) cchBlocks[cchBlocks.length - 1].push(`另有 ${cchDropped} 个站点未显示`);
   for (const block of cchBlocks) addBlock(block);
 
+  if (deepseek) addBlock(deepseekPanelLines(deepseek));
+
   lines.push(`更新 ${formatTime()}`);
 
   /* 风险色取各部分最高值 */
@@ -865,7 +921,11 @@ async function runPanel() {
   const sub2Failed = sub2Results.length > 0 && sub2Results.every((item) => !item.ok);
   if (cchFailed && sub2Failed) risk = 2;
 
+  risk = Math.max(risk, deepseekLowRisk(deepseek));
+  if (deepseek && !deepseek.ok && DEEPSEEK_KEY) risk = Math.max(risk, 1);
+
   if (!cchFailed || sub2Results.some((item) => item.ok)) notifySub2LowBalance(sub2Results);
+  notifyDeepSeekLowBalance(deepseek);
 
   const color = risk >= 2 ? PANEL_DANGER_COLOR : risk >= 1 ? PANEL_WARN_COLOR : PANEL_ICON_COLOR;
   finish(lines.join("\n"), PANEL_ICON, color);
