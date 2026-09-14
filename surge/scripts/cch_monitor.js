@@ -250,34 +250,34 @@ async function fetchLoginSite(site) {
 
 /* ---------- 用户视角：总额度与并发 session ---------- */
 
-/* 总额度：优先 Key 级，其次用户级 */
+/* 总额度：上限与已用必须取自同一层级，混用会把已用算成 0 */
 function totalQuota(quota) {
-  const candidates = [
-    numeric(quota.keyLimitTotalUsd),
-    numeric(quota.userLimitTotalUsd),
-  ];
-  let limit = null;
-  for (const value of candidates) {
-    if (value !== null && value > 0) { limit = value; break; }
+  const keyLimit = numeric(quota.keyLimitTotalUsd);
+  if (keyLimit !== null && keyLimit > 0) {
+    return { limit: keyLimit, used: num(quota.keyCurrentTotalUsd) };
   }
-  if (limit === null) return null;
-  const keyUsed = numeric(quota.keyCurrentTotalUsd);
-  const userUsed = numeric(quota.userCurrentTotalUsd);
-  const used = keyUsed !== null ? keyUsed : userUsed;
-  return { limit, used: used === null ? 0 : used };
+  const userLimit = numeric(quota.userLimitTotalUsd);
+  if (userLimit !== null && userLimit > 0) {
+    return { limit: userLimit, used: num(quota.userCurrentTotalUsd) };
+  }
+  return null;
 }
 
-/* 并发 session：优先 Key 级上限，其次用户级 */
+/* 并发 session：上限与占用同样要求同源 */
 function concurrency(quota) {
-  let limit = null;
-  for (const value of [numeric(quota.keyLimitConcurrentSessions), numeric(quota.userLimitConcurrentSessions)]) {
-    if (value !== null && value > 0) { limit = value; break; }
+  const keyLimit = numeric(quota.keyLimitConcurrentSessions);
+  if (keyLimit !== null && keyLimit > 0) {
+    return { limit: keyLimit, current: num(quota.keyCurrentConcurrentSessions) };
   }
+  const userLimit = numeric(quota.userLimitConcurrentSessions);
+  if (userLimit !== null && userLimit > 0) {
+    return { limit: userLimit, current: num(quota.userCurrentConcurrentSessions) };
+  }
+  /* 两级都没设上限时，只要有占用就展示出来 */
   const keyCurrent = numeric(quota.keyCurrentConcurrentSessions);
   const userCurrent = numeric(quota.userCurrentConcurrentSessions);
-  const current = keyCurrent !== null ? keyCurrent : userCurrent;
-  if (limit === null && current === null) return null;
-  return { limit, current: current === null ? 0 : current };
+  if (keyCurrent === null && userCurrent === null) return null;
+  return { limit: null, current: keyCurrent !== null ? keyCurrent : userCurrent };
 }
 
 async function fetchUserSite(site, headers) {
