@@ -519,8 +519,9 @@ async function fetchPeekabo() {
   }
 }
 
+/* 每个服务商一段：首行是服务商标题，与 Lightsail 段结构保持一致 */
 function peekaboLines(result) {
-  if (!result.ok) return [`Peekabo · ❌ ${result.error}`];
+  if (!result.ok) return ["Peekabo", `❌ ${result.error}`];
   const percent = (result.used / result.total) * 100;
   const remainingMs = result.expireTimestamp - Date.now();
   const daysLeft = Math.max(0, Math.ceil(remainingMs / 86400000));
@@ -528,7 +529,8 @@ function peekaboLines(result) {
     ? "已到期"
     : remainingMs < 86400000 ? `剩 ${formatRemaining(remainingMs)}` : `剩 ${daysLeft} 天`;
   return [
-    `Peekabo · 已用 ${formatBytes(result.used)} / ${formatBytes(result.total)} · ${percent.toFixed(2)}%`,
+    "Peekabo",
+    `已用 ${formatBytes(result.used)} / ${formatBytes(result.total)} · ${percent.toFixed(2)}%`,
     `到期 ${formatDate(result.expireTimestamp)}（${remainText}）`,
   ];
 }
@@ -718,12 +720,20 @@ function notifyOveruse(groups) {
     if (lightsailReady && lightResult.ok) notifyOveruse(groups);
     notifyPeekaboExpiring(peekabo);
 
-    const lines = [];
+    /* 两个服务商各自成段，段间留空行，段首是服务商标题 */
+    const blocks = [];
     if (lightsailReady) {
-      if (lightResult.ok) for (const line of renderPanel(groups).split("\n")) lines.push(line);
-      else lines.push(`Lightsail · ❌ ${lightError}`);
+      blocks.push(lightResult.ok
+        ? ["Lightsail"].concat(renderPanel(groups).split("\n"))
+        : ["Lightsail", `❌ ${lightError}`]);
     }
-    if (peekaboReady) for (const line of peekaboLines(peekabo)) lines.push(line);
+    if (peekaboReady) blocks.push(peekaboLines(peekabo));
+
+    const lines = [];
+    blocks.forEach((block, index) => {
+      if (index) lines.push("");
+      for (const line of block) lines.push(line);
+    });
     lines.push("");
     lines.push(`更新 ${formatTime()}`);
     finish(lines.join("\n"));
