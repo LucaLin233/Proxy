@@ -82,10 +82,11 @@ function parseEndpoints(input) {
     let mode = "user";
     const colon = right.lastIndexOf(":");
     if (colon > 0) {
-      const suffix = right.slice(colon + 1).trim().toLowerCase();
+      /* 容错：模式写成 :admin，也接受文档里表示可选的方括号（[:admin]、:admin]） */
+      const suffix = right.slice(colon + 1).replace(/[\s\[\]]/g, "").toLowerCase();
       if (MODES.indexOf(suffix) >= 0) {
         mode = suffix;
-        right = right.slice(0, colon).trim();
+        right = right.slice(0, colon).replace(/[\s\[\]]+$/, "");
       }
     }
     if (!right) continue;
