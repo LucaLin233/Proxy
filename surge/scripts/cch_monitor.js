@@ -9,7 +9,7 @@ const RAW_ENDPOINTS = String(ARGS.cch_endpoints || "").trim();
 const ADMIN_MAX = intArg(ARGS.cch_admin_max, 4, 1, 20);
 const QUOTA_CACHE_SECONDS = intArg(ARGS.cch_quota_interval, 300, 60, 3600);
 /* 面板一行可容纳的半角宽度，超出部分由 layoutRows 自动换行 */
-const PANEL_ROW_WIDTH = intArg(ARGS.cch_row_width, 34, 20, 60);
+const PANEL_ROW_WIDTH = intArg(ARGS.cch_row_width, 38, 20, 60);
 const PANEL_TITLE = "CCH";
 const PANEL_ICON = String(ARGS.cch_icon || "chart.bar.fill").trim() || "chart.bar.fill";
 const iconColorRaw = String(ARGS.cch_icon_color || "").trim();
@@ -476,7 +476,7 @@ function renderUserSite(site, data, showName) {
   } else {
     parts.push("并发 未设置");
   }
-  parts.push(formatTime());
+  parts.push(`更新 ${formatTime()}`);
 
   /* 尽量并成一行，超宽才折行；站名只加在首行 */
   return layoutRows(parts, Math.max(16, PANEL_ROW_WIDTH - measure(prefix)))

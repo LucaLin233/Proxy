@@ -84,12 +84,12 @@ function renderPanel(json, infos) {
   const stamp = formatTime();
   if (infos.length === 1) {
     const info = infos[0];
-    lines.push(`余额 ${money(info.currency, info.total_balance)} · ${stamp}`);
+    lines.push(`余额 ${money(info.currency, info.total_balance)} · 更新 ${stamp}`);
   } else {
     /* 多币种时一行一种，查询时间只跟在最后一行 */
     infos.forEach((info, index) => {
       const text = `${info.currency} 余额 ${money(info.currency, info.total_balance)}`;
-      lines.push(index === infos.length - 1 ? `${text} · ${stamp}` : text);
+      lines.push(index === infos.length - 1 ? `${text} · 更新 ${stamp}` : text);
     });
   }
   if (WARN_BALANCE > 0) {
