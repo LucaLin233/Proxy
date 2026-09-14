@@ -18,7 +18,7 @@ const WARN_ICON_COLOR = "#F59E0B";
 const DANGER_ICON_COLOR = "#EF4444";
 const ERROR_ICON = "exclamationmark.triangle.fill";
 const MAX_SITES = 5;
-const MODES = ["user", "cookie", "admin"];
+const MODES = ["user", "cookie", "admin", "login"];
 const WINDOWS = [
   ["cost5h", "5 小时"],
   ["costDaily", "日"],
@@ -130,7 +130,11 @@ function request(method, url, headers, body) {
     }
     $httpClient[method](options, (error, response, data) => {
       if (error) return reject(new Error(String(error)));
-      resolve({ status: Number((response && response.status) || 0), body: data });
+      resolve({
+        status: Number((response && response.status) || 0),
+        headers: (response && response.headers) || null,
+        body: data,
+      });
     });
   });
 }
@@ -177,6 +181,73 @@ function writeQuotaCache(base, payload) {
   return cache;
 }
 
+/* ---------- 自动登录：用 API Key 换取会话 Cookie ---------- */
+
+function sessionStoreKey(base) {
+  return `cch_session_${hashString(base)}`;
+}
+
+function readSession(base) {
+  try {
+    const raw = $persistentStore.read(sessionStoreKey(base));
+    if (!raw) return "";
+    const cache = JSON.parse(raw);
+    if (!cache || cache.version !== 1 || typeof cache.token !== "string") return "";
+    return Number(cache.expiresAt || 0) > Date.now() ? cache.token : "";
+  } catch (_) { return ""; }
+}
+
+function writeSession(base, token, maxAgeSeconds) {
+  /* Cookie 未给 Max-Age 时按 6 天保守缓存，留出余量 */
+  const ttl = Number.isFinite(maxAgeSeconds) && maxAgeSeconds > 0 ? maxAgeSeconds : 6 * 24 * 3600;
+  try {
+    $persistentStore.write(
+      JSON.stringify({ version: 1, token, expiresAt: Date.now() + ttl * 1000 }),
+      sessionStoreKey(base)
+    );
+  } catch (_) {}
+}
+
+/* 从响应头取 auth-token；Set-Cookie 可能被合并成一行 */
+function extractSession(headers) {
+  if (!headers) return null;
+  const raw = headers["Set-Cookie"] || headers["set-cookie"];
+  if (!raw) return null;
+  const list = Array.isArray(raw) ? raw : String(raw).split(/,(?=\s*[A-Za-z0-9_.-]+=)/);
+  for (const item of list) {
+    const match = /(?:^|[;\s])auth-token=([^;,\s]+)/.exec(item);
+    if (!match) continue;
+    const ttl = /max-age=(\d+)/i.exec(item);
+    return { token: match[1], maxAge: ttl ? Number(ttl[1]) : null };
+  }
+  return null;
+}
+
+async function loginWithKey(base, credential) {
+  const response = await request("post", `${base}/api/auth/login`, { Accept: "application/json" }, { key: credential });
+  if (response.status === 401) throw new Error("Key 无效或已过期");
+  if (response.status === 429) throw new Error("登录过于频繁，稍后重试");
+  if (response.status !== 200) throw new Error(`登录失败 (HTTP ${response.status})`);
+  const session = extractSession(response.headers);
+  if (!session) throw new Error("登录成功但未取到会话 Cookie");
+  return session;
+}
+
+/* 优先用缓存会话，失效时用 Key 重新登录一次 */
+async function fetchLoginSite(site) {
+  const cached = readSession(site.base);
+  if (cached) {
+    try {
+      return await fetchUserSite(site, { Accept: "application/json", Cookie: `auth-token=${cached}` });
+    } catch (_) {
+      /* 会话可能已过期，落到下面重新登录 */
+    }
+  }
+  const session = await loginWithKey(site.base, site.credential);
+  writeSession(site.base, session.token, session.maxAge);
+  return fetchUserSite(site, { Accept: "application/json", Cookie: `auth-token=${session.token}` });
+}
+
 /* ---------- 用户视角：总额度与并发 session ---------- */
 
 /* 总额度：优先 Key 级，其次用户级 */
@@ -211,7 +282,7 @@ function concurrency(quota) {
 
 async function fetchUserSite(site, headers) {
   const response = await request("get", `${site.base}/api/v1/me/quota`, headers);
-  checkStatus(response, site.mode === "cookie" ? "会话" : "Key");
+  checkStatus(response, site.mode === "user" ? "Key" : "会话");
   const quota = unwrap(parseBody(response));
   return { kind: "user", total: totalQuota(quota), session: concurrency(quota) };
 }
@@ -304,6 +375,7 @@ async function fetchSite(site) {
   else headers["X-API-Key"] = site.credential;
 
   if (site.mode === "admin") return fetchAdminSite(site, headers);
+  if (site.mode === "login") return fetchLoginSite(site);
   return fetchUserSite(site, headers);
 }
 
