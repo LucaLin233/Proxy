@@ -464,7 +464,8 @@ function renderUserSite(site, data, showName) {
 
   if (data.total) {
     const remaining = Math.max(0, data.total.limit - data.total.used);
-    const amount = `额度 ${money(remaining)}/${money(data.total.limit)}`;
+    /* 用户视角展示剩余额度；admin 视角的“额度”是已用/上限，两者标签须区分 */
+    const amount = `剩余 ${money(remaining)}/${money(data.total.limit)}`;
     const percent = (Math.max(0, Math.min(1, remaining / data.total.limit)) * 100).toFixed(1);
     const line = `${prefix}${amount} · ${percent}%`;
     lines.push(measure(line) <= PANEL_ROW_WIDTH ? line : `${prefix}${amount}`);
