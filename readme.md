@@ -103,7 +103,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 | --- | --- | --- |
 | `surge_status.sgmodule` | Surge 运行时长与 MITM、Rewrite、Scripting 状态；点击面板可重载配置 | 不需要 |
 | `server.sgmodule` | AWS Lightsail 当月流量、配额占比与中文地区（多区域多实例），Peekabo 已用/总流量与到期时间 | 需要，见模块内 `#!arguments-desc` |
-| `ai.sgmodule` | DeepSeek 余额与赠送金额，CCH 多站点额度（用户与管理员两种视图），Sub2API 多站点余额 | 需要，见模块内 `#!arguments-desc` |
+| `ai.sgmodule` | DeepSeek 余额，CCH 多站点额度（用户与管理员两种视图），Sub2API 多站点余额 | 需要，见模块内 `#!arguments-desc` |
 | `app_js.sgmodule` | APP JS 重写合集：Netflix 评分与单集评分、淘票票豆瓣评分、TestFlight 账户管理、彩云天气 SVIP | 不需要 |
 | `bilibili_cdn.sgmodule` | 哔哩哔哩 CDN 优化 | 不需要 |
 | `block_startup.sgmodule` | 开屏与启动广告拦截 | 不需要 |

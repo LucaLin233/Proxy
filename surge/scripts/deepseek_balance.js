@@ -1,4 +1,4 @@
-/* DeepSeek 余额信息面板：展示账户余额、赠送金额与查询时间，支持低余额提醒。 */
+/* DeepSeek 余额信息面板：展示账户余额与查询时间，支持低余额提醒。 */
 
 const ARGS = parseArgs($argument || "");
 const API_KEY = ARGS.deepseek_key || "";
@@ -81,21 +81,17 @@ function formatTime() {
 function renderPanel(json, infos) {
   const lines = [];
   if (json.is_available === false) lines.push("⚠️ 余额不足，API 调用已不可用");
+  const stamp = formatTime();
   if (infos.length === 1) {
     const info = infos[0];
-    lines.push(
-      `余额 ${money(info.currency, info.total_balance)} · ` +
-      `赠送 ${money(info.currency, info.granted_balance)}`
-    );
+    lines.push(`余额 ${money(info.currency, info.total_balance)} · ${stamp}`);
   } else {
-    infos.forEach((info) => {
-      lines.push(
-        `${info.currency} 余额 ${money(info.currency, info.total_balance)} · ` +
-        `赠送 ${money(info.currency, info.granted_balance)}`
-      );
+    /* 多币种时一行一种，查询时间只跟在最后一行 */
+    infos.forEach((info, index) => {
+      const text = `${info.currency} 余额 ${money(info.currency, info.total_balance)}`;
+      lines.push(index === infos.length - 1 ? `${text} · ${stamp}` : text);
     });
   }
-  lines.push(`更新 ${formatTime()}`);
   if (WARN_BALANCE > 0) {
     infos.forEach((info) => {
       const amount = Number(info.total_balance);
@@ -119,7 +115,7 @@ function notifyLowBalance(infos) {
       $notification.post(
         "DeepSeek 余额提醒",
         `${info.currency} 余额 ${money(info.currency, info.total_balance)}，低于 ${money(info.currency, NOTIFY_BALANCE)}`,
-        `充值余额：${money(info.currency, info.topped_up_balance)}\n赠送余额：${money(info.currency, info.granted_balance)}`
+        `充值余额：${money(info.currency, info.topped_up_balance)}`
       );
       $persistentStore.write("1", key);
     } catch (_) {}
@@ -151,8 +147,7 @@ function dailySubtitle(json, infos) {
 
 function renderDaily(infos) {
   return infos.map((info) => (
-    `${info.currency}：当前余额 ${money(info.currency, info.total_balance)}` +
-    `（赠送金额 ${money(info.currency, info.granted_balance)}）`
+    `${info.currency}：当前余额 ${money(info.currency, info.total_balance)}`
   )).join("\n");
 }
 
