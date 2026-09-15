@@ -31,16 +31,23 @@ def redact(text):
                   r'(?P<sep>[ \t]*[:=][ \t]*)(?P<val>' + scheme + r'\b[^\n]*)',
                   lambda m: '%s%s%s%s"<redacted>"' % (m.group('qk'), m.group('ak'), m.group('qk'), m.group('sep')),
                   text)
-    # 1c) 其余认证字段值：止于逗号/分号/换行/结构闭合符，不吞同一行的普通诊断字段（如 status=502）。
-    #     值以抹除标记开头时只保留标记、丢弃其后残余——不能整段原样返回（那会把
-    #     `Authorization:"<redacted>" <真实凭据>` 这类「标记 + 真值」原样放行）。
+    # 1c) 其余认证字段值：止于逗号/分号/换行，**不**把 `}`/`]` 当终止符
+    #     （否则 `Authorization: SYNTH}SECRET` 会在闭合符处截断、后半段泄漏）。
+    #     本函数只处理「已抹除标记」这一种残留：标记由本步上一条规则产出，不能信任输入中
+    #     的同形字符串，故一律丢弃标记之后的全部残余（含看似诊断字段的内容）——
+    #     即「认证裸行整段视为敏感值」的输出契约；仅当残余**全部**是结构闭合符时才保留，
+    #     以免吃掉 JSON 的 `}`。
     def _auth_bare(m):
+        v = m.group('val')
+        head = '%s%s%s%s' % (m.group('qk'), m.group('ak'), m.group('qk'), m.group('sep'))
         for mk in ('"<redacted>"', "'<redacted>'"):
-            if m.group('val').startswith(mk):
-                return '%s%s%s%s%s' % (m.group('qk'), m.group('ak'), m.group('qk'), m.group('sep'), mk)
-        return '%s%s%s%s"<redacted>"' % (m.group('qk'), m.group('ak'), m.group('qk'), m.group('sep'))
+            if v.startswith(mk):
+                rest = v[len(mk):]
+                keep = rest if rest and set(rest) <= set('}] \t') else ''
+                return head + mk + keep
+        return head + '"<redacted>"'
     text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<ak>' + auth + r')\b(?P=qk)'
-                  r'(?P<sep>[ \t]*[:=][ \t]*)(?P<val>[^\n,;}\]]+)', _auth_bare, text)
+                  r'(?P<sep>[ \t]*[:=][ \t]*)(?P<val>[^\n,;]+)', _auth_bare, text)
     # 2) 敏感键的数组/对象值（如 {"token":["x"]}）：整段值替换
     text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<k>' + key + r')\b(?P=qk)(?P<sep>\s*:\s*)(\[[^\[\]]*\]|\{[^{}]*\})',
                   lambda m: '%s%s%s%s["<redacted>"]' % (m.group('qk'), m.group('k'), m.group('qk'), m.group('sep')),
