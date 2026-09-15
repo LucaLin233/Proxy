@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-09-12T14:00:02Z
-# Total:   20138
+# Updated: 2026-09-15T14:00:02Z
+# Total:   20141
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -44,6 +44,7 @@ DOMAIN,ntp5.ntp-servers.net
 DOMAIN,ntp6.ntp-servers.net
 DOMAIN,ntp7.ntp-servers.net
 DOMAIN,ood.opsource.net
+DOMAIN,p16-tiktok-dm-sticker-sign-sg.ibyteimg.com
 DOMAIN,public-us-pingsx.api.clonoth.com
 DOMAIN,q676790b.pmhcjk.com
 DOMAIN,rink.hockeyapp.net
@@ -16054,6 +16055,8 @@ DOMAIN-SUFFIX,stripcamfun.com
 DOMAIN-SUFFIX,stripchat.com
 DOMAIN-SUFFIX,stripe-terminal-local-reader.net
 DOMAIN-SUFFIX,stripe.com
+DOMAIN-SUFFIX,stripe.events
+DOMAIN-SUFFIX,stripe.global
 DOMAIN-SUFFIX,stripe.network
 DOMAIN-SUFFIX,stripecdn.com
 DOMAIN-SUFFIX,stripparadise.com
