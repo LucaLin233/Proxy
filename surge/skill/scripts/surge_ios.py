@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Control Surge iOS through its localhost HTTP API."""
-import argparse, json, os, sys
+import argparse, json, os, re, sys
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
@@ -9,8 +9,15 @@ BASE = os.getenv("SURGE_HTTP_API_BASE", "http://127.0.0.1:6171").rstrip("/")
 KEY = os.getenv("SURGE_API_KEY")
 
 
+def redact(text):
+    """错误输出前抹掉凭据值：键值对形态与已知 token 前缀。"""
+    text = re.sub(r"(?i)\b(password|passwd|psk|token|api[-_]?key|x[-_]key)\b\s*[:=]\s*(\S+)",
+                  r"\1=<redacted>", str(text))
+    return re.sub(r"(?i)\b(sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{16,}", "<redacted>", text)
+
+
 def fail(message, code=2):
-    print(message, file=sys.stderr)
+    print(redact(message), file=sys.stderr)
     raise SystemExit(code)
 
 

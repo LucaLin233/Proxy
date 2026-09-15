@@ -11,11 +11,14 @@ import urllib.request
 
 
 def redact(text: str) -> str:
-    return re.sub(
-        r"(?i)(password|psk|username|private-key|token)\s*=\s*([^,\s]+)",
+    """抹掉文本中的凭据值：键值对（= / : 分隔，值可带引号）与已知 token 前缀形态。"""
+    text = re.sub(
+        r"(?i)\b(password|passwd|pwd|psk|username|private[-_]key|token|api[-_]?key)\b\s*[:=]\s*"
+        r"(\"[^\"]*\"|'[^']*'|[^,\s\"'}]+)",
         r"\1=<redacted>",
         text,
     )
+    return re.sub(r"(?i)\b(sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{16,}", "<redacted>", text)
 
 
 def read_descriptor(path: str) -> str:

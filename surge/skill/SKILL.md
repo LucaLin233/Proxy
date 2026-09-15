@@ -79,7 +79,7 @@ surge-cli profile diff
 
 Controller 不可用、需要 `/v1/*` 接口或 Prometheus 指标时走 HTTP API 回退：先确认目标端点（默认本机 `127.0.0.1:6171`，仅在用户明确指定后才指向可信局域网实例）、认证方式与所需 `X-Key`，再执行；同样适用危险操作的再次确认，`stop` 需显式危险确认。用法与脚本见 `references/http-api.md` 与 `scripts/surge_ios.py`。
 
-测试未写入 Profile 的新节点：用 `scripts/test_policy_descriptor.py`（经 `POST /v1/scripting/evaluate` 传 `policy-descriptor`，不改配置）。描述符含密码/PSK，只从受限文件或 stdin 读取。本机 Surge 被 Suspend 时可能返回 `EOF`/超时。
+测试未写入 Profile 的新节点：用 `scripts/test_policy_descriptor.py`（经 `POST /v1/scripting/evaluate` 传 `policy-descriptor`，不改配置）。描述符含密码/PSK，只从环境变量 `SURGE_API_KEY` 经 stdin 传入，不读凭据文件。本机 Surge 被 Suspend 时可能返回 `EOF`/超时。
 
 ## 6. 维护与交付
 

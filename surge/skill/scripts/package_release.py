@@ -10,8 +10,8 @@ SOURCE=SCRIPT_DIR.parent
 DEFAULT=Path("/var/minis/workspace") / f"surge-ios-skill-{datetime.now():%Y%m%d}.zip"
 OUTPUT=Path(sys.argv[1]).expanduser() if len(sys.argv)>1 else DEFAULT
 EXCLUDED_PARTS={"__pycache__",".git",".DS_Store"}
-EXCLUDED_SUFFIXES={".pyc",".pyo",".session",".sqlite",".db"}
-EXCLUDED_NAMES={"password","credentials",".env","id_rsa","id_ed25519"}
+EXCLUDED_SUFFIXES={".pyc",".pyo",".session",".sqlite",".db",".log",".key",".pem",".conf"}
+EXCLUDED_NAMES={"password","credentials",".env","secrets.env","secrets","id_rsa","id_ed25519","known_hosts"}
 SECRET_PATTERNS=[
     re.compile(rb"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----"),
     re.compile(rb"(?i)(?:sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{20,}"),

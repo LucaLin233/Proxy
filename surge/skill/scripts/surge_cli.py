@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Surge CLI-compatible client for Surge External Controller on iOS."""
 from __future__ import annotations
-import base64, difflib, getpass, json, os, signal, socket, sys
+import base64, difflib, json, os, signal, socket, sys
 import urllib.error, urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -36,7 +36,7 @@ Available parameters:
   --raw - Output raw JSON instead of human-readable format
   --remote/-r <host:port> - Connect to a remote Surge instance
   --password-stdin - Read the remote password from stdin
-  Remote password fallback: SURGE_API_KEY, then secure terminal prompt
+  Remote password: SURGE_API_KEY 或 --password-stdin（不读凭据文件，也不交互补取）
 Utilities:
   --check/-c <path> - Validate a profile with the official Surge beta service (uploads profile content)
 
@@ -101,7 +101,7 @@ def credential(stdin_mode: bool):
         value=sys.stdin.readline().rstrip("\r\n")
     else:
         value=os.getenv("SURGE_API_KEY", "")
-        if not value and sys.stdin.isatty(): value=getpass.getpass("Controller password: ")
+        # 不再在 TTY 下交互补取：秘密只来自已注入变量或 --password-stdin。
     if not value: die("A remote controller password is required. Set SURGE_API_KEY or use --password-stdin.")
     return value
 
