@@ -6,7 +6,7 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
 BASE = os.getenv("SURGE_HTTP_API_BASE", "http://127.0.0.1:6171").rstrip("/")
-KEY = os.getenv("SURGE_HTTP_API_KEY")
+KEY = os.getenv("SURGE_API_KEY")
 
 
 def fail(message, code=2):
@@ -21,7 +21,7 @@ def validate_base():
     if parsed.hostname not in ("127.0.0.1", "localhost", "::1") and os.getenv("SURGE_ALLOW_REMOTE") != "1":
         fail("Remote Surge API blocked; set SURGE_ALLOW_REMOTE=1 explicitly")
     if not KEY:
-        fail("SURGE_HTTP_API_KEY is not set")
+        fail("SURGE_API_KEY is not set")
 
 
 def request(method, path, body=None, dangerous=False, confirm=False):

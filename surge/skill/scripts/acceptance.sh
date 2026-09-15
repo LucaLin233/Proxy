@@ -38,7 +38,7 @@ EOF
 "$CLI" --check "$TMP/minimal.conf" > "$TMP/check.txt"
 grep -qx 'OK' "$TMP/check.txt" || fail "official profile validation service check failed"
 pass "official profile validation service"
-if [ -n "${SURGE_HTTP_API_KEY:-}" ]; then
+if [ -n "${SURGE_API_KEY:-}" ]; then
   python3 "$SELF_DIR/surge_ios.py" metrics > "$TMP/metrics.txt"
   grep -q '^# TYPE surge_build_info gauge$' "$TMP/metrics.txt" || fail "Prometheus metrics output is invalid"
   pass "Prometheus metrics endpoint"

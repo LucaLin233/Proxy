@@ -24,10 +24,10 @@ Default controller: `127.0.0.1:6170` (override with `SURGE_CLI_REMOTE` or `--rem
 Credential precedence:
 
 1. `--password-stdin`
-2. `SURGE_CLI_PASSWORD` — recommended for Minis; store it in Settings → Environment Variables
+2. `SURGE_API_KEY` — recommended for Minis; store it in Settings → Environment Variables
 3. secure interactive prompt
 
-The CLI does not create or read password files. When `SURGE_CLI_PASSWORD` is missing, offer the Minis environment-variable settings link rather than asking the user to disclose the password in chat.
+The CLI does not create or read password files. When `SURGE_API_KEY` is missing, offer the Minis environment-variable settings link rather than asking the user to disclose the password in chat.
 
 ## Compatibility
 

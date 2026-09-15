@@ -25,7 +25,7 @@ Executable location in Minis:
 
 - `--raw`: output raw JSON (recommended for agents).
 - `--remote` / `-r`: connect to another Controller; the Minis default is `127.0.0.1:6170`.
-- Authentication comes from `--password-stdin`, `SURGE_CLI_PASSWORD`, or a secure prompt. Never put the password in `--remote`; the Minis CLI does not use password files.
+- Authentication comes from `--password-stdin`, `SURGE_API_KEY`, or a secure prompt. Never put the password in `--remote`; the Minis CLI does not use password files.
 - `--check <path>` / `-c <path>`: upload the explicitly named UTF-8 profile to Surge's official beta validation service (`https://services.nssurge.com/v1/config/validate`). This is remote validation, not the bundled macOS local parser. The CLI never uploads the active profile automatically; warn about profile secrets and redact a copy first when appropriate.
 - `--help` / `-h`: print help.
 - If no command is provided, the Minis implementation prints help rather than entering an interactive terminal.

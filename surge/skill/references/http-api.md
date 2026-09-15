@@ -61,7 +61,7 @@ SURGE_HTTP_API_BASE=http://127.0.0.1:6171 \
 rm -f /tmp/node.policy
 ```
 
-The helper reads the API key only from `SURGE_HTTP_API_KEY`, calls `/v1/scripting/evaluate`, and reports the probe status, response body, latency, and error without printing the descriptor. To use a user-specified active Mac/iOS Surge instance, set `SURGE_HTTP_API_BASE=http://<trusted-host>:6171`; do not silently switch to another host. Plain HTTP exposes the API key and node descriptor to the network, so remote use must be limited to a trusted LAN or replaced with HTTPS where available.
+The helper reads the API key only from `SURGE_API_KEY`, calls `/v1/scripting/evaluate`, and reports the probe status, response body, latency, and error without printing the descriptor. To use a user-specified active Mac/iOS Surge instance, set `SURGE_HTTP_API_BASE=http://<trusted-host>:6171`; do not silently switch to another host. Plain HTTP exposes the API key and node descriptor to the network, so remote use must be limited to a trusted LAN or replaced with HTTPS where available.
 
 A suspended local Surge engine may accept the HTTP API request but return `EOF`, `Connection timeout`, or `HTTP request timeout` for the inner `$httpClient` probe. Treat that as an engine-state failure, not immediate proof that the node is bad; retry against an explicitly authorized active Surge instance.
 

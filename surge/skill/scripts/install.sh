@@ -14,11 +14,11 @@ for name in sys.argv[1:]:
 PY
 
 echo "Installed: $TARGET -> $SELF_DIR/surge_cli.py"
-if [ -n "${SURGE_CLI_PASSWORD:-}" ]; then
-  echo "SURGE_CLI_PASSWORD: set"
+if [ -n "${SURGE_API_KEY:-}" ]; then
+  echo "SURGE_API_KEY: set"
   echo "Run: $SELF_DIR/acceptance.sh"
 else
-  echo "SURGE_CLI_PASSWORD: missing"
+  echo "SURGE_API_KEY: missing"
   echo "Set it in Minis Settings -> Environment Variables, then run:"
   echo "  $SELF_DIR/acceptance.sh"
 fi

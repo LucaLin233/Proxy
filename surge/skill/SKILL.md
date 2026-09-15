@@ -20,8 +20,8 @@ metadata:
 ## 2. 安全与平台边界
 
 - 不编造节点、策略名、证书、凭据、订阅 URL 或 Controller 返回。
-- Controller 密码只从 `--password-stdin` 或 `SURGE_CLI_PASSWORD` 获取；HTTP Key 只从 `SURGE_HTTP_API_KEY` 获取。禁止写入参数、文件、日志或回复。缺失时给设置入口，不要让用户在聊天中发送密码：
-  `[设置 SURGE_CLI_PASSWORD](minis://settings/environments?create_key=SURGE_CLI_PASSWORD&create_value=&create_note=Surge%20External%20Controller%20password)`
+- Controller 密码与 HTTP API Key 是同一个凭据，统一只从环境变量 `SURGE_API_KEY`（或 CLI 的 `--password-stdin`）获取——2026-09-15 由 `SURGE_CLI_PASSWORD` 与 `SURGE_HTTP_API_KEY` 合并而来，旧名可删除。禁止写入参数、文件、日志或回复。缺失时给设置入口，不要让用户在聊天中发送密码：
+  `[设置 SURGE_API_KEY](minis://settings/environments?create_key=SURGE_API_KEY&create_value=&create_note=Surge%20External%20Controller%20%2F%20HTTP%20API%20key)`
 - `dump profile`、`profile diff`、请求正文与日志可能含节点、订阅 URL 或隐私数据；仅在必要时读取，脱敏后引用，不写入支持包。
 - 启用 MITM、Rewrite、脚本、抓包、LAN/远程控制前说明影响；MITM hostname 最小化，禁止默认 `*`。
 - 执行 `stop`、`restart-engine`（协议 ≥24，关闭连接并清除缓存与临时规则）、切换/更新 profile、批量终止连接、改变模式或策略前，再次确认。

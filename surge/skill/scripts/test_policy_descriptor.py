@@ -44,9 +44,9 @@ def main() -> int:
     p.add_argument("--timeout", type=float, default=12, help="probe timeout in seconds")
     args = p.parse_args()
 
-    api_key = os.environ.get("SURGE_HTTP_API_KEY")
+    api_key = os.environ.get("SURGE_API_KEY")
     if not api_key:
-        p.error("SURGE_HTTP_API_KEY is not set")
+        p.error("SURGE_API_KEY is not set")
     if args.timeout <= 0:
         p.error("--timeout must be positive")
 

@@ -36,13 +36,13 @@ Available parameters:
   --raw - Output raw JSON instead of human-readable format
   --remote/-r <host:port> - Connect to a remote Surge instance
   --password-stdin - Read the remote password from stdin
-  Remote password fallback: SURGE_CLI_PASSWORD, then secure terminal prompt
+  Remote password fallback: SURGE_API_KEY, then secure terminal prompt
 Utilities:
   --check/-c <path> - Validate a profile with the official Surge beta service (uploads profile content)
 
 Minis defaults:
   Controller: 127.0.0.1:6170
-  Credential: SURGE_CLI_PASSWORD in Minis Environment Variables
+  Credential: SURGE_API_KEY in Minis Environment Variables
 """
 
 HELP = {
@@ -100,9 +100,9 @@ def credential(stdin_mode: bool):
     if stdin_mode:
         value=sys.stdin.readline().rstrip("\r\n")
     else:
-        value=os.getenv("SURGE_CLI_PASSWORD", "")
+        value=os.getenv("SURGE_API_KEY", "")
         if not value and sys.stdin.isatty(): value=getpass.getpass("Controller password: ")
-    if not value: die("A remote controller password is required. Set SURGE_CLI_PASSWORD or use --password-stdin.")
+    if not value: die("A remote controller password is required. Set SURGE_API_KEY or use --password-stdin.")
     return value
 
 def parse_cli(args):

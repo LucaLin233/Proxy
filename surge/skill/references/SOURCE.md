@@ -40,7 +40,7 @@ The exact official `SKILL.md` snapshot is retained as `upstream-SKILL.md`. The l
 - `scripts/test_policy_descriptor.py`: local helper for testing an unconfigured node through `/v1/scripting/evaluate` plus `$httpClient` `policy-descriptor`, without changing the Profile.
 - `scripts/sync_upstream.sh`: repeatable import command.
 - `scripts/adapt_upstream_reference.py`: replaces only command-reference section 1.1 with Minis invocation rules.
-- `scripts/install.sh`: installs the symlink; Minis environment variable `SURGE_CLI_PASSWORD` is the default credential path.
+- `scripts/install.sh`: installs the symlink; Minis environment variable `SURGE_API_KEY` is the default credential path.
 - `scripts/acceptance.sh`: non-destructive read-only acceptance test.
 - `scripts/package_release.py`: scans and builds a sanitized ZIP for sharing.
 - `references/controller-cli.md`: protocol and installation notes.
