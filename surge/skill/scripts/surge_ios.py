@@ -10,13 +10,24 @@ KEY = os.getenv("SURGE_API_KEY")
 
 
 def redact(text):
-    """错误输出前抹掉凭据值：JSON/引号形式、键值对形式与已知 token 前缀。"""
+    """抹掉文本中的凭据值：认证头、JSON/引号形式（含转义与单引号键）、裸键值、已知 token 前缀。"""
     text = str(text)
+    # 1) Authorization 系列：整个凭据（含 Bearer/Basic 方案与多段值）一并抹掉
+    text = re.sub(r"(?i)\b(authorization|proxy-authorization|auth)\b\s*[:=]\s*[^\s,;]+(?:\s+[^\s,;]+)?",
+                  r"\1=<redacted>", text)
     key = (r"(?:password|passwd|pwd|psk|username|user|private[-_]key|token|api[-_]?key"
-           r"|x[-_]key|authorization|secret)")
-    text = re.sub(r'(?i)("?)\b(' + key + r')\b\1\s*[:=]\s*("[^"]*"|\'[^\']*\')',
-                  lambda m: m.group(0)[:m.group(0).index(m.group(3))] + '"<redacted>"', text)
-    text = re.sub(r"(?i)\b(" + key + r")\b\s*[:=]\s*(\S+)", r"\1=<redacted>", text)
+           r"|x[-_]key|secret|credential)")
+    dq = r'"(?:[^"\\]|\\.)*"'
+    sq = r"'(?:[^'\\]|\\.)*'"
+    # 2) 带引号的值：键可带双/单/无引号；值支持转义引号，替换时保留值的引号形态
+    text = re.sub(r'(?i)(?P<qk>["\']?)(?P<k>' + key + r')(?P=qk)(?P<sep>\s*[:=]\s*)(?P<val>' + dq + '|' + sq + r')',
+                  lambda m: '%s%s%s%s%s<redacted>%s' % (m.group('qk'), m.group('k'), m.group('qk'),
+                                                        m.group('sep'), m.group('val')[0],
+                                                        m.group('val')[0]), text)
+
+    # 3) 裸值：以逗号/分号/空白为界，避免吞掉后续非敏感字段（如 status=502）
+    text = re.sub(r"(?i)\b(" + key + r")\b\s*[:=]\s*[^\s,;]+", r"\1=<redacted>", text)
+    # 4) 已知 token 前缀
     return re.sub(r"(?i)\b(sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{16,}", "<redacted>", text)
 
 

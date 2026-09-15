@@ -18,8 +18,12 @@ SECRET_PATTERNS=[
 ]
 
 def included(path:Path)->bool:
+    """排除项全部按大小写归一比较（归档仍保留原始路径）。"""
     rel=path.relative_to(SOURCE)
-    return not (set(rel.parts)&EXCLUDED_PARTS or path.suffix in EXCLUDED_SUFFIXES or path.name in EXCLUDED_NAMES)
+    parts={p.lower() for p in rel.parts}
+    return not (parts&{p.lower() for p in EXCLUDED_PARTS}
+                or path.suffix.lower() in {s.lower() for s in EXCLUDED_SUFFIXES}
+                or path.name.lower() in {n.lower() for n in EXCLUDED_NAMES})
 
 def digest(data:bytes)->str: return hashlib.sha256(data).hexdigest()
 
