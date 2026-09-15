@@ -44,11 +44,11 @@ def redact(text):
         for mk in ('"<redacted>"', "'<redacted>'"):
             if v.startswith(mk):
                 rest = v[len(mk):]
-                keep = rest if rest and set(rest) <= set('}] \t') else ''
+                keep = rest if rest and set(rest) <= set('}] \t\r') else ''
                 return head + mk + keep
         return head + '"<redacted>"'
     text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<ak>' + auth + r')\b(?P=qk)'
-                  r'(?P<sep>[ \t]*[:=][ \t]*)(?P<val>[^\r\n,;]+)', _auth_bare, text)
+                  r'(?P<sep>[ \t]*[:=][ \t]*)(?P<val>[^\n,;]+)', _auth_bare, text)
     # 2) 敏感键的数组/对象值（如 {"token":["x"]}）：整段值替换
     text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<k>' + key + r')\b(?P=qk)(?P<sep>\s*:\s*)(\[[^\[\]]*\]|\{[^{}]*\})',
                   lambda m: '%s%s%s%s["<redacted>"]' % (m.group('qk'), m.group('k'), m.group('qk'), m.group('sep')),
