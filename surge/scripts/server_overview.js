@@ -520,6 +520,34 @@ async function fetchPeekabo() {
 }
 
 /* 每个服务商一段：首行是服务商标题，与 Lightsail 段结构保持一致 */
+/* 取数预算：单个服务商卡住时不再拖累另一个
+   （Surge 的 timeout 是整个脚本的上限，撞到它脚本会被直接掐掉、面板不更新，
+     所以这里要保证在 timeout 之前无论如何都回一个结果） */
+const LIGHTSAIL_BUDGET_MS = 8000;
+const PEEKABO_BUDGET_MS = 5000;
+
+function errText(error) {
+  return String((error && error.message) || error);
+}
+
+/* 统一返回 { ok: true, value } / { ok: false, error } */
+function withBudget(run, ms, timeoutError) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish({ ok: false, error: timeoutError() }), ms);
+    run().then(
+      (value) => finish({ ok: true, value }),
+      (error) => finish({ ok: false, error: error || new Error("查询失败") })
+    );
+  });
+}
+
 function peekaboLines(result) {
   if (!result.ok) return ["Peekabo", `❌ ${result.error}`];
   const percent = (result.used / result.total) * 100;
@@ -679,18 +707,21 @@ function notifyOveruse(groups) {
       return $done();
     }
 
-    /* 一侧失败不影响另一侧展示 */
-    const [lightResult, peekabo] = await Promise.all([
+    /* 一侧失败或超时都不影响另一侧展示 */
+    const [lightRaw, peekaboRaw] = await Promise.all([
       lightsailReady
-        ? collectGroups(isDaily).then(
-          (groups) => ({ ok: true, groups }),
-          (error) => ({ ok: false, error: error || new Error("查询失败") })
-        )
-        : Promise.resolve({ ok: false, skipped: true }),
-      peekaboReady ? fetchPeekabo() : Promise.resolve({ ok: false, error: "未配置" }),
+        ? withBudget(() => collectGroups(isDaily), LIGHTSAIL_BUDGET_MS, () => new Error("请求超时"))
+        : Promise.resolve({ ok: false, error: new Error("未配置") }),
+      peekaboReady
+        ? withBudget(fetchPeekabo, PEEKABO_BUDGET_MS, () => new Error("超时"))
+        : Promise.resolve({ ok: false, error: new Error("未配置") }),
     ]);
+    const lightResult = lightRaw.ok
+      ? { ok: true, groups: lightRaw.value }
+      : { ok: false, error: lightRaw.error };
+    const peekabo = peekaboRaw.ok ? peekaboRaw.value : { ok: false, error: errText(peekaboRaw.error) };
     const groups = lightResult.ok ? lightResult.groups : [];
-    const lightError = String((lightResult.error && lightResult.error.message) || lightResult.error);
+    const lightError = errText(lightResult.error);
 
     if (isDaily) {
       const sections = [];
