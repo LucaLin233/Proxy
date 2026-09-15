@@ -75,7 +75,7 @@ surge-cli profile diff
 
 ## 5. 兼容性与回退
 
-执行前先核对协议门槛，不满足或未知时不得直接执行：`rule`/`dns`/`http probe`/`security ban` ≥20；`geoip`、性能/规则使用/虚拟 IP dump、`benchmark rule-matching` ≥22；`vmnet` ≥23（macOS）；`plugin` ≥24（macOS）；`restart-engine` ≥24。已知验证点：Surge iOS 5.22.0（Controller 5.102.0 build 3830）/ Protocol 25，兼容旧 JSON `argv` 请求，已对齐 macOS 6.9.0 build 12250 文本编码；异常先 `surge-cli --raw version` 核对。
+执行前先核对协议门槛，不满足或未知时不得直接执行：`rule`/`dns`/`http probe`/`security ban` ≥20；`geoip`、性能/规则使用/虚拟 IP dump、`benchmark rule-matching` ≥22；`vmnet` ≥23（macOS）；`plugin` ≥24（macOS）；`restart-engine` ≥24。已知验证点：Surge iOS 5.22.0（Controller 5.102.0 **build 3842**，2026-09-15 实测；3830 时的逐项结论未全部在 3842 上复测）/ Protocol 25，兼容旧 JSON `argv` 请求，已对齐 macOS 6.9.0 build 12250 文本编码；异常先 `surge-cli --raw version` 核对。
 
 Controller 不可用、需要 `/v1/*` 接口或 Prometheus 指标时走 HTTP API 回退：先确认目标端点（默认本机 `127.0.0.1:6171`，仅在用户明确指定后才指向可信局域网实例）、认证方式与所需 `X-Key`，再执行；同样适用危险操作的再次确认，`stop` 需显式危险确认。用法与脚本见 `references/http-api.md` 与 `scripts/surge_ios.py`。
 

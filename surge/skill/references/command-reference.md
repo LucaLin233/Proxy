@@ -19,7 +19,7 @@ controller commands that are not all shown by `-h`.
 | `vmnet`（macOS only） | ≥23 |
 | `plugin`（macOS only）、`restart-engine` | ≥24 |
 
-已验证组合：Surge iOS 5.22.0（Controller 5.102.0 build 3830）/ Protocol 25，兼容旧 JSON `argv` 请求，客户端已对齐 macOS 6.9.0 build 12250 文本编码。
+已验证组合：Surge iOS 5.22.0（Controller 5.102.0 build 3842，2026-09-15 复测版本与认证；3830 时为逐项验证）/ Protocol 25，兼容旧 JSON `argv` 请求，客户端已对齐 macOS 6.9.0 build 12250 文本编码。
 
 ### 1.2 Basic format
 
