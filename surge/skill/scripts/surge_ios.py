@@ -10,9 +10,13 @@ KEY = os.getenv("SURGE_API_KEY")
 
 
 def redact(text):
-    """错误输出前抹掉凭据值：键值对形态与已知 token 前缀。"""
-    text = re.sub(r"(?i)\b(password|passwd|psk|token|api[-_]?key|x[-_]key)\b\s*[:=]\s*(\S+)",
-                  r"\1=<redacted>", str(text))
+    """错误输出前抹掉凭据值：JSON/引号形式、键值对形式与已知 token 前缀。"""
+    text = str(text)
+    key = (r"(?:password|passwd|pwd|psk|username|user|private[-_]key|token|api[-_]?key"
+           r"|x[-_]key|authorization|secret)")
+    text = re.sub(r'(?i)("?)\b(' + key + r')\b\1\s*[:=]\s*("[^"]*"|\'[^\']*\')',
+                  lambda m: m.group(0)[:m.group(0).index(m.group(3))] + '"<redacted>"', text)
+    text = re.sub(r"(?i)\b(" + key + r")\b\s*[:=]\s*(\S+)", r"\1=<redacted>", text)
     return re.sub(r"(?i)\b(sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{16,}", "<redacted>", text)
 
 

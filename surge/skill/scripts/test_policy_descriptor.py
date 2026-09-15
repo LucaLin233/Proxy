@@ -11,13 +11,15 @@ import urllib.request
 
 
 def redact(text: str) -> str:
-    """抹掉文本中的凭据值：键值对（= / : 分隔，值可带引号）与已知 token 前缀形态。"""
-    text = re.sub(
-        r"(?i)\b(password|passwd|pwd|psk|username|private[-_]key|token|api[-_]?key)\b\s*[:=]\s*"
-        r"(\"[^\"]*\"|'[^']*'|[^,\s\"'}]+)",
-        r"\1=<redacted>",
-        text,
-    )
+    """抹掉文本中的凭据值：JSON/引号形式、键值对形式、以及已知 token 前缀。"""
+    text = str(text)
+    key = (r"(?:password|passwd|pwd|psk|username|user|private[-_]key|token|api[-_]?key"
+           r"|x[-_]key|authorization|secret)")
+    # 引号值（可含空格）：   "password": "a b c"   或  password: 'a b'
+    text = re.sub(r'(?i)("?)\b(' + key + r')\b\1\s*[:=]\s*("[^"]*"|\'[^\']*\')',
+                  lambda m: m.group(0)[:m.group(0).index(m.group(3))] + '"<redacted>"', text)
+    # 裸值
+    text = re.sub(r"(?i)\b(" + key + r")\b\s*[:=]\s*(\S+)", r"\1=<redacted>", text)
     return re.sub(r"(?i)\b(sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{16,}", "<redacted>", text)
 
 
