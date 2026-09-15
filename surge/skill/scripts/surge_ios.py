@@ -10,21 +10,34 @@ KEY = os.getenv("SURGE_API_KEY")
 
 
 def redact(text):
-    """抹掉文本中的凭据值：认证头、JSON/引号形式（含转义、单引号键、数组值）、裸键值、token 前缀。"""
+    """抹掉文本中的凭据值：认证字段、JSON/引号形式（含转义、单引号键、平面数组）、裸键值、token 前缀。"""
     text = str(text)
     auth = r"(?:authorization|proxy-authorization|auth|authz)"
-    key = (r"(?:password|passwd|pwd|psk|private[-_]key|token|api[-_]?key"
+    scheme = r"(?:bearer|basic|digest|negotiate|ntlm|aws4-hmac-sha256)"
+    key = (r"(?:password|passwd|pwd|psk|username|user|private[-_]key|token|api[-_]?key"
            r"|x[-_]key|secret|credential)")
     dq = r'"(?:[^"\\]|\\.)*"'
     sq = r"'(?:[^'\\]|\\.)*'"
-    # 1) 认证头：整值一次抹除。键可带引号（JSON 形式）；值以引号开头时止于匹配引号，
-    #    否则视为该字段的整行值（覆盖 "Bearer A, Bearer B"、"Digest k=v, ..." 全部续段）；
-    #    分隔符只允许水平空白，空值不跨行吞掉下一行字段。
+    # 1a) 认证字段的引号值（JSON/结构化形态；键与值之间允许换行缩进，覆盖多行 JSON）
     text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<ak>' + auth + r')\b(?P=qk)'
-                  r'(?P<sep>[ \t]*[:=][ \t]*)(?P<val>"(?:[^"\\]|\\.)*"|[^\n]+)',
-                  lambda m: '%s%s%s%s"<redacted>"' % (m.group('qk'), m.group('ak'), m.group('qk'),
-                                                      m.group('sep')),
+                  r'(?P<sep>\s*[:=]\s*)(?P<q>["\'])(?:[^"\'\\]|\\.)*(?P=q)',
+                  lambda m: '%s%s%s%s%s<redacted>%s' % (m.group('qk'), m.group('ak'), m.group('qk'),
+                                                        m.group('sep'), m.group('q'), m.group('q')),
                   text)
+    # 1b) 认证字段带方案词（Bearer/Basic/Digest/...）→ 取该字段整行值，覆盖逗号多段与 Digest 参数
+    text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<ak>' + auth + r')\b(?P=qk)'
+                  r'(?P<sep>[ \t]*[:=][ \t]*)(?P<val>' + scheme + r'\b[^\n]*)',
+                  lambda m: '%s%s%s%s"<redacted>"' % (m.group('qk'), m.group('ak'), m.group('qk'), m.group('sep')),
+                  text)
+    # 1c) 其余认证字段值：止于逗号/分号/换行，不吞同一行的普通诊断字段（如 status=502）；
+    #     值已是抹除标记时原样返回，避免二次匹配吃掉尾随结构（如 JSON 的 } ）
+    def _auth_bare(m):
+        v = m.group('val')
+        if v.startswith('"<redacted>"') or v.startswith("'<redacted>'") or v.startswith('<redacted>'):
+            return m.group(0)
+        return '%s%s%s%s"<redacted>"' % (m.group('qk'), m.group('ak'), m.group('qk'), m.group('sep'))
+    text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<ak>' + auth + r')\b(?P=qk)'
+                  r'(?P<sep>[ \t]*[:=][ \t]*)(?P<val>[^\n,;]+)', _auth_bare, text)
     # 2) 敏感键的数组/对象值（如 {"token":["x"]}）：整段值替换
     text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<k>' + key + r')\b(?P=qk)(?P<sep>\s*:\s*)(\[[^\[\]]*\]|\{[^{}]*\})',
                   lambda m: '%s%s%s%s["<redacted>"]' % (m.group('qk'), m.group('k'), m.group('qk'), m.group('sep')),
