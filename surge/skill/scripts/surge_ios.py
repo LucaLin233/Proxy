@@ -13,7 +13,7 @@ def redact(text):
     """抹掉文本中的凭据值：认证头、JSON/引号形式（含转义、单引号键、数组值）、裸键值、token 前缀。"""
     text = str(text)
     auth = r"(?:authorization|proxy-authorization|auth|authz)"
-    key = (r"(?:password|passwd|pwd|psk|username|user|private[-_]key|token|api[-_]?key"
+    key = (r"(?:password|passwd|pwd|psk|private[-_]key|token|api[-_]?key"
            r"|x[-_]key|secret|credential)")
     dq = r'"(?:[^"\\]|\\.)*"'
     sq = r"'(?:[^'\\]|\\.)*'"
