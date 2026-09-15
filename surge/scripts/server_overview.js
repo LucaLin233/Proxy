@@ -533,17 +533,18 @@ function errText(error) {
 /* 统一返回 { ok: true, value } / { ok: false, error } */
 function withBudget(run, ms, timeoutError) {
   return new Promise((resolve) => {
+    const started = Date.now();
     let settled = false;
-    const finish = (value) => {
+    const done = (ok, value) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve(value);
+      resolve({ ok, value, ms: Date.now() - started });
     };
-    const timer = setTimeout(() => finish({ ok: false, error: timeoutError() }), ms);
+    const timer = setTimeout(() => done(false, timeoutError()), ms);
     run().then(
-      (value) => finish({ ok: true, value }),
-      (error) => finish({ ok: false, error: error || new Error("查询失败") })
+      (value) => done(true, value),
+      (error) => done(false, error || new Error("查询失败"))
     );
   });
 }
@@ -718,10 +719,12 @@ function notifyOveruse(groups) {
     ]);
     const lightResult = lightRaw.ok
       ? { ok: true, groups: lightRaw.value }
-      : { ok: false, error: lightRaw.error };
-    const peekabo = peekaboRaw.ok ? peekaboRaw.value : { ok: false, error: errText(peekaboRaw.error) };
+      : { ok: false, error: lightRaw.value };
+    const peekabo = peekaboRaw.ok ? peekaboRaw.value : { ok: false, error: errText(peekaboRaw.value) };
     const groups = lightResult.ok ? lightResult.groups : [];
     const lightError = errText(lightResult.error);
+    /* 保留一行耗时日志，便于在 Surge 脚本日志里排查刷新变慢 */
+    console.log(`[server] lightsail=${lightRaw.ms || 0}ms peekabo=${peekaboRaw.ms || 0}ms 区域=${groups.length}`);
 
     if (isDaily) {
       const sections = [];
