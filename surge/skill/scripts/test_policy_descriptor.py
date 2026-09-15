@@ -11,24 +11,33 @@ import urllib.request
 
 
 def redact(text):
-    """抹掉文本中的凭据值：认证头、JSON/引号形式（含转义与单引号键）、裸键值、已知 token 前缀。"""
+    """抹掉文本中的凭据值：认证头、JSON/引号形式（含转义、单引号键、数组值）、裸键值、token 前缀。"""
     text = str(text)
-    # 1) Authorization 系列：整个凭据（含 Bearer/Basic 方案与多段值）一并抹掉
-    text = re.sub(r"(?i)\b(authorization|proxy-authorization|auth)\b\s*[:=]\s*[^\s,;]+(?:\s+[^\s,;]+)?",
-                  r"\1=<redacted>", text)
+    auth = r"(?:authorization|proxy-authorization|auth|authz)"
     key = (r"(?:password|passwd|pwd|psk|username|user|private[-_]key|token|api[-_]?key"
            r"|x[-_]key|secret|credential)")
     dq = r'"(?:[^"\\]|\\.)*"'
     sq = r"'(?:[^'\\]|\\.)*'"
-    # 2) 带引号的值：键可带双/单/无引号；值支持转义引号，替换时保留值的引号形态
+    # 1) 认证头：整值一次抹除（含 Bearer/Basic 等方案词与多段值），止于逗号/分号/换行，
+    #    键可带引号（JSON 形式），不跨行吞掉后续字段
+    text = re.sub(r'(?i)(?P<qk>["\']?)(?P<ak>' + auth + r')(?P=qk)(?P<sep>\s*[:=]\s*)'
+                  r'(?P<val>"(?:[^"\\]|\\.)*"|[^\n,;]+)',
+                  lambda m: '%s%s%s%s"<redacted>"' % (m.group('qk'), m.group('ak'), m.group('qk'), m.group('sep')),
+                  text)
+    # 1b) 认证方案词 + 凭据（覆盖 "Bearer A, Bearer B" 这类逗号后残留）
+    text = re.sub(r"(?i)\b(bearer|basic|digest)\s+[A-Za-z0-9._~+/=\-]{6,}", r"\1 <redacted>", text)
+    # 2) 敏感键的数组/对象值（如 {"token":["x"]}）：整段值替换
+    text = re.sub(r'(?i)(?P<qk>["\']?)(?P<k>' + key + r')(?P=qk)(?P<sep>\s*:\s*)(\[[^\[\]]*\]|\{[^{}]*\})',
+                  lambda m: '%s%s%s%s["<redacted>"]' % (m.group('qk'), m.group('k'), m.group('qk'), m.group('sep')),
+                  text)
+    # 3) 带引号的值（键可带引号，值支持转义引号）
     text = re.sub(r'(?i)(?P<qk>["\']?)(?P<k>' + key + r')(?P=qk)(?P<sep>\s*[:=]\s*)(?P<val>' + dq + '|' + sq + r')',
                   lambda m: '%s%s%s%s%s<redacted>%s' % (m.group('qk'), m.group('k'), m.group('qk'),
-                                                        m.group('sep'), m.group('val')[0],
-                                                        m.group('val')[0]), text)
-
-    # 3) 裸值：以逗号/分号/空白为界，避免吞掉后续非敏感字段（如 status=502）
+                                                        m.group('sep'), m.group('val')[0], m.group('val')[0]),
+                  text)
+    # 4) 裸值：以逗号/分号/空白为界
     text = re.sub(r"(?i)\b(" + key + r")\b\s*[:=]\s*[^\s,;]+", r"\1=<redacted>", text)
-    # 4) 已知 token 前缀
+    # 5) 已知 token 前缀
     return re.sub(r"(?i)\b(sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{16,}", "<redacted>", text)
 
 
