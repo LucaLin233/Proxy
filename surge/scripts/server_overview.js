@@ -704,7 +704,8 @@ function notifyOveruse(groups) {
       if (isDaily) return $done(); // 未配置时日报静默跳过，避免每日骚扰
       return finish("未配置", PANEL_ICON, "8E8E93");
     }
-    if (isDaily && String(ARGS.server_daily_notify || "true").trim().toLowerCase() === "false") {
+    const dailyFlag = String(ARGS.server_daily_notify || "true").trim().toLowerCase();
+    if (isDaily && (dailyFlag === "false" || dailyFlag === "0" || dailyFlag === "no" || dailyFlag === "off")) {
       return $done();
     }
 

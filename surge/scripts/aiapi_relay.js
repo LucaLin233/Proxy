@@ -909,7 +909,8 @@ function cchDailyText(data) {
 }
 
 async function runDaily() {
-  if (String(ARGS.aiapi_daily_notify || "false").trim().toLowerCase() !== "true") return $done();
+  const dailyFlag = String(ARGS.aiapi_daily_notify || "true").trim().toLowerCase();
+  if (dailyFlag === "false" || dailyFlag === "0" || dailyFlag === "no" || dailyFlag === "off") return $done();
 
   const sub2Sites = parseSub2Sites(SUB2API_ENDPOINTS).slice(0, SUB2API_MAX_SITES);
   const cchSites = collectCchSites().slice(0, 5);
