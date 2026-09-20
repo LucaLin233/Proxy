@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-09-19T14:00:14Z
-# Total:   6745
+# Updated: 2026-09-20T14:00:16Z
+# Total:   6746
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -2703,6 +2703,7 @@ DOMAIN-SUFFIX,js-1-cdn.airdroid.com
 DOMAIN-SUFFIX,js-eu1.hsforms.net
 DOMAIN-SUFFIX,js-eu1.hubspot.com
 DOMAIN-SUFFIX,js-s3.quickcep.com
+DOMAIN-SUFFIX,js.arcgis.com
 DOMAIN-SUFFIX,js.assemblyexchange.com
 DOMAIN-SUFFIX,js.braintreegateway.com
 DOMAIN-SUFFIX,js.chargebee.com
