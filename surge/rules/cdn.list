@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-09-20T14:00:16Z
-# Total:   6746
+# Updated: 2026-09-21T14:00:19Z
+# Total:   6752
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -934,6 +934,7 @@ DOMAIN-SUFFIX,cdn.imgchest.com
 DOMAIN-SUFFIX,cdn.imgeng.in
 DOMAIN-SUFFIX,cdn.imghaste.com
 DOMAIN-SUFFIX,cdn.infoq.com
+DOMAIN-SUFFIX,cdn.infrawire.net
 DOMAIN-SUFFIX,cdn.insightmediagroup.io
 DOMAIN-SUFFIX,cdn.inviter.co
 DOMAIN-SUFFIX,cdn.ionos.de
@@ -1239,6 +1240,7 @@ DOMAIN-SUFFIX,cdn1.hotmoza.tv
 DOMAIN-SUFFIX,cdn1.iconfinder.com
 DOMAIN-SUFFIX,cdn1.identitymind.com
 DOMAIN-SUFFIX,cdn1.plesk.com
+DOMAIN-SUFFIX,cdn1.singteldigital.com
 DOMAIN-SUFFIX,cdn1.stamped.io
 DOMAIN-SUFFIX,cdn1.suno.ai
 DOMAIN-SUFFIX,cdn1.sysgears.com
@@ -2224,6 +2226,7 @@ DOMAIN-SUFFIX,imag.malavida.com
 DOMAIN-SUFFIX,image-cdn.porndig.com
 DOMAIN-SUFFIX,image-forwarder.notaku.so
 DOMAIN-SUFFIX,image-stgus.samsung.com
+DOMAIN-SUFFIX,image-tc.galaxy.tf
 DOMAIN-SUFFIX,image-us.samsung.com
 DOMAIN-SUFFIX,image.acg.lol
 DOMAIN-SUFFIX,image.ap-mail.org
@@ -3239,6 +3242,7 @@ DOMAIN-SUFFIX,phishing.army
 DOMAIN-SUFFIX,phncdn.com
 DOMAIN-SUFFIX,photobucket.com
 DOMAIN-SUFFIX,photocdn.stream
+DOMAIN-SUFFIX,photos.flightaware.com
 DOMAIN-SUFFIX,photos5.appleinsider.com
 DOMAIN-SUFFIX,phprcdn.com
 DOMAIN-SUFFIX,pic-bstarstatic.akamaized.net
@@ -4391,6 +4395,7 @@ DOMAIN-SUFFIX,tiles-a.koordinates.com
 DOMAIN-SUFFIX,tiles-api.maps.komoot.net
 DOMAIN-SUFFIX,tiles-eu.stadiamaps.com
 DOMAIN-SUFFIX,tiles.arcgis.com
+DOMAIN-SUFFIX,tiles.flightaware.com
 DOMAIN-SUFFIX,tiles.freemap.sk
 DOMAIN-SUFFIX,tiles.gsj.jp
 DOMAIN-SUFFIX,tiles.immich.cloud
@@ -4420,6 +4425,7 @@ DOMAIN-SUFFIX,tiles1.planet.com
 DOMAIN-SUFFIX,tiles2.mapiful.com
 DOMAIN-SUFFIX,tiles2.planet.com
 DOMAIN-SUFFIX,tiles3.planet.com
+DOMAIN-SUFFIX,tileserver.b10s.net
 DOMAIN-SUFFIX,tileserver.gnome.org
 DOMAIN-SUFFIX,tileserver.memomaps.de
 DOMAIN-SUFFIX,time-a.nist.gov
