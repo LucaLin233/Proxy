@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-09-15T14:00:02Z
-# Total:   20141
+# Updated: 2026-09-21T14:00:01Z
+# Total:   20145
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -4321,6 +4321,7 @@ DOMAIN-SUFFIX,cocktailsandcocktalk.com
 DOMAIN-SUFFIX,cockyboys.com
 DOMAIN-SUFFIX,code.org
 DOMAIN-SUFFIX,codeberg.org
+DOMAIN-SUFFIX,codebuff.com
 DOMAIN-SUFFIX,codecademy.com
 DOMAIN-SUFFIX,codeforces.com
 DOMAIN-SUFFIX,codeish.co
@@ -6688,6 +6689,7 @@ DOMAIN-SUFFIX,firebase.com
 DOMAIN-SUFFIX,firebaseapp.com
 DOMAIN-SUFFIX,firebaseio.com
 DOMAIN-SUFFIX,fireemblemawakening.com
+DOMAIN-SUFFIX,firefox-portal-detection.com
 DOMAIN-SUFFIX,firefox.com
 DOMAIN-SUFFIX,firefoxtweetmachine.com
 DOMAIN-SUFFIX,firefoxusercontent.com
@@ -7037,6 +7039,7 @@ DOMAIN-SUFFIX,freebigmovies.com
 DOMAIN-SUFFIX,freebrowser.org
 DOMAIN-SUFFIX,freebs.com
 DOMAIN-SUFFIX,freebsd.org
+DOMAIN-SUFFIX,freebuff.com
 DOMAIN-SUFFIX,freecamsfan.com
 DOMAIN-SUFFIX,freecartoons.biz
 DOMAIN-SUFFIX,freechatnow.com
@@ -16445,6 +16448,7 @@ DOMAIN-SUFFIX,textnow.com
 DOMAIN-SUFFIX,textnow.me
 DOMAIN-SUFFIX,texttobuy.org
 DOMAIN-SUFFIX,texture.com
+DOMAIN-SUFFIX,tfbnw.net
 DOMAIN-SUFFIX,tferwq.com
 DOMAIN-SUFFIX,tfiflve.com
 DOMAIN-SUFFIX,tfsallin.net
