@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-09-22T14:00:23Z
-# Total:   6754
+# Updated: 2026-09-24T14:00:20Z
+# Total:   6755
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -239,6 +239,7 @@ DOMAIN-SUFFIX,assets.brevo.com
 DOMAIN-SUFFIX,assets.brightspot.abebooks.a2z.com
 DOMAIN-SUFFIX,assets.buttondown.email
 DOMAIN-SUFFIX,assets.bwbx.io
+DOMAIN-SUFFIX,assets.byokey.io
 DOMAIN-SUFFIX,assets.byteplus.com
 DOMAIN-SUFFIX,assets.calendly.com
 DOMAIN-SUFFIX,assets.canny.io
