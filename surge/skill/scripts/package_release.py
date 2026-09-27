@@ -4,6 +4,10 @@
 Default output is an out-of-directory, persistent path
 (/var/minis/shared/release/surge-skill-YYYYMMDD.zip); an explicit path argument
 still overrides it, but a path inside the Skill directory is always rejected.
+
+Archive entries are rooted at the ZIP root (no top-level directory): that is the
+layout `lh skill install` consumes, and the same layout used for the LobeHub
+delivery package. Do not reintroduce a `surge/` prefix.
 """
 from __future__ import annotations
 import hashlib, os, re, stat, sys, zipfile
@@ -52,12 +56,11 @@ def main():
             if pattern.search(data): raise SystemExit(f"Potential secret found in {p.relative_to(SOURCE)}")
     OUTPUT.parent.mkdir(parents=True,exist_ok=True)
     tmp=OUTPUT.with_suffix(OUTPUT.suffix+".tmp")
-    root="surge"
     try:
         with zipfile.ZipFile(tmp,"w",zipfile.ZIP_DEFLATED,compresslevel=9) as z:
             for p in sorted(files,key=lambda x:str(x.relative_to(SOURCE))):
                 rel=p.relative_to(SOURCE); data=p.read_bytes()
-                info=zipfile.ZipInfo(f"{root}/{rel.as_posix()}",date_time=(2026,1,1,0,0,0))
+                info=zipfile.ZipInfo(rel.as_posix(),date_time=(2026,1,1,0,0,0))
                 mode=0o755 if os.access(p,os.X_OK) else 0o644
                 info.external_attr=(stat.S_IFREG|mode)<<16
                 info.compress_type=zipfile.ZIP_DEFLATED
