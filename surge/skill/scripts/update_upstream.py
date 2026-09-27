@@ -31,8 +31,14 @@ each touched file (recorded per file in transaction.json as `mode`; files that d
 not exist before are created 0644). `apply` refuses a transaction whose target
 files drifted in content or in mode since prepare, before it creates backup/.
 """
-import argparse, datetime, difflib, hashlib, importlib.util, json, shutil, subprocess
+import argparse, datetime, difflib, hashlib, importlib.util, json, re, shutil, subprocess
 from pathlib import Path
+# Conservative hostname/IP allowlist: rejects a leading '-' (option injection into
+# scp/ssh) and any shell/argument metacharacters, so --host cannot be crafted into
+# an extra scp/ssh option (e.g. -oProxyCommand=...).
+HOST_RE = re.compile(r'^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,253}[A-Za-z0-9])?$')
+def validate_host(host):
+    if not HOST_RE.match(host): raise SystemExit('Refusing --host: not a valid hostname/IP: '+host)
 ROOT = Path(__file__).resolve().parent.parent
 # Persistent transaction root: /var/minis/workspace does not survive across shell
 # processes on this device, so staged batches live under /var/minis/shared.
