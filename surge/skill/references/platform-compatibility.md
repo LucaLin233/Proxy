@@ -28,6 +28,7 @@ surge-cli --raw vmnet ra
 - `vmnet` 需要 ≥23，且仅限 macOS。
 - `plugin` 在线命令需要 ≥24 且仅限 macOS；iOS 返回 `Unknown command`。
 - `restart-engine` 需要 ≥24；它与差量 `reload` 不同，会关闭连接并清除缓存和临时规则。
+- 后续复测：Controller build **3852**（Surge iOS 5.102.0，2026-09-27）——`scripts/acceptance.sh --controller` 与 `--network` 两档只读验收**全部通过**（Controller 握手与能力、`status`／`summary`／`dump performance`／`rule match`／`rule temp list`／`feature list`／`module list`／`watch speed` 首帧、Prometheus metrics、官方 profile 校验服务上传合成无秘密 profile、`dns lookup`），全程未改 Surge 设置。该结论**只覆盖只读路径**：`restart-engine`、切换 profile 等变更类操作未在 3852 上复测，仍按 3830／3822 的记录。
 - 历史逐项验证（2026-09-02 记录）：正式版 Surge iOS 5.22.0（Controller 内部版本 5.102.0 build 3830）/ Controller Protocol 25 —— 认证、CRLF 文本命令、JSON Lines 响应及 `restart-engine` 的逐项结论来自该 build。
 - 后续复测：同一 5.22.0 / Protocol 25 的 Controller build 3842（2026-09-15）复测了认证与只读命令；`restart-engine` 未在该 build 上复测，其结论仍按 3830 与下面 3822 的记录。
 - `reload` 与 `restart-engine` 的明确差异最初在 Controller build 3822 上验证（关闭连接、清除缓存与临时规则）。

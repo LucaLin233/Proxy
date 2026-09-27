@@ -35,6 +35,14 @@ Synchronized from the Surge Skill bundled on the user's Mac mini on 2026-09-02:
 
 The exact official `SKILL.md` snapshot is retained as `upstream-SKILL.md`. The local `SKILL.md` merges its operational guidance with Minis/iOS transport, credential, privacy, and safety rules. The command reference is copied from upstream and automatically receives a small Minis-specific invocation preface (§1.1 protocol thresholds, §1.2 local execution priority, §1.3 basic format); §2 onward stays the official text verbatim. §1.2 states that the local execution priority — `--raw` as the default output form, and no default `dump policy`/`dump profile` collection before a change (sensitive `dump profile` only when necessary, under the minimal-read boundary) — overrides the conflicting operational advice in the official §5, while the historical command semantics and protocol/version statements in §2 onward remain informational only. The update transaction retains the official raw text separately as `upstream-command-reference.md`. Both `upstream-manifest.json` and that retained raw text are produced only by a real official import and are intentionally absent until one has been performed.
 
+### 2026-09-27 merge source
+
+The 2026-09-27 merge did **not** come from an official Surge.app bundle update. It merged a **user-provided sibling package** (`surge-ios.zip`, sha256 `6c09613c22a6a0390198188b9e0247f90249d7e70757526fd4919f86ee910433`, frontmatter `name: surge-ios`; the user states it was written by a third party, not by Surge) whose `references/upstream-SKILL.md` is byte-identical to the snapshot above — the official snapshot did not change. The package carried only an already-adapted command reference (`5331f03b…`), no official raw files.
+
+### Why the two provenance files are absent
+
+`references/upstream-command-reference.md` and `references/upstream-manifest.json` are written only by a real official import through the staged transaction, and no such import has been performed from this device — there is no SSH route to the Mac that holds `/Applications/Surge.app/Contents/Resources/Skills/surge/` (no `macmini` alias here), and the official raw text is not recoverable from any local copy. They are therefore **intentionally absent and must not be fabricated**. Closing them needs the official unadapted files; today only two are not already present byte-exact in this skill: `references/command-reference.md` (`66f0b248…`) and `agents/openai.yaml` (`ef5cdcb1…`). The `prepare`/`apply` path stays available for that day; until then it is unused, and this gap is registered in the repo's `skills-sources.md`.
+
 ## Local additions that must survive synchronization
 
 - `scripts/surge_cli.py`: Linux/iSH implementation of External Controller protocol plus the explicit-file official HTTPS `--check` fallback.
