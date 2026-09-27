@@ -10,18 +10,20 @@ controller commands that are not all shown by `-h`.
 
 ### 1.1 Controller protocol requirements
 
-执行前核对协议门槛，不满足或未知时不得直接执行；`surge-cli --raw version` 可读当前协议。
+执行前查 [platform-compatibility.md](platform-compatibility.md) 的唯一协议门槛表（`rule`/`dns`/`http probe`/`security ban`、`geoip` 与性能/规则使用/虚拟 IP dump、`vmnet`、`plugin`、`restart-engine` 的最低协议与平台限制）；不满足或未知时不得直接执行，本文件不复述第二份表。`surge-cli --raw version` 可读当前平台与 Controller Protocol；历史验证结论与日期同样只在该表维护。
 
-| 命令 / 功能 | 最低协议 |
-|---|---|
-| `rule`、`dns`、`http probe`、`security ban` | ≥20 |
-| `geoip`、性能 / 规则使用 / 虚拟 IP dump、`benchmark rule-matching` | ≥22 |
-| `vmnet`（macOS only） | ≥23 |
-| `plugin`（macOS only）、`restart-engine` | ≥24 |
+**兼容性表是执行判据**：本文件 §2 起官方正文中出现的协议号或版本语句（例如 §3.0 标题的 `controller protocol ≥24`）是上游历史文字，仅作说明，不作为执行判据；门槛与平台限制一律以该表为准。
 
-已验证组合：Surge iOS 5.22.0（Controller 5.102.0 build 3842，2026-09-15 复测版本与认证；3830 时为逐项验证）/ Protocol 25，兼容旧 JSON `argv` 请求，客户端已对齐 macOS 6.9.0 build 12250 文本编码。
+### 1.2 Minis execution priority over the upstream recommendations
 
-### 1.2 Basic format
+**本地执行优先级**：本节（§1 前言）优先于本文件 §2 起官方正文中的**操作建议**；`SKILL.md` 的引擎状态预检、`--raw` 优先与最小读取边界，以及 [diagnostics.md](diagnostics.md) 的按需工作流是本地执行判据。官方 §5「Practical Recommendations for AI Agents」中与本节直接冲突的两条建议一律按本节执行：
+
+1. **默认输出形式以 `--raw` 为准。** §5 建议「默认用 rendered 输出，除文档中缺失字段外不要传 `--raw`」在本客户端不适用：`--raw` 是 Controller 原始响应，也是自动化判读与验证的依据；human-readable 格式化只是可选呈现。
+2. **修改前不默认收集 `dump policy`／`dump profile`，一律按需。** §5 建议「每次修改设置前同时收集 `environment`、`dump policy` 与 `dump profile`」不采用：仅在当前任务确实需要策略组／`lineHash` 或 profile 内容时才读取，不作为每次修改的前置步骤或基线。其中 `dump profile` 可能含节点、订阅 URL 与隐私数据，**仅在确有必要时读取，并遵守最小读取边界**（只取所需字段、脱敏后引用、不写入支持包）。
+
+本节只覆盖官方正文中的**操作建议**；官方 §2 起的历史命令语义与协议号／版本说明仍按既有口径处理（即上一段：仅作说明，不作执行判据），§2 起的正文文字保持原样，本文件不复述第二份协议表。
+
+### 1.3 Basic format
 
 ```bash
 surge-cli [--remote host:port] [--password-stdin] [--raw] <command> [args...]
@@ -35,13 +37,13 @@ Executable location in Minis:
 
 - `--raw`: output raw JSON (recommended for agents).
 - `--remote` / `-r`: connect to another Controller; the Minis default is `127.0.0.1:6170`.
-- Authentication comes from `--password-stdin`, `SURGE_API_KEY`, or a secure prompt. Never put the password in `--remote`; the Minis CLI does not use password files.
+- Authentication comes from `--password-stdin` or the Minis environment variable `SURGE_API_KEY`; the Minis implementation is non-interactive and never prompts. Never put the password in `--remote`; the Minis CLI does not use password files. Credential precedence and transport: [controller-cli.md](controller-cli.md); security rules: [../SKILL.md](../SKILL.md) §3.
 - `--check <path>` / `-c <path>`: upload the explicitly named UTF-8 profile to Surge's official beta validation service (`https://services.nssurge.com/v1/config/validate`). This is remote validation, not the bundled macOS local parser. The CLI never uploads the active profile automatically; warn about profile secrets and redact a copy first when appropriate.
 - `--help` / `-h`: print help.
 - If no command is provided, the Minis implementation prints help rather than entering an interactive terminal.
 - Command keywords are handled by the connected Controller.
 
-### 1.2 Response envelope
+### 1.4 Response envelope
 
 Responses are JSON and usually include:
 
@@ -601,7 +603,7 @@ Examples:
 ```bash
 surge-cli set ProxyMode=2
 surge-cli set ProxyGroupSelection.Proxy=HK
-surge-cli set AutoPolicyGroupOverride.Streaming=<nil>
+surge-cli set 'AutoPolicyGroupOverride.Streaming=<nil>'
 surge-cli set RewriteEnabled=0 ScriptingEnabled=1
 ```
 

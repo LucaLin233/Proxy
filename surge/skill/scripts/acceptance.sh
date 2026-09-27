@@ -1,10 +1,12 @@
 #!/bin/sh
 # Non-destructive acceptance test for Minis Surge CLI.
+# Tiers: --offline (default: syntax + local links only), --controller (adds
+# read-only queries against the local instance), --network (additionally uploads a
+# synthetic secret-free Profile and sends DNS requests). No tier changes Surge
+# settings; --network never uploads a real profile.
 set -eu
 SELF_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 CLI="${SURGE_CLI_BIN:-surge-cli}"
-TMP="$(mktemp -d /tmp/surge-cli-accept.XXXXXX)"
-trap 'rm -rf "$TMP"' EXIT INT TERM
 
 pass() { printf 'PASS  %s\n' "$1"; }
 fail() { printf 'FAIL  %s\n' "$1" >&2; exit 1; }
@@ -18,6 +20,28 @@ PY
 }
 
 command -v python3 >/dev/null || fail "python3 is unavailable"
+MODE="${1:---offline}"
+case "$MODE" in --offline|--controller|--network) ;; *) fail 'Use --offline, --controller or --network' ;; esac
+python3 - "$SELF_DIR" <<'PY'
+import sys,re
+from pathlib import Path
+root=Path(sys.argv[1]).parent
+for p in (root/'scripts').glob('*.py'): compile(p.read_text(),str(p),'exec')
+for p in root.rglob('*.md'):
+    # Official snapshots use their original upstream directory layout.
+    if p.name.startswith('upstream-'): continue
+    for link in re.findall(r'\]\(([^)]+)\)',p.read_text()):
+        if '://' in link or link.startswith('#'): continue
+        target=link.split('#')[0]
+        if target and not (p.parent/target).exists(): raise SystemExit(f'Broken link: {p.name}: {link}')
+PY
+pass "Offline syntax and local links"
+[ "$MODE" != --offline ] || exit 0
+
+# The temp workspace is only needed once a connected tier actually runs.
+TMP="$(mktemp -d /tmp/surge-cli-accept.XXXXXX)"
+trap 'rm -rf "$TMP"' EXIT INT TERM
+
 command -v "$CLI" >/dev/null || fail "surge-cli is not installed"
 python3 - "$SELF_DIR/surge_cli.py" "$SELF_DIR/surge_ios.py" "$SELF_DIR/adapt_upstream_reference.py" <<'PY'
 import sys
@@ -28,6 +52,7 @@ PY
 pass "Python syntax"
 
 "$CLI" --raw version > "$TMP/version.json"; json_check "$TMP/version.json" "version"
+if [ "$MODE" = --network ]; then
 cat > "$TMP/minimal.conf" <<'EOF'
 [General]
 loglevel = notify
@@ -38,6 +63,7 @@ EOF
 "$CLI" --check "$TMP/minimal.conf" > "$TMP/check.txt"
 grep -qx 'OK' "$TMP/check.txt" || fail "official profile validation service check failed"
 pass "official profile validation service"
+fi
 if [ -n "${SURGE_API_KEY:-}" ]; then
   python3 "$SELF_DIR/surge_ios.py" metrics > "$TMP/metrics.txt"
   grep -q '^# TYPE surge_build_info gauge$' "$TMP/metrics.txt" || fail "Prometheus metrics output is invalid"
@@ -56,7 +82,9 @@ pass "Controller handshake and capability"
 "$CLI" --raw dump performance > "$TMP/performance.json"; json_check "$TMP/performance.json" "dump performance"
 "$CLI" --raw rule match example.com > "$TMP/rule.json"; json_check "$TMP/rule.json" "rule match"
 "$CLI" --raw rule temp list > "$TMP/temp-rules.json"; json_check "$TMP/temp-rules.json" "temporary rule list"
-"$CLI" --raw dns lookup example.com > "$TMP/dns.json"; json_check "$TMP/dns.json" "dns lookup"
+if [ "$MODE" = --network ]; then
+  "$CLI" --raw dns lookup example.com > "$TMP/dns.json"; json_check "$TMP/dns.json" "dns lookup"
+fi
 "$CLI" --raw feature list > "$TMP/features.json"; json_check "$TMP/features.json" "feature list"
 "$CLI" --raw module list > "$TMP/modules.json"; json_check "$TMP/modules.json" "module list"
 

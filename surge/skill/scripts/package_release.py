@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Build a sanitized, reproducible-ish ZIP of the Surge Skill for sharing."""
+"""Build a sanitized, reproducible-ish ZIP of the Surge Skill for sharing.
+
+Default output is an out-of-directory, persistent path
+(/var/minis/shared/release/surge-skill-YYYYMMDD.zip); an explicit path argument
+still overrides it, but a path inside the Skill directory is always rejected.
+"""
 from __future__ import annotations
 import hashlib, os, re, stat, sys, zipfile
 from datetime import datetime
@@ -7,7 +12,7 @@ from pathlib import Path
 
 SCRIPT_DIR=Path(__file__).resolve().parent
 SOURCE=SCRIPT_DIR.parent
-DEFAULT=Path("/var/minis/workspace") / f"surge-ios-skill-{datetime.now():%Y%m%d}.zip"
+DEFAULT=Path("/var/minis/shared/release") / f"surge-skill-{datetime.now():%Y%m%d}.zip"
 OUTPUT=Path(sys.argv[1]).expanduser() if len(sys.argv)>1 else DEFAULT
 EXCLUDED_PARTS={"__pycache__",".git",".DS_Store","logs","log","secrets","secret","private",".ssh"}
 EXCLUDED_SUFFIXES={".pyc",".pyo",".session",".sqlite",".db",".log",".key",".pem",".conf"}
