@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-09-24T14:00:20Z
-# Total:   6755
+# Updated: 2026-09-27T14:00:18Z
+# Total:   6756
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -1662,6 +1662,7 @@ DOMAIN-SUFFIX,dlassets-ssl.xboxlive.com
 DOMAIN-SUFFIX,dlstats.izzyondroid.org
 DOMAIN-SUFFIX,dlunar.net
 DOMAIN-SUFFIX,dm-static.com
+DOMAIN-SUFFIX,dma.canyon.com
 DOMAIN-SUFFIX,dmcdn.net
 DOMAIN-SUFFIX,dmm-extension.com
 DOMAIN-SUFFIX,dnvodcdn.me
@@ -2625,7 +2626,6 @@ DOMAIN-SUFFIX,ipfs.busy.org
 DOMAIN-SUFFIX,ipfs.cyou
 DOMAIN-SUFFIX,ipfs.decoo.io
 DOMAIN-SUFFIX,ipfs.denarius.io
-DOMAIN-SUFFIX,ipfs.ecolatam.com
 DOMAIN-SUFFIX,ipfs.eternum.io
 DOMAIN-SUFFIX,ipfs.eth.aragon.network
 DOMAIN-SUFFIX,ipfs.filebase.io
@@ -2940,6 +2940,7 @@ DOMAIN-SUFFIX,media.infosec.exchange
 DOMAIN-SUFFIX,media.inhumanity.com
 DOMAIN-SUFFIX,media.invisioncic.com
 DOMAIN-SUFFIX,media.istockphoto.com
+DOMAIN-SUFFIX,media.karousell.com
 DOMAIN-SUFFIX,media.kit.com
 DOMAIN-SUFFIX,media.lantern.io
 DOMAIN-SUFFIX,media.letsdeel.com
