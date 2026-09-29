@@ -724,7 +724,6 @@ function cchBalanceLines(results, wrap) {
   rows.sort(compareRows);
 
   if (rows.length) {
-    lines.push(`上游 ${rows.length}`);
     /* 站名与金额固定同一行；金额放不下时自动落到下一行 */
     for (const row of rows.slice(0, CCH_ADMIN_MAX)) {
       if (wrap) {
