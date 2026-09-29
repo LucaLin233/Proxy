@@ -4,7 +4,7 @@
 #!system=ios
 
 #!arguments=aiapi_query_interval:600,aiapi_daily_notify:true,aiapi_icon:dollarsign.circle,aiapi_icon_color:5B8DEF,cch_endpoints,cch_admin_max:8,cch_row_width:38,cch_quota_interval:600,cch_show_limits:false
-#!arguments-desc=CCH:\n    ├ 站点：一行一个，名称@地址=凭据:模式，多个用竖线分隔\n    ├ 模式：直接接在凭据后面，不要加括号，如 =<凭据>:admin；省略即 user\n    ├ user 普通用户 Key | cookie 会话 auth-token | admin 管理员令牌 | login Key 自动登录\n    ├ admin 模式列本站各上游余额：CCH 已用各上游自己的密钥查好，面板不接触上游密钥\n    ├ user/cookie/login 模式列该站账户余额，与上游余额并列显示\n    ├ 例：cch@cch.example.com=<管理员令牌>:admin|clouder@cc2.example.com=<用户 Key>:user\n    ├ 上游按厂商归并（同一站点的多把密钥合成一行），名称取供应商名的品牌部分\n    ├ 每行只显示余额，按 CCH 优先级升序排（同级按余额升序）；查不到余额的上游不列出\n    ├ cch_show_limits 打开后额外展示供应商限额（5 小时/日/周/月用量）\n    └ 额度缓存默认 600 秒，与面板刷新一致\n\n其余参数:\n    ├ 面板刷新间隔默认 600 秒\n    ├ 日报默认开启；每天 23:50 推送一条同样的列表；填 false 即关闭\n    └ 图标使用 SF Symbol 名称与六位 HEX 颜色
+#!arguments-desc=CCH:\n    ├ 站点：一行一个，名称@地址=凭据:模式，多个用竖线分隔\n    ├ 模式：直接接在凭据后面，不要加括号，如 =<凭据>:admin；省略即 user\n    ├ user 普通用户 Key | cookie 会话 auth-token | admin 管理员令牌 | login Key 自动登录\n    ├ admin 模式列本站各上游余额：CCH 已用各上游自己的密钥查好，面板不接触上游密钥\n    ├ user/cookie/login 模式列该站账户余额，与上游余额并列显示\n    ├ 例：cch@cch.example.com=<管理员令牌>:admin|clouder@cc2.example.com=<用户 Key>:user\n    ├ 站点末尾可再加优先级（=凭据:模式:优先级，可小数），不写则按域名/名称匹配主 CCH 的厂商优先级\n    ├ 上游按厂商归并（同一站点的多把密钥合成一行），名称取供应商名的品牌部分\n    ├ 每行只显示余额，按 CCH 优先级升序排（同级按余额升序）；查不到余额的上游不列出\n    ├ cch_show_limits 打开后额外展示供应商限额（5 小时/日/周/月用量）\n    └ 额度缓存默认 600 秒，与面板刷新一致\n\n其余参数:\n    ├ 面板刷新间隔默认 600 秒\n    ├ 日报默认开启；每天 23:50 推送一条同样的列表；填 false 即关闭\n    └ 图标使用 SF Symbol 名称与六位 HEX 颜色
 
 [Panel]
 API 中转站概览 = title="API 中转站概览",content="正在获取...",style=info,script-name=aiapi-relay-panel,update-interval={{{aiapi_query_interval}}}

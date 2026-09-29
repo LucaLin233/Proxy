@@ -216,7 +216,18 @@ function parseCchSites(input) {
     let right = item.slice(eq + 1).trim();
     if (!left || !right) continue;
     let mode = "user";
-    const colon = right.lastIndexOf(":");
+    /* 末尾可选的优先级：名称@地址=凭据:模式:优先级，用于把该站排进上游列表的正确位置 */
+    let priority = null;
+    let colon = right.lastIndexOf(":");
+    if (colon > 0) {
+      const tail = right.slice(colon + 1).replace(/[\s\[\]]/g, "");
+      if (/^\d+(\.\d+)?$/.test(tail)) {
+        priority = Number(tail);
+        right = right.slice(0, colon).replace(/[\s\[\]]+$/, "");
+      }
+    }
+
+    colon = right.lastIndexOf(":");
     if (colon > 0) {
       /* 容错：模式写成 :admin，也接受文档里表示可选的方括号（[:admin]、:admin]） */
       const suffix = right.slice(colon + 1).replace(/[\s\[\]]/g, "").toLowerCase();
@@ -231,7 +242,7 @@ function parseCchSites(input) {
     const host = at >= 0 ? left.slice(at + 1).trim() : left;
     const base = normalizeBaseUrl(host);
     if (!base) continue;
-    list.push({ name: label || host, base, credential: right, mode });
+    list.push({ name: label || host, base, credential: right, mode, priority });
   }
   return list;
 }
@@ -243,7 +254,7 @@ function legacyCchSite() {
   if (!base || !credential) return null;
   const raw = String(ARGS.cch_auth || "api_key").trim().toLowerCase();
   const mode = raw === "cookie" ? "cookie" : raw === "admin" ? "admin" : "user";
-  return { name: base.replace(/^https?:\/\//i, ""), base, credential, mode };
+  return { name: base.replace(/^https?:\/\//i, ""), base, credential, mode, priority: null };
 }
 
 /* 总额度：上限与已用必须取自同一层级，混用会把已用算成 0 */
@@ -648,11 +659,50 @@ function cchUpstreamRows(providers, balances, vendors) {
   return rows;
 }
 
+/* 站点优先级：配置里显式写了就用它，否则按域名（其次名称）匹配主 CCH 里的厂商，
+   取该厂商各供应商的最小优先级——查不到余额的站点靠这一步排进正确位置 */
+function cchSitePriorities(results) {
+  const byDomain = new Map();
+  const byName = new Map();
+
+  for (const item of results) {
+    if (!item.data || item.data.kind !== "admin") continue;
+    const vendors = item.data.vendors;
+    for (const provider of item.data.providers || []) {
+      const priority = Number(provider.priority);
+      if (!Number.isFinite(priority)) continue;
+
+      const vendor = vendors ? vendors.get(Number(provider.providerVendorId)) : null;
+      const domain = (vendor && vendor.domain) || providerHost(provider.url);
+      if (domain && (byDomain.get(domain) === undefined || priority < byDomain.get(domain))) {
+        byDomain.set(domain, priority);
+      }
+
+      const name = vendor && vendor.name ? vendor.name.toLowerCase() : "";
+      if (name && (byName.get(name) === undefined || priority < byName.get(name))) {
+        byName.set(name, priority);
+      }
+    }
+  }
+
+  return { byDomain, byName };
+}
+
+function cchSitePriority(site, priorities) {
+  if (site.priority !== null && site.priority !== undefined) return site.priority;
+  const domain = providerHost(site.base);
+  if (priorities.byDomain.has(domain)) return priorities.byDomain.get(domain);
+  const name = String(site.name || "").toLowerCase();
+  if (name && priorities.byName.has(name)) return priorities.byName.get(name);
+  return null;
+}
+
 /* CCH 各站余额合成一张表：admin 站点展开各上游，user/cookie/login 站点是该站账户余额 */
 function cchBalanceLines(results, wrap) {
   const lines = [];
   const rows = [];
   const failed = [];
+  const priorities = cchSitePriorities(results);
 
   for (const item of results) {
     if (item.error) {
@@ -669,7 +719,7 @@ function cchBalanceLines(results, wrap) {
     const amount = total ? total.limit - total.used : null;
     rows.push({
       amount,
-      priority: null,
+      priority: cchSitePriority(item.site, priorities),
       parts: [item.site.name, total ? `余额 ${money(amount)}` : "余额 未设置"],
     });
   }
