@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-09-27T14:00:18Z
-# Total:   6756
+# Updated: 2026-09-29T14:00:21Z
+# Total:   6757
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -3981,6 +3981,7 @@ DOMAIN-SUFFIX,static.foxnews.com
 DOMAIN-SUFFIX,static.frame.work
 DOMAIN-SUFFIX,static.freedownloadmanager.org
 DOMAIN-SUFFIX,static.fundraiseup.com
+DOMAIN-SUFFIX,static.gamma.app
 DOMAIN-SUFFIX,static.garmin.com
 DOMAIN-SUFFIX,static.gartner.com
 DOMAIN-SUFFIX,static.gc.apple.com
