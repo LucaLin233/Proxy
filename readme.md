@@ -115,7 +115,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 
 | 脚本 | 用途 | 来源 |
 | --- | --- | --- |
-| `aiapi_relay.js` | 中转站面板：各 CCH 站点余额（admin 走 `/api/v1/providers/balances:batch` 列本站各上游，按厂商归并、名称取供应商名的品牌部分；user/cookie/login 走 `/api/v1/me/quota` 列账户余额），合并成一张按余额升序的表；同一脚本供 cron 日报推送同一列表 | 自建 |
+| `aiapi_relay.js` | 中转站面板：各 CCH 站点余额（admin 走 `/api/v1/providers/balances:batch` 列本站各上游，按厂商归并、名称取供应商名的品牌部分；user/cookie/login 走 `/api/v1/me/quota` 列账户余额），合并成一张按 CCH 优先级排序的表；同一脚本供 cron 日报推送同一列表 | 自建 |
 | `server_overview.js` | 服务器概览：AWS Lightsail 各实例流量（SigV4 直连 CloudWatch 指标）+ Peekabo 流量与到期，合并显示；同一脚本供 cron 日报 | 自建 |
 | `function.js` | Surge 运行时长与功能开关状态面板，点击重载配置 | 参考 chaizia/Profiles |
 | `ip_check.js` | 当前节点详情面板 | 感谢 @congcong |

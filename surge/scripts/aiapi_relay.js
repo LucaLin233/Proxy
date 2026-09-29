@@ -553,30 +553,50 @@ function providerBrand(name) {
 }
 
 /* 上游显示名取该厂商下各供应商名称的品牌；名称不一致时才退回 CCH 厂商名 */
-function cchGroupLabels(providers, vendors) {
-  const brands = new Map();
+/* 厂商分组信息：显示名取供应商名的品牌部分，优先级取组内最小值（CCH 里数值越小越优先） */
+function cchGroupInfo(providers, vendors) {
+  const groups = new Map();
   for (const provider of providers) {
     const key = providerGroupKey(provider);
-    if (!brands.has(key)) brands.set(key, new Set());
-    brands.get(key).add(providerBrand(provider.name));
+    const priority = Number(provider.priority);
+    let group = groups.get(key);
+    if (!group) {
+      group = { brands: new Set(), priority: null, sample: provider };
+      groups.set(key, group);
+    }
+    group.brands.add(providerBrand(provider.name));
+    if (Number.isFinite(priority) && (group.priority === null || priority < group.priority)) {
+      group.priority = priority;
+    }
   }
 
-  const labels = new Map();
-  for (const [key, set] of brands) {
-    if (set.size === 1) {
-      labels.set(key, Array.from(set)[0]);
-      continue;
-    }
-    const provider = providers.find((item) => providerGroupKey(item) === key);
-    labels.set(key, providerLabel(provider, vendors));
+  const info = new Map();
+  for (const [key, group] of groups) {
+    info.set(key, {
+      label: group.brands.size === 1
+        ? Array.from(group.brands)[0]
+        : providerLabel(group.sample, vendors),
+      priority: group.priority,
+    });
   }
-  return labels;
+  return info;
 }
 
-/* 上游余额行：按厂商归并，余额取该厂商最低值，按余额从低到高排 */
+/* 排序：CCH 优先级升序（数值越小越优先），同级按余额升序；没有优先级的排最后 */
+function compareRows(a, b) {
+  const leftPriority = a.priority === null || a.priority === undefined ? Infinity : a.priority;
+  const rightPriority = b.priority === null || b.priority === undefined ? Infinity : b.priority;
+  if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+
+  const leftAmount = a.amount === null ? Infinity : a.amount;
+  const rightAmount = b.amount === null ? Infinity : b.amount;
+  return leftAmount - rightAmount;
+}
+
+/* 上游余额行：按厂商归并，余额取该厂商最低值 */
 function cchUpstreamRows(providers, balances, vendors) {
   const byId = new Map(providers.map((item) => [Number(item.id), item]));
-  const labels = cchGroupLabels(providers, vendors);
+  const info = cchGroupInfo(providers, vendors);
   const groups = new Map();
 
   for (const snapshot of Array.isArray(balances) ? balances : []) {
@@ -589,8 +609,10 @@ function cchUpstreamRows(providers, balances, vendors) {
     let group = groups.get(key);
     if (!group) {
       const vendor = vendors ? vendors.get(Number(provider.providerVendorId)) : null;
+      const meta = info.get(key);
       group = {
-        label: labels.get(key) || providerLabel(provider, vendors),
+        label: (meta && meta.label) || providerLabel(provider, vendors),
+        priority: meta ? meta.priority : null,
         domain: (vendor && vendor.domain) || providerHost(provider.url),
         currency: "USD",
         amount: null,
@@ -619,15 +641,10 @@ function cchUpstreamRows(providers, balances, vendors) {
       : group.label;
     const parts = [label];
     parts.push(group.unlimited ? "余额 不限量" : `余额 ${cchMoney(group.currency, group.amount)}`);
-    rows.push({ amount: group.amount, parts });
+    rows.push({ amount: group.amount, priority: group.priority, parts });
   }
 
-  rows.sort((a, b) => {
-    const left = a.amount === null ? Infinity : a.amount;
-    const right = b.amount === null ? Infinity : b.amount;
-    return left - right;
-  });
-
+  rows.sort(compareRows);
   return rows;
 }
 
@@ -652,15 +669,12 @@ function cchBalanceLines(results, wrap) {
     const amount = total ? total.limit - total.used : null;
     rows.push({
       amount,
+      priority: null,
       parts: [item.site.name, total ? `余额 ${money(amount)}` : "余额 未设置"],
     });
   }
 
-  rows.sort((a, b) => {
-    const left = a.amount === null ? Infinity : a.amount;
-    const right = b.amount === null ? Infinity : b.amount;
-    return left - right;
-  });
+  rows.sort(compareRows);
 
   if (rows.length) {
     lines.push(`上游 ${rows.length}`);
