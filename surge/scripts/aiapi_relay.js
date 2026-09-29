@@ -737,6 +737,34 @@ function providerLabel(provider, vendors) {
   return (vendor && vendor.name) || providerHost(provider.url);
 }
 
+/* 品牌名：供应商名去掉「-用途」后缀（Kcne-Astra → Kcne、Miapi-DS → Miapi） */
+function providerBrand(name) {
+  const text = String(name || "").trim();
+  const cut = text.split(/[-_\s]/)[0].trim();
+  return cut || text;
+}
+
+/* 上游显示名取该厂商下各供应商名称的品牌；名称不一致时才退回 CCH 厂商名 */
+function cchGroupLabels(providers, vendors) {
+  const brands = new Map();
+  for (const provider of providers) {
+    const key = providerGroupKey(provider);
+    if (!brands.has(key)) brands.set(key, new Set());
+    brands.get(key).add(providerBrand(provider.name));
+  }
+
+  const labels = new Map();
+  for (const [key, set] of brands) {
+    if (set.size === 1) {
+      labels.set(key, Array.from(set)[0]);
+      continue;
+    }
+    const provider = providers.find((item) => providerGroupKey(item) === key);
+    labels.set(key, providerLabel(provider, vendors));
+  }
+  return labels;
+}
+
 /* 只配了一个 CCH 站点时不带站名，多站点时才用站名区分 */
 function cchSitePrefix(site, showName) {
   return showName ? `${site.name} · ` : "";
@@ -745,6 +773,7 @@ function cchSitePrefix(site, showName) {
 /* 上游余额行：按厂商归并，余额取该厂商最低值，按余额从低到高排 */
 function cchUpstreamRows(providers, balances, vendors) {
   const byId = new Map(providers.map((item) => [Number(item.id), item]));
+  const labels = cchGroupLabels(providers, vendors);
   const groups = new Map();
 
   for (const snapshot of Array.isArray(balances) ? balances : []) {
@@ -758,7 +787,7 @@ function cchUpstreamRows(providers, balances, vendors) {
     if (!group) {
       const vendor = vendors ? vendors.get(Number(provider.providerVendorId)) : null;
       group = {
-        label: providerLabel(provider, vendors),
+        label: labels.get(key) || providerLabel(provider, vendors),
         domain: (vendor && vendor.domain) || providerHost(provider.url),
         currency: "USD",
         amount: null,
