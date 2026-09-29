@@ -103,7 +103,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 | --- | --- | --- |
 | `surge_status.sgmodule` | Surge 运行时长与 MITM、Rewrite、Scripting 状态；点击面板可重载配置 | 不需要 |
 | `server.sgmodule` | 服务器流量与到期（Lightsail + Peekabo 合并为一个面板） | 需要，见模块内 `#!arguments-desc` |
-| `aiapi.sgmodule` | 中转站余额/额度与 DeepSeek 余额（三类合并为一个面板） | 需要，见模块内 `#!arguments-desc` |
+| `aiapi.sgmodule` | CCH 各上游余额、直连站点余额与 DeepSeek 余额（三类合并为一个面板） | 需要，见模块内 `#!arguments-desc` |
 | `app_js.sgmodule` | APP JS 重写合集：Netflix 评分与单集评分、淘票票豆瓣评分、TestFlight 账户管理、彩云天气 SVIP | 不需要 |
 | `bilibili_cdn.sgmodule` | 哔哩哔哩 CDN 优化 | 不需要 |
 | `block_startup.sgmodule` | 开屏与启动广告拦截 | 不需要 |
@@ -115,7 +115,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 
 | 脚本 | 用途 | 来源 |
 | --- | --- | --- |
-| `aiapi_relay.js` | 中转站面板：Sub2API 各站余额（`/v1/usage`）+ CCH 各站额度与并发（user/cookie/login 走 `/api/v1/me/quota`，admin 走 `/api/v1/providers`）；同一脚本供 cron 日报汇总三类余额 | 自建 |
+| `aiapi_relay.js` | 中转站面板：CCH 各上游余额（admin 走 `/api/v1/providers/balances:batch`，按厂商归并、名称取 `/api/v1/provider-vendors`，user/cookie/login 走 `/api/v1/me/quota`）+ 直连站点余额（`/v1/usage`，CCH 覆盖不到的站点如 cc2）；同一脚本供 cron 日报汇总三类余额 | 自建 |
 | `server_overview.js` | 服务器概览：AWS Lightsail 各实例流量（SigV4 直连 CloudWatch 指标）+ Peekabo 流量与到期，合并显示；同一脚本供 cron 日报 | 自建 |
 | `function.js` | Surge 运行时长与功能开关状态面板，点击重载配置 | 参考 chaizia/Profiles |
 | `ip_check.js` | 当前节点详情面板 | 感谢 @congcong |

@@ -1,6 +1,8 @@
 /* AI 中转站面板与日报：
-   - 面板（mode=panel，默认）：Sub2API 各站余额 + CCH 各站额度与并发，合并成一个面板
+   - 面板（mode=panel，默认）：CCH 上游余额（管理员令牌，一次查全部上游）+ 直连站点余额 + DeepSeek 余额
    - 日报（mode=daily）：一条通知汇报 Sub2API 余额、CCH 额度、DeepSeek 余额
+   CCH 已在服务端记录各上游余额，面板不必再逐个站点直连查询；只有 CCH 覆盖不到的站点
+   （如自身也是 CCH 的 cc2）才留在 sub2api_endpoints 里按原有方式直连。
    参数按上游分组：sub2api_* / cch_* 各自独立，模块级用 aiapi_* */
 
 const ARGS = parseArgs($argument || "");
@@ -18,9 +20,12 @@ const ERROR_ICON = "exclamationmark.triangle.fill";
 const SUB2API_ENDPOINTS = String(ARGS.sub2api_endpoints || "").trim();
 const SUB2API_MAX_SITES = 5;
 const CCH_ENDPOINTS = String(ARGS.cch_endpoints || "").trim();
-const CCH_ADMIN_MAX = intArg(ARGS.cch_admin_max, 4, 1, 20);
+const CCH_ADMIN_MAX = intArg(ARGS.cch_admin_max, 8, 1, 20);
 const CCH_ROW_WIDTH = intArg(ARGS.cch_row_width, 38, 20, 60);
 const CCH_QUOTA_CACHE_SECONDS = intArg(ARGS.cch_quota_interval, 300, 60, 3600);
+/* 查询不到余额的上游按原有方式单独配置（CCH 站点的 user/cookie 模式），面板不展示 */
+/* 供应商限额（5 小时/日/周/月用量）与上游余额是两回事，默认只展示余额 */
+const CCH_SHOW_LIMITS = boolArg(ARGS.cch_show_limits, false);
 const DEEPSEEK_KEY = String(ARGS.deepseek_key || "").trim();
 
 /* 参数留空时 Number("") 为 0，会静默关闭提醒，故空值按未配置处理 */
@@ -37,6 +42,15 @@ function intArg(value, fallback, min, max) {
   const parsed = Number(text);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(max, Math.max(min, Math.round(parsed)));
+}
+
+/* 开关参数：留空用默认值，只有明确的真/假写法才覆盖 */
+function boolArg(value, fallback) {
+  const text = String(value === undefined || value === null ? "" : value).trim().toLowerCase();
+  if (text === "") return fallback;
+  if (text === "true" || text === "1" || text === "yes" || text === "on") return true;
+  if (text === "false" || text === "0" || text === "no" || text === "off") return false;
+  return fallback;
 }
 
 const SUB2API_WARN_BALANCE = numberArg(ARGS.sub2api_warn_balance, 1);
@@ -84,6 +98,15 @@ function formatAmount(value) {
 
 function money(value) {
   return `$${formatAmount(value)}`;
+}
+
+/* CCH 上游余额按上游原生币种展示，不做汇率换算（换算需要实时汇率，会对不上上游账单） */
+function cchMoney(currency, value) {
+  const code = String(currency || "").trim().toUpperCase();
+  const symbol = currencySymbol(code);
+  const text = formatAmount(value);
+  if (symbol) return `${symbol}${text}`;
+  return code ? `${text} ${code}` : text;
 }
 
 function formatTime() {
@@ -336,9 +359,11 @@ function notifySub2LowBalance(results) {
   } catch (_) {}
 }
 
-/* ── CCH：各站额度与并发 ── */
+/* ── CCH：各上游余额（限额可选） ── */
 
 const CCH_MODES = ["user", "cookie", "admin", "login"];
+/* CCH 单次批量查询余额的供应商上限 */
+const CCH_BALANCE_MAX_IDS = 50;
 const CCH_WINDOWS = [
   ["cost5h", "5 小时"],
   ["costDaily", "日"],
@@ -458,18 +483,71 @@ function writeQuotaCache(base, payload) {
   return cache;
 }
 
-async function fetchCchAdminQuota(site, headers) {
+/* 供应商清单：余额要按 id 查询，故每次刷新都取（CCH 侧只是一次数据库查询） */
+async function fetchCchProviderList(site, headers) {
+  const response = await request("get", `${site.base}/api/v1/providers`, headers);
+  checkStatus(response, "管理员令牌");
+  const items = parseBody(response).items;
+  return Array.isArray(items) ? items : [];
+}
+
+function balanceCacheKey(base, ids) {
+  return `cch_balance_${hashString(`${base}|${ids.join(",")}`)}`;
+}
+
+function readBalanceCache(base, ids) {
+  try {
+    const raw = $persistentStore.read(balanceCacheKey(base, ids));
+    if (!raw) return null;
+    const cache = JSON.parse(raw);
+    if (!cache || cache.version !== 1 || !Array.isArray(cache.items)) return null;
+    if (Date.now() - Number(cache.updatedAt || 0) > CCH_QUOTA_CACHE_SECONDS * 1000) return null;
+    return cache.items;
+  } catch (_) { return null; }
+}
+
+function writeBalanceCache(base, ids, items) {
+  try {
+    $persistentStore.write(
+      JSON.stringify({ version: 1, updatedAt: Date.now(), items }),
+      balanceCacheKey(base, ids)
+    );
+  } catch (_) {}
+  return items;
+}
+
+/* 上游余额：CCH 用各上游自己保存的密钥查询，面板只读结果，不接触上游密钥。
+   失败返回 null（区别于“查到了但没有余额”），调用方据此区分展示。 */
+async function fetchCchBalances(site, headers, list) {
+  const ids = list
+    .map((item) => Number(item.id))
+    .filter((id) => Number.isFinite(id))
+    .slice(0, CCH_BALANCE_MAX_IDS);
+  if (!ids.length) return [];
+  const cached = readBalanceCache(site.base, ids);
+  if (cached) return cached;
+  try {
+    const response = await request(
+      "post",
+      `${site.base}/api/v1/providers/balances:batch`,
+      headers,
+      { providerIds: ids, refresh: false }
+    );
+    if (response.status !== 200) return null;
+    const items = parseBody(response).items;
+    return writeBalanceCache(site.base, ids, Array.isArray(items) ? items : []);
+  } catch (_) {
+    return null;
+  }
+}
+
+async function fetchCchAdminQuota(site, headers, list) {
   const cache = readQuotaCache(site.base);
   if (cache && Date.now() - Number(cache.updatedAt || 0) < CCH_QUOTA_CACHE_SECONDS * 1000) {
     return { data: cache, stale: false };
   }
   try {
-    const providersResponse = await request("get", `${site.base}/api/v1/providers`, headers);
-    checkStatus(providersResponse, "管理员令牌");
-    const items = parseBody(providersResponse).items;
-    const list = Array.isArray(items) ? items : [];
-
-    /* 额度用量是独立端点，失败时降级为“未设置限额”，不影响并发与监控展示 */
+    /* 额度用量是独立端点，失败时降级为“未设置限额”，不影响余额与监控展示 */
     const usageMap = new Map();
     const ids = list.map((item) => Number(item.id)).filter((id) => Number.isFinite(id));
     if (ids.length) {
@@ -509,9 +587,23 @@ async function fetchCchOverview(site, headers) {
 }
 
 async function fetchCchAdminSite(site, headers) {
-  const quota = await fetchCchAdminQuota(site, headers);
-  const overview = await fetchCchOverview(site, headers);
-  return { kind: "admin", quota: quota.data, stale: quota.stale, overview };
+  const list = await fetchCchProviderList(site, headers);
+  /* 限额表默认不展示，也就没必要为它多打一次接口 */
+  const quota = CCH_SHOW_LIMITS ? await fetchCchAdminQuota(site, headers, list) : null;
+  const [balances, vendors, overview] = await Promise.all([
+    fetchCchBalances(site, headers, list),
+    fetchCchVendors(site, headers),
+    fetchCchOverview(site, headers),
+  ]);
+  return {
+    kind: "admin",
+    providers: list,
+    vendors,
+    quota: quota ? quota.data : null,
+    stale: quota ? quota.stale : false,
+    balances,
+    overview,
+  };
 }
 
 /* 自动登录：用 API Key 换取会话 Cookie */
@@ -598,45 +690,158 @@ function formatUsagePercent(ratio) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
-/* CCH 站点始终带站名，方便与 Sub2API 站点并列时区分 */
-function cchUserLines(site, data) {
-  /* 与另外两类统一用“余额”；并发已在 CCH 侧配置好，不做实时展示 */
-  const prefix = `${site.name} · `;
+/* 与另外两类统一用“余额”；并发已在 CCH 侧配置好，不做实时展示 */
+function cchUserLines(site, data, showName) {
   const amount = data.total
     ? `余额 ${money(data.total.limit - data.total.used)}`
     : "余额 未设置";
-  return [`${prefix}${amount}`];
+  return [`${cchSitePrefix(site, showName)}${amount}`];
 }
 
-function cchAdminLines(site, data) {
-  const prefix = `${site.name} · `;
+/* 上游地址：同一站点常有多把密钥、对应多个供应商条目，按地址归并才不重复 */
+function providerHost(url) {
+  const text = String(url || "").trim();
+  const match = /^(?:https?:\/\/)?([^/?#]+)/i.exec(text);
+  return (match ? match[1] : text).toLowerCase();
+}
+
+/* 上游厂商：CCH 按官网地址归并供应商，名称（Kcne、Clouder 等）取自这里 */
+async function fetchCchVendors(site, headers) {
+  try {
+    const response = await request("get", `${site.base}/api/v1/provider-vendors`, headers);
+    if (response.status !== 200) return new Map();
+    const items = parseBody(response).items;
+    const map = new Map();
+    for (const item of Array.isArray(items) ? items : []) {
+      const id = Number(item.id);
+      if (!Number.isFinite(id)) continue;
+      map.set(id, {
+        name: String(item.displayName || "").trim(),
+        domain: String(item.websiteDomain || "").trim().toLowerCase(),
+      });
+    }
+    return map;
+  } catch (_) {
+    return new Map();
+  }
+}
+
+/* 归并键：优先用厂商，没有厂商信息时退回官网地址 */
+function providerGroupKey(provider) {
+  const vendorId = Number(provider.providerVendorId);
+  return Number.isFinite(vendorId) ? `v${vendorId}` : `h${providerHost(provider.url)}`;
+}
+
+function providerLabel(provider, vendors) {
+  const vendor = vendors ? vendors.get(Number(provider.providerVendorId)) : null;
+  return (vendor && vendor.name) || providerHost(provider.url);
+}
+
+/* 只配了一个 CCH 站点时不带站名，多站点时才用站名区分 */
+function cchSitePrefix(site, showName) {
+  return showName ? `${site.name} · ` : "";
+}
+
+/* 上游余额行：按厂商归并，余额取该厂商最低值，按余额从低到高排 */
+function cchUpstreamRows(providers, balances, vendors) {
+  const byId = new Map(providers.map((item) => [Number(item.id), item]));
+  const groups = new Map();
+
+  for (const snapshot of Array.isArray(balances) ? balances : []) {
+    /* 查不到余额的上游按原有方式单独配置，不在这里占行 */
+    if (snapshot.status !== "ok") continue;
+    const provider = byId.get(Number(snapshot.providerId));
+    if (!provider) continue;
+
+    const key = providerGroupKey(provider);
+    let group = groups.get(key);
+    if (!group) {
+      const vendor = vendors ? vendors.get(Number(provider.providerVendorId)) : null;
+      group = {
+        label: providerLabel(provider, vendors),
+        domain: (vendor && vendor.domain) || providerHost(provider.url),
+        currency: "USD",
+        amount: null,
+        unlimited: false,
+      };
+      groups.set(key, group);
+    }
+
+    group.currency = String(snapshot.currency || "").toUpperCase() || "USD";
+    if (snapshot.unlimited) group.unlimited = true;
+    const amount = numeric(snapshot.balance);
+    if (amount !== null && (group.amount === null || amount < group.amount)) group.amount = amount;
+  }
+
+  /* 同名厂商（同一家在两个域名各有一条）用官网地址区分，避免看起来重复 */
+  const labelCount = new Map();
+  for (const group of groups.values()) {
+    labelCount.set(group.label, (labelCount.get(group.label) || 0) + 1);
+  }
+
+  const rows = [];
+  for (const group of groups.values()) {
+    if (group.amount === null && !group.unlimited) continue;
+    const label = labelCount.get(group.label) > 1 && group.domain
+      ? `${group.label}（${group.domain}）`
+      : group.label;
+    const parts = [label];
+    parts.push(group.unlimited ? "余额 不限量" : `余额 ${cchMoney(group.currency, group.amount)}`);
+    rows.push({ amount: group.amount, parts });
+  }
+
+  rows.sort((a, b) => {
+    const left = a.amount === null ? Infinity : a.amount;
+    const right = b.amount === null ? Infinity : b.amount;
+    return left - right;
+  });
+
+  return rows;
+}
+
+function cchAdminLines(site, data, showName) {
+  const prefix = cchSitePrefix(site, showName);
   const lines = [];
   const overview = data.overview || {};
-  const providers = Array.isArray(data.quota && data.quota.providers) ? data.quota.providers : [];
-  const total = Number(data.quota && data.quota.total);
+  const providers = Array.isArray(data.providers) ? data.providers : [];
+  const balances = data.balances;
+  const budget = Math.max(16, CCH_ROW_WIDTH - measure(prefix));
 
-  const header = `供应商 ${Number.isFinite(total) ? total : providers.length}`;
-  lines.push(prefix + header);
-
-  /* 只列设了限额或并发上限的供应商，按使用率从高到低 */
-  const limited = providers
-    .filter((provider) => provider.quota)
-    .sort((a, b) => {
-      const left = a.quota ? a.quota.ratio : 0;
-      const right = b.quota ? b.quota.ratio : 0;
-      return right - left;
-    });
-
-  if (!limited.length) {
-    lines.push("未设置供应商限额");
-  } else {
-    /* 供应商名与使用率固定同一行；并发与金额放不下时自动落到下一行 */
-    const budget = Math.max(16, CCH_ROW_WIDTH - measure(prefix));
-    for (const provider of limited.slice(0, CCH_ADMIN_MAX)) {
-      const parts = [`${provider.name} ${formatUsagePercent(provider.quota.ratio)}`, `额度 ${money(provider.quota.current)}/${money(provider.quota.limit)}`];
-      for (const row of layoutRows(parts, budget)) lines.push(row);
+  const rows = cchUpstreamRows(providers, balances, data.vendors);
+  if (rows.length) {
+    lines.push(prefix + `上游 ${rows.length}`);
+    /* 厂商名与金额固定同一行；金额放不下时自动落到下一行 */
+    for (const row of rows.slice(0, CCH_ADMIN_MAX)) {
+      for (const line of layoutRows(row.parts, budget)) lines.push(line);
     }
-    if (limited.length > CCH_ADMIN_MAX) lines.push(`另有 ${limited.length - CCH_ADMIN_MAX} 个限额供应商`);
+    if (rows.length > CCH_ADMIN_MAX) lines.push(`另有 ${rows.length - CCH_ADMIN_MAX} 个上游`);
+  } else if (balances === null) {
+    lines.push(prefix + "⚠️ 上游余额查询失败");
+  } else {
+    lines.push(prefix + "上游未提供余额接口");
+  }
+
+  /* 供应商限额（5 小时/日/周/月用量）与上游余额是两回事，默认不展示 */
+  if (CCH_SHOW_LIMITS) {
+    const limitProviders = Array.isArray(data.quota && data.quota.providers) ? data.quota.providers : [];
+    /* 只列设了限额的供应商，按使用率从高到低 */
+    const limited = limitProviders
+      .filter((provider) => provider.quota)
+      .sort((a, b) => {
+        const left = a.quota ? a.quota.ratio : 0;
+        const right = b.quota ? b.quota.ratio : 0;
+        return right - left;
+      });
+
+    if (!limited.length) {
+      lines.push("未设置供应商限额");
+    } else {
+      for (const provider of limited.slice(0, CCH_ADMIN_MAX)) {
+        const parts = [`${provider.name} ${formatUsagePercent(provider.quota.ratio)}`, `额度 ${money(provider.quota.current)}/${money(provider.quota.limit)}`];
+        for (const row of layoutRows(parts, budget)) lines.push(row);
+      }
+      if (limited.length > CCH_ADMIN_MAX) lines.push(`另有 ${limited.length - CCH_ADMIN_MAX} 个限额供应商`);
+    }
   }
 
   lines.push("");
@@ -659,7 +864,7 @@ function cchAdminLines(site, data) {
     lines.push(tail.join(" · "));
   }
 
-  if (data.stale) lines.push("⚠️ 额度来自缓存");
+  if (CCH_SHOW_LIMITS && data.stale) lines.push("⚠️ 额度来自缓存");
   return lines;
 }
 
@@ -697,6 +902,12 @@ function cchRisk(data) {
   if (errorRate >= 10) risk = 2;
   else if (errorRate >= 5) risk = 1;
 
+  /* 余额一条都查不到时给个提示色：上游可能都换了密钥或都不可达 */
+  if (Array.isArray(data.balances) && data.balances.length
+    && data.balances.every((item) => item.status !== "ok")) {
+    risk = Math.max(risk, 1);
+  }
+
   const providers = Array.isArray(data.quota && data.quota.providers) ? data.quota.providers : [];
   for (const provider of providers) {
     if (!provider.quota) continue;
@@ -710,7 +921,7 @@ function cchRisk(data) {
 /* ── DeepSeek：仅日报使用 ── */
 
 const DEEPSEEK_URL = "https://api.deepseek.com/user/balance";
-const CURRENCY_SYMBOLS = { CNY: "¥", USD: "$" };
+const CURRENCY_SYMBOLS = { CNY: "¥", USD: "$", EUR: "€", GBP: "£", JPY: "¥" };
 
 function currencySymbol(currency) {
   return CURRENCY_SYMBOLS[String(currency || "").toUpperCase()] || "";
@@ -859,9 +1070,13 @@ async function runPanel() {
     addBlock(block);
   }
 
+  /* 只配一个 CCH 站点时不必带站名 */
+  const cchShowName = cchResults.length > 1;
   const cchBlocks = cchResults.map((item) => (item.error
-    ? [`${item.site.name} · ❌ ${String((item.error && item.error.message) || item.error)}`]
-    : item.data.kind === "admin" ? cchAdminLines(item.site, item.data) : cchUserLines(item.site, item.data)));
+    ? [`${cchSitePrefix(item.site, cchShowName)}❌ ${String((item.error && item.error.message) || item.error)}`]
+    : item.data.kind === "admin"
+      ? cchAdminLines(item.site, item.data, cchShowName)
+      : cchUserLines(item.site, item.data, cchShowName)));
 
   if (cchDropped > 0 && cchBlocks.length) cchBlocks[cchBlocks.length - 1].push(`另有 ${cchDropped} 个站点未显示`);
   for (const block of cchBlocks) addBlock(block);
@@ -892,20 +1107,40 @@ async function runPanel() {
 
 /* ── 日报 ── */
 
-function cchDailyText(data) {
-  if (data.kind === "admin") {
-    const overview = data.overview || {};
-    const parts = [];
-    const concurrent = numeric(overview.concurrentSessions);
-    if (concurrent !== null) parts.push(`并发 ${concurrent}`);
-    const cost = numeric(overview.todayCost);
-    if (cost !== null) parts.push(`今日 ${money(cost)}`);
-    const errorRate = numeric(overview.todayErrorRate);
-    if (errorRate !== null) parts.push(`错误 ${formatPercent(errorRate)}`);
-    return parts.join(" · ");
+/* CCH 站点的日报正文：admin 站点列上游余额（与面板同一套归并规则），其余模式仍是账户余额 */
+function cchDailyLines(site, data, showName) {
+  const prefix = showName ? `${site.name}：` : "";
+  const overview = data.overview || {};
+
+  if (data.kind !== "admin") {
+    const amount = data.total
+      ? `余额 ${money(data.total.limit - data.total.used)}`
+      : "余额 未设置";
+    return [`${prefix}${amount}`];
   }
-  if (data.total) return `余额 ${money(data.total.limit - data.total.used)}`;
-  return "余额 未设置";
+
+  const providers = Array.isArray(data.providers) ? data.providers : [];
+  const rows = cchUpstreamRows(providers, data.balances, data.vendors);
+  const lines = [];
+
+  if (rows.length) {
+    lines.push(`${prefix}上游 ${rows.length}`);
+    for (const row of rows.slice(0, CCH_ADMIN_MAX)) lines.push(row.parts.join(" · "));
+    if (rows.length > CCH_ADMIN_MAX) lines.push(`另有 ${rows.length - CCH_ADMIN_MAX} 个上游`);
+  } else {
+    lines.push(`${prefix}${data.balances === null ? "⚠️ 上游余额查询失败" : "上游未提供余额接口"}`);
+  }
+
+  const parts = [];
+  const concurrent = numeric(overview.concurrentSessions);
+  if (concurrent !== null) parts.push(`并发 ${concurrent}`);
+  const cost = numeric(overview.todayCost);
+  if (cost !== null) parts.push(`今日 ${money(cost)}`);
+  const errorRate = numeric(overview.todayErrorRate);
+  if (errorRate !== null) parts.push(`错误 ${formatPercent(errorRate)}`);
+  if (parts.length) lines.push(parts.join(" · "));
+
+  return lines;
 }
 
 async function runDaily() {
@@ -933,11 +1168,18 @@ async function runDaily() {
   }
 
   if (cchResults.length) {
-    sections.push(["【CCH】"].concat(cchResults.map((item) => {
-      if (item.error) return `${item.site.name}：❌ ${String((item.error && item.error.message) || item.error)}`;
-      const text = cchDailyText(item.data);
-      return `${item.site.name}：${text || "无数据"}`;
-    })));
+    /* 只配一个 CCH 站点时不必带站名 */
+    const showName = cchResults.length > 1;
+    const block = ["【CCH】"];
+    for (const item of cchResults) {
+      const prefix = showName ? `${item.site.name}：` : "";
+      if (item.error) {
+        block.push(`${prefix}❌ ${String((item.error && item.error.message) || item.error)}`);
+        continue;
+      }
+      for (const line of cchDailyLines(item.site, item.data, showName)) block.push(line);
+    }
+    sections.push(block);
   }
 
   if (deepseek.ok) {
