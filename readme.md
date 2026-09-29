@@ -11,7 +11,7 @@
 - **Quantumult X**：重写 `quantumultx/apps_js.conf`；
 - **Sub-Store**：`substore/rename.js`，节点名称与地区文案规范化脚本（同目录附测试）；
 - **代理服务端**：`systemd/*.service` 单元模板（Snell、Hysteria2，Debian/Ubuntu）；
-- **面板脚本**：需要较新的 Surge 版本（模块参数 `#!arguments` 需 Surge 5 及以上）；DeepSeek、CCH、AWS Lightsail、Peekabo、Sub2API 面板还需要各自服务的 API Key 或 Token，仅保存在 Surge 本地模块参数中；
+- **面板脚本**：需要较新的 Surge 版本（模块参数 `#!arguments` 需 Surge 5 及以上）；CCH、AWS Lightsail、Peekabo 面板还需要各自服务的 API Key 或 Token，仅保存在 Surge 本地模块参数中；
 - 本仓库**不提供** Quantumult X 的完整配置文件，只提供重写与分流规则；
 - 所有文件通过 `raw.githubusercontent.com` 直接引用，仓库不提供额外加速方式。
 
@@ -103,7 +103,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 | --- | --- | --- |
 | `surge_status.sgmodule` | Surge 运行时长与 MITM、Rewrite、Scripting 状态；点击面板可重载配置 | 不需要 |
 | `server.sgmodule` | 服务器流量与到期（Lightsail + Peekabo 合并为一个面板） | 需要，见模块内 `#!arguments-desc` |
-| `aiapi.sgmodule` | CCH 各上游余额、直连站点余额与 DeepSeek 余额（三类合并为一个面板） | 需要，见模块内 `#!arguments-desc` |
+| `aiapi.sgmodule` | 各 CCH 站点的余额：本站各上游余额与账户余额合并为一个面板 | 需要，见模块内 `#!arguments-desc` |
 | `app_js.sgmodule` | APP JS 重写合集：Netflix 评分与单集评分、淘票票豆瓣评分、TestFlight 账户管理、彩云天气 SVIP | 不需要 |
 | `bilibili_cdn.sgmodule` | 哔哩哔哩 CDN 优化 | 不需要 |
 | `block_startup.sgmodule` | 开屏与启动广告拦截 | 不需要 |
@@ -115,7 +115,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 
 | 脚本 | 用途 | 来源 |
 | --- | --- | --- |
-| `aiapi_relay.js` | 中转站面板：CCH 各上游余额（admin 走 `/api/v1/providers/balances:batch`，按厂商归并、名称取 `/api/v1/provider-vendors`，user/cookie/login 走 `/api/v1/me/quota`）+ 直连站点余额（`/v1/usage`，CCH 覆盖不到的站点如 cc2）；同一脚本供 cron 日报汇总三类余额 | 自建 |
+| `aiapi_relay.js` | 中转站面板：各 CCH 站点余额（admin 走 `/api/v1/providers/balances:batch` 列本站各上游，按厂商归并、名称取供应商名的品牌部分；user/cookie/login 走 `/api/v1/me/quota` 列账户余额），合并成一张按余额升序的表；同一脚本供 cron 日报推送同一列表 | 自建 |
 | `server_overview.js` | 服务器概览：AWS Lightsail 各实例流量（SigV4 直连 CloudWatch 指标）+ Peekabo 流量与到期，合并显示；同一脚本供 cron 日报 | 自建 |
 | `function.js` | Surge 运行时长与功能开关状态面板，点击重载配置 | 参考 chaizia/Profiles |
 | `ip_check.js` | 当前节点详情面板 | 感谢 @congcong |

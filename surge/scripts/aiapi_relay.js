@@ -1,9 +1,9 @@
 /* AI 中转站面板与日报：
-   - 面板（mode=panel，默认）：CCH 上游余额（管理员令牌，一次查全部上游）+ 直连站点余额 + DeepSeek 余额
-   - 日报（mode=daily）：一条通知汇报 Sub2API 余额、CCH 额度、DeepSeek 余额
-   CCH 已在服务端记录各上游余额，面板不必再逐个站点直连查询；只有 CCH 覆盖不到的站点
-   （如自身也是 CCH 的 cc2）才留在 sub2api_endpoints 里按原有方式直连。
-   参数按上游分组：sub2api_* / cch_* 各自独立，模块级用 aiapi_* */
+   - 面板（mode=panel，默认）：各 CCH 站点的余额，合并成一个列表
+   - 日报（mode=daily）：每天 23:50 推送同一条列表
+   余额统一从 CCH 取：admin 模式一次拿到本站各上游余额（CCH 用各上游自己的密钥查），
+   user/cookie/login 模式取该站账户余额，两种来源并列展示。
+   参数用 cch_*，模块级用 aiapi_* */
 
 const ARGS = parseArgs($argument || "");
 const IS_DAILY = String(ARGS.mode || "panel").trim().toLowerCase() === "daily";
@@ -17,24 +17,12 @@ const PANEL_DANGER_COLOR = "#EF4444";
 const ERROR_ICON = "exclamationmark.triangle.fill";
 
 /* ── 参数 ── */
-const SUB2API_ENDPOINTS = String(ARGS.sub2api_endpoints || "").trim();
-const SUB2API_MAX_SITES = 5;
 const CCH_ENDPOINTS = String(ARGS.cch_endpoints || "").trim();
 const CCH_ADMIN_MAX = intArg(ARGS.cch_admin_max, 8, 1, 20);
 const CCH_ROW_WIDTH = intArg(ARGS.cch_row_width, 38, 20, 60);
 const CCH_QUOTA_CACHE_SECONDS = intArg(ARGS.cch_quota_interval, 300, 60, 3600);
-/* 查询不到余额的上游按原有方式单独配置（CCH 站点的 user/cookie 模式），面板不展示 */
 /* 供应商限额（5 小时/日/周/月用量）与上游余额是两回事，默认只展示余额 */
 const CCH_SHOW_LIMITS = boolArg(ARGS.cch_show_limits, false);
-const DEEPSEEK_KEY = String(ARGS.deepseek_key || "").trim();
-
-/* 参数留空时 Number("") 为 0，会静默关闭提醒，故空值按未配置处理 */
-function numberArg(value, fallback) {
-  const text = String(value === undefined || value === null ? "" : value).trim();
-  if (text === "") return fallback;
-  const parsed = Number(text);
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : fallback;
-}
 
 function intArg(value, fallback, min, max) {
   const text = String(value === undefined || value === null ? "" : value).trim();
@@ -52,11 +40,6 @@ function boolArg(value, fallback) {
   if (text === "false" || text === "0" || text === "no" || text === "off") return false;
   return fallback;
 }
-
-const SUB2API_WARN_BALANCE = numberArg(ARGS.sub2api_warn_balance, 1);
-const SUB2API_NOTIFY_BALANCE = numberArg(ARGS.sub2api_notify_balance, 1);
-const DEEPSEEK_WARN_BALANCE = numberArg(ARGS.deepseek_warn_balance, 5);
-const DEEPSEEK_NOTIFY_BALANCE = numberArg(ARGS.deepseek_notify_balance, 5);
 
 /* ── 通用工具 ── */
 function safeDecode(value) {
@@ -113,12 +96,6 @@ function formatTime() {
   const date = new Date();
   const pad = (number) => String(number).padStart(2, "0");
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function todayLocal() {
-  const date = new Date();
-  const pad = (number) => String(number).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 /* 面板单行宽度估算：中日韩字符按两个半角计 */
@@ -196,167 +173,6 @@ function finish(content, icon = PANEL_ICON, iconColor = PANEL_ICON_COLOR) {
 
 function fail(message) {
   finish(`❌ ${message}`, ERROR_ICON, PANEL_DANGER_COLOR);
-}
-
-/* ── Sub2API：各站余额 ── */
-
-const SUB2API_CACHE_KEY = "aiapi_relay_cache";
-const SUB2API_CACHE_TTL_MS = 24 * 3600 * 1000;
-
-/* 站点写法：host=key 或 名称@host=key，多个站点用竖线分隔 */
-function parseSub2Sites(input) {
-  const list = [];
-  for (const chunk of String(input).split("|")) {
-    const item = chunk.trim();
-    if (!item) continue;
-    const split = item.indexOf("=");
-    if (split < 0) continue;
-    const left = item.slice(0, split).trim();
-    const key = item.slice(split + 1).trim();
-    if (!left || !key) continue;
-    const at = left.indexOf("@");
-    const label = at >= 0 ? left.slice(0, at).trim() : "";
-    const host = at >= 0 ? left.slice(at + 1).trim() : left;
-    if (!host) continue;
-    list.push({ name: label || host, host, key });
-  }
-  return list;
-}
-
-/* 兼容 host 传域名、带 scheme 或已含 /v1 的写法 */
-function usageURL(host) {
-  let base = String(host || "").trim();
-  if (!/^https?:\/\//i.test(base)) base = `https://${base}`;
-  base = base.replace(/\/+$/, "");
-  if (!/\/v\d+$/i.test(base)) base += "/v1";
-  return `${base}/usage`;
-}
-
-async function fetchSub2Site(site) {
-  try {
-    const response = await request("get", usageURL(site.host), {
-      Accept: "application/json",
-      Authorization: `Bearer ${site.key}`,
-    });
-    if (response.status === 401 || response.status === 403) return { site, ok: false, error: "Key 无效" };
-    if (response.status === 429) return { site, ok: false, error: "请求频繁" };
-    if (response.status === 404) return { site, ok: false, error: "接口不存在" };
-    if (response.status !== 200) return { site, ok: false, error: `HTTP ${response.status}` };
-    let json;
-    try { json = JSON.parse(response.body); }
-    catch (_) { return { site, ok: false, error: "响应异常" }; }
-    if (!json || typeof json !== "object") return { site, ok: false, error: "响应异常" };
-    return { site, ok: true, data: json };
-  } catch (error) {
-    const text = String((error && error.message) || error);
-    return { site, ok: false, error: /timeout|timed out/i.test(text) ? "超时" : "连接失败" };
-  }
-}
-
-function summaryText(json) {
-  const quota = json.quota;
-  if (quota) {
-    const limit = numeric(quota.limit);
-    const remaining = numeric(quota.remaining);
-    if (limit !== null && limit > 0 && remaining !== null) return `余额 ${money(remaining)} / ${money(limit)}`;
-  }
-  if (json.subscription) {
-    const remaining = numeric(json.remaining);
-    if (remaining !== null && remaining >= 0) return `剩余 ${money(remaining)}`;
-    return "无周期限额";
-  }
-  const balance = numeric(json.balance);
-  if (balance !== null) return `余额 ${money(balance)}`;
-  const remaining = numeric(json.remaining);
-  if (remaining !== null && remaining >= 0) return `余额 ${money(remaining)}`;
-  return "无余额字段";
-}
-
-function expirySuffix(json) {
-  const days = numeric(json.days_until_expiry);
-  if (days === null) return "";
-  if (days <= 0) return " · 已到期";
-  if (days <= 30) return ` · 剩 ${days} 天`;
-  return "";
-}
-
-/* 面板字体为比例字体，空格无法对齐，统一用分隔点 */
-function sub2Lines(results) {
-  return results.map((item) => {
-    const name = String(item.site.name);
-    if (!item.ok) return `${name} · ❌ ${item.error}`;
-    return `${name} · ${summaryText(item.data)}${expirySuffix(item.data)}`;
-  });
-}
-
-function sub2HealthRatio(results) {
-  let min = null;
-  for (const item of results) {
-    if (!item.ok || !item.data || !item.data.quota) continue;
-    const limit = numeric(item.data.quota.limit);
-    const remaining = numeric(item.data.quota.remaining);
-    if (limit === null || limit <= 0 || remaining === null) continue;
-    const ratio = remaining / limit;
-    if (min === null || ratio < min) min = ratio;
-  }
-  return min;
-}
-
-function sub2HealthRisk(results) {
-  const ratio = sub2HealthRatio(results);
-  if (ratio === null) return 0;
-  if (ratio <= 0.1) return 2;
-  if (ratio <= 0.3) return 1;
-  return 0;
-}
-
-function sub2LowBalanceItems(results, threshold) {
-  if (threshold <= 0) return [];
-  const hits = [];
-  for (const item of results) {
-    if (!item.ok || !item.data) continue;
-    let amount = null;
-    if (item.data.quota) amount = numeric(item.data.quota.remaining);
-    else if (item.data.balance !== undefined) amount = numeric(item.data.balance);
-    else amount = numeric(item.data.remaining);
-    if (amount !== null && amount < threshold) hits.push(`${item.site.name} ${money(amount)}`);
-  }
-  return hits;
-}
-
-function readSub2Cache() {
-  try {
-    const raw = $persistentStore.read(SUB2API_CACHE_KEY);
-    if (!raw) return null;
-    const cached = JSON.parse(raw);
-    if (!cached || !cached.results) return null;
-    if (Date.now() - Number(cached.at || 0) > SUB2API_CACHE_TTL_MS) return null;
-    return cached;
-  } catch (_) { return null; }
-}
-
-function writeSub2Cache(results) {
-  try {
-    const slim = results.map((item) => ({
-      site: { name: item.site.name, host: item.site.host },
-      ok: item.ok,
-      error: item.error || null,
-      data: item.data || null,
-    }));
-    $persistentStore.write(JSON.stringify({ at: Date.now(), results: slim }), SUB2API_CACHE_KEY);
-  } catch (_) {}
-}
-
-function notifySub2LowBalance(results) {
-  if (SUB2API_NOTIFY_BALANCE === 0) return;
-  const hits = sub2LowBalanceItems(results, SUB2API_NOTIFY_BALANCE);
-  if (!hits.length) return;
-  const key = `aiapi_relay_notice_${todayLocal()}`;
-  try {
-    if ($persistentStore.read(key)) return;
-    $notification.post(`${PANEL_TITLE} 余额提醒`, `低于 ${money(SUB2API_NOTIFY_BALANCE)}：${hits.join(" · ")}`, "请及时充值");
-    $persistentStore.write("1", key);
-  } catch (_) {}
 }
 
 /* ── CCH：各上游余额（限额可选） ── */
@@ -690,14 +506,6 @@ function formatUsagePercent(ratio) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
-/* 与另外两类统一用“余额”；并发已在 CCH 侧配置好，不做实时展示 */
-function cchUserLines(site, data, showName) {
-  const amount = data.total
-    ? `余额 ${money(data.total.limit - data.total.used)}`
-    : "余额 未设置";
-  return [`${cchSitePrefix(site, showName)}${amount}`];
-}
-
 /* 上游地址：同一站点常有多把密钥、对应多个供应商条目，按地址归并才不重复 */
 function providerHost(url) {
   const text = String(url || "").trim();
@@ -765,11 +573,6 @@ function cchGroupLabels(providers, vendors) {
   return labels;
 }
 
-/* 只配了一个 CCH 站点时不带站名，多站点时才用站名区分 */
-function cchSitePrefix(site, showName) {
-  return showName ? `${site.name} · ` : "";
-}
-
 /* 上游余额行：按厂商归并，余额取该厂商最低值，按余额从低到高排 */
 function cchUpstreamRows(providers, balances, vendors) {
   const byId = new Map(providers.map((item) => [Number(item.id), item]));
@@ -828,55 +631,72 @@ function cchUpstreamRows(providers, balances, vendors) {
   return rows;
 }
 
-function cchAdminLines(site, data, showName) {
-  const prefix = cchSitePrefix(site, showName);
+/* CCH 各站余额合成一张表：admin 站点展开各上游，user/cookie/login 站点是该站账户余额 */
+function cchBalanceLines(results, wrap) {
   const lines = [];
-  const overview = data.overview || {};
-  const providers = Array.isArray(data.providers) ? data.providers : [];
-  const balances = data.balances;
-  const budget = Math.max(16, CCH_ROW_WIDTH - measure(prefix));
+  const rows = [];
+  const failed = [];
 
-  const rows = cchUpstreamRows(providers, balances, data.vendors);
+  for (const item of results) {
+    if (item.error) {
+      failed.push(`${item.site.name} · ❌ ${String((item.error && item.error.message) || item.error)}`);
+      continue;
+    }
+    if (item.data.kind === "admin") {
+      for (const row of cchUpstreamRows(item.data.providers || [], item.data.balances, item.data.vendors)) {
+        rows.push(row);
+      }
+      continue;
+    }
+    const total = item.data.total;
+    const amount = total ? total.limit - total.used : null;
+    rows.push({
+      amount,
+      parts: [item.site.name, total ? `余额 ${money(amount)}` : "余额 未设置"],
+    });
+  }
+
+  rows.sort((a, b) => {
+    const left = a.amount === null ? Infinity : a.amount;
+    const right = b.amount === null ? Infinity : b.amount;
+    return left - right;
+  });
+
   if (rows.length) {
-    lines.push(prefix + `上游 ${rows.length}`);
-    /* 厂商名与金额固定同一行；金额放不下时自动落到下一行 */
+    lines.push(`上游 ${rows.length}`);
+    /* 站名与金额固定同一行；金额放不下时自动落到下一行 */
     for (const row of rows.slice(0, CCH_ADMIN_MAX)) {
-      for (const line of layoutRows(row.parts, budget)) lines.push(line);
+      if (wrap) {
+        for (const line of layoutRows(row.parts, CCH_ROW_WIDTH)) lines.push(line);
+      } else {
+        lines.push(row.parts.join(" · "));
+      }
     }
     if (rows.length > CCH_ADMIN_MAX) lines.push(`另有 ${rows.length - CCH_ADMIN_MAX} 个上游`);
-  } else if (balances === null) {
-    lines.push(prefix + "⚠️ 上游余额查询失败");
-  } else {
-    lines.push(prefix + "上游未提供余额接口");
+  } else if (!failed.length) {
+    lines.push("上游未提供余额接口");
   }
+  for (const line of failed) lines.push(line);
 
-  /* 供应商限额（5 小时/日/周/月用量）与上游余额是两回事，默认不展示 */
-  if (CCH_SHOW_LIMITS) {
-    const limitProviders = Array.isArray(data.quota && data.quota.providers) ? data.quota.providers : [];
-    /* 只列设了限额的供应商，按使用率从高到低 */
-    const limited = limitProviders
-      .filter((provider) => provider.quota)
-      .sort((a, b) => {
-        const left = a.quota ? a.quota.ratio : 0;
-        const right = b.quota ? b.quota.ratio : 0;
-        return right - left;
-      });
-
-    if (!limited.length) {
-      lines.push("未设置供应商限额");
-    } else {
-      for (const provider of limited.slice(0, CCH_ADMIN_MAX)) {
-        const parts = [`${provider.name} ${formatUsagePercent(provider.quota.ratio)}`, `额度 ${money(provider.quota.current)}/${money(provider.quota.limit)}`];
-        for (const row of layoutRows(parts, budget)) lines.push(row);
-      }
-      if (limited.length > CCH_ADMIN_MAX) lines.push(`另有 ${limited.length - CCH_ADMIN_MAX} 个限额供应商`);
+  /* 统计与限额取自 admin 站点，多个 admin 站点时带站名区分 */
+  const admins = results.filter((item) => item.data && item.data.kind === "admin");
+  for (const item of admins) {
+    const prefix = admins.length > 1 ? `${item.site.name} · ` : "";
+    for (const line of cchOverviewLines(item.data.overview)) lines.push(prefix + line);
+    if (CCH_SHOW_LIMITS) {
+      for (const line of cchLimitLines(item.data)) lines.push(prefix + line);
     }
   }
+  return lines;
+}
 
-  lines.push("");
+/* 今日请求与成本、错误率与响应时间 */
+function cchOverviewLines(overview) {
+  const data = overview || {};
+  const lines = [];
 
-  const requests = numeric(overview.todayRequests);
-  const cost = numeric(overview.todayCost);
+  const requests = numeric(data.todayRequests);
+  const cost = numeric(data.todayCost);
   if (requests !== null || cost !== null) {
     const head = [];
     if (requests !== null) head.push(`今日 ${formatInteger(requests)} 次`);
@@ -884,8 +704,8 @@ function cchAdminLines(site, data, showName) {
     lines.push(head.join(" · "));
   }
 
-  const errorRate = numeric(overview.todayErrorRate);
-  const responseTime = numeric(overview.avgResponseTime);
+  const errorRate = numeric(data.todayErrorRate);
+  const responseTime = numeric(data.avgResponseTime);
   if (errorRate !== null || responseTime !== null) {
     const tail = [];
     if (errorRate !== null) tail.push(`错误 ${formatPercent(errorRate)}`);
@@ -893,7 +713,31 @@ function cchAdminLines(site, data, showName) {
     lines.push(tail.join(" · "));
   }
 
-  if (CCH_SHOW_LIMITS && data.stale) lines.push("⚠️ 额度来自缓存");
+  return lines;
+}
+
+/* 供应商限额（5 小时/日/周/月用量），默认不展示 */
+function cchLimitLines(data) {
+  const lines = [];
+  const providers = Array.isArray(data.quota && data.quota.providers) ? data.quota.providers : [];
+  /* 只列设了限额的供应商，按使用率从高到低 */
+  const limited = providers
+    .filter((provider) => provider.quota)
+    .sort((a, b) => {
+      const left = a.quota ? a.quota.ratio : 0;
+      const right = b.quota ? b.quota.ratio : 0;
+      return right - left;
+    });
+
+  if (!limited.length) {
+    lines.push("未设置供应商限额");
+    return lines;
+  }
+  for (const provider of limited.slice(0, CCH_ADMIN_MAX)) {
+    lines.push(`${provider.name} ${formatUsagePercent(provider.quota.ratio)} · 额度 ${money(provider.quota.current)}/${money(provider.quota.limit)}`);
+  }
+  if (limited.length > CCH_ADMIN_MAX) lines.push(`另有 ${limited.length - CCH_ADMIN_MAX} 个限额供应商`);
+  if (data.stale) lines.push("⚠️ 额度来自缓存");
   return lines;
 }
 
@@ -947,92 +791,13 @@ function cchRisk(data) {
   return risk;
 }
 
-/* ── DeepSeek：仅日报使用 ── */
+/* ── 币种 ── */
 
-const DEEPSEEK_URL = "https://api.deepseek.com/user/balance";
 const CURRENCY_SYMBOLS = { CNY: "¥", USD: "$", EUR: "€", GBP: "£", JPY: "¥" };
 
 function currencySymbol(currency) {
   return CURRENCY_SYMBOLS[String(currency || "").toUpperCase()] || "";
 }
-
-function deepseekMoney(currency, value) {
-  const amount = Number(value);
-  const text = Number.isFinite(amount) ? amount.toFixed(2) : String(value);
-  return `${currencySymbol(currency)}${text}`;
-}
-
-async function fetchDeepSeek() {
-  if (!DEEPSEEK_KEY) return { ok: false, error: "未配置 Key" };
-  try {
-    const response = await request("get", DEEPSEEK_URL, {
-      Accept: "application/json",
-      Authorization: `Bearer ${DEEPSEEK_KEY}`,
-    });
-    if (response.status === 401 || response.status === 403) return { ok: false, error: "Key 无效或已失效" };
-    if (response.status !== 200) return { ok: false, error: `HTTP ${response.status}` };
-    let json;
-    try { json = JSON.parse(response.body); }
-    catch (_) { return { ok: false, error: "响应解析失败" }; }
-    const infos = Array.isArray(json && json.balance_infos) ? json.balance_infos : [];
-    if (!infos.length) return { ok: false, error: "未返回余额信息" };
-    return { ok: true, json, infos };
-  } catch (_) {
-    return { ok: false, error: "连接失败" };
-  }
-}
-
-/* DeepSeek 面板行：余额一行，低于阈值补一行提示 */
-function deepseekPanelLines(result) {
-  if (!result.ok) return [`DeepSeek · ❌ ${result.error}`];
-  const lines = [];
-  if (result.infos.length === 1) {
-    const info = result.infos[0];
-    lines.push(`DeepSeek · 余额 ${deepseekMoney(info.currency, info.total_balance)}`);
-  } else {
-    for (const info of result.infos) {
-      lines.push(`DeepSeek · ${info.currency} 余额 ${deepseekMoney(info.currency, info.total_balance)}`);
-    }
-  }
-  for (const info of result.infos) {
-    const amount = Number(info.total_balance);
-    if (DEEPSEEK_WARN_BALANCE > 0 && Number.isFinite(amount) && amount < DEEPSEEK_WARN_BALANCE) {
-      lines.push(`⚠️ DeepSeek 余额低于 ${deepseekMoney(info.currency, DEEPSEEK_WARN_BALANCE)}`);
-    }
-  }
-  return lines;
-}
-
-function deepseekLowRisk(result) {
-  if (!result || !result.ok) return 0;
-  for (const info of result.infos) {
-    const amount = Number(info.total_balance);
-    if (DEEPSEEK_WARN_BALANCE > 0 && Number.isFinite(amount) && amount < DEEPSEEK_WARN_BALANCE) return 1;
-  }
-  return 0;
-}
-
-/* 低余额通知按天去重，避免每次刷新都提醒 */
-function notifyDeepSeekLowBalance(result) {
-  if (!result || !result.ok || DEEPSEEK_NOTIFY_BALANCE === 0) return;
-  const today = todayLocal();
-  for (const info of result.infos) {
-    const amount = Number(info.total_balance);
-    if (!Number.isFinite(amount) || amount >= DEEPSEEK_NOTIFY_BALANCE) continue;
-    const currency = String(info.currency || "").toUpperCase();
-    const key = `deepseek_notice_${currency}_${today}`;
-    try {
-      if ($persistentStore.read(key)) continue;
-      $notification.post(
-        "DeepSeek 余额提醒",
-        `${currency} 余额 ${deepseekMoney(currency, info.total_balance)}，低于 ${deepseekMoney(currency, DEEPSEEK_NOTIFY_BALANCE)}`,
-        `充值余额：${deepseekMoney(currency, info.topped_up_balance)}`
-      );
-      $persistentStore.write("1", key);
-    } catch (_) {}
-  }
-}
-
 /* ── 取数 ── */
 
 function collectCchSites() {
@@ -1044,91 +809,32 @@ function collectCchSites() {
   return sites;
 }
 
-async function collectPanelData() {
-  const sub2Sites = parseSub2Sites(SUB2API_ENDPOINTS).slice(0, SUB2API_MAX_SITES);
-  const sub2Dropped = Math.max(0, parseSub2Sites(SUB2API_ENDPOINTS).length - sub2Sites.length);
-  const cchAll = collectCchSites();
-  const cchDropped = Math.max(0, cchAll.length - 5);
-  const cchSites = cchAll.slice(0, 5);
-
-  const [sub2Results, cchResults, deepseek] = await Promise.all([
-    sub2Sites.length ? Promise.all(sub2Sites.map((site) => fetchSub2Site(site))) : Promise.resolve([]),
-    cchSites.length
-      ? Promise.all(cchSites.map((site) => fetchCchSite(site).then(
-        (data) => ({ site, data }),
-        (error) => ({ site, error: error || new Error("请求失败") })
-      )))
-      : Promise.resolve([]),
-    DEEPSEEK_KEY ? fetchDeepSeek() : Promise.resolve(null),
-  ]);
-
-  return { sub2Results, sub2Dropped, cchResults, cchDropped, deepseek };
+/* 每个站点各自取数，一个站点失败只影响它自己那行 */
+async function fetchCchResults() {
+  const sites = collectCchSites();
+  return Promise.all(sites.map((site) => fetchCchSite(site).then(
+    (data) => ({ site, data }),
+    (error) => ({ site, error: error || new Error("请求失败") })
+  )));
 }
 
 /* ── 面板 ── */
 
 async function runPanel() {
-  const { sub2Results, sub2Dropped, cchResults, cchDropped, deepseek } = await collectPanelData();
-  if (!sub2Results.length && !cchResults.length && !deepseek) return finish("未配置", PANEL_ICON, "8E8E93");
+  const cchResults = await fetchCchResults();
+  if (!cchResults.length) return finish("未配置", PANEL_ICON, "8E8E93");
 
-  const lines = [];
-  /* 三类之间不留空行，保持整体统一；只有更新时间前留白 */
-  const addBlock = (block) => {
-    if (!block || !block.length) return;
-    for (const line of block) lines.push(line);
-  };
-
-  if (sub2Results.length) {
-    const block = [];
-    const allFailed = sub2Results.every((item) => !item.ok);
-    const cached = allFailed ? readSub2Cache() : null;
-    if (cached) {
-      /* 全部站点刷新失败时展示上次结果，并标明数据年龄 */
-      const age = Math.max(0, Math.round((Date.now() - Number(cached.at || 0)) / 60000));
-      block.push(`⚠️ 中转站刷新失败：${sub2Results[0].error}（缓存于 ${age} 分钟前）`);
-      for (const line of sub2Lines(cached.results)) block.push(line);
-    } else {
-      for (const line of sub2Lines(sub2Results)) block.push(line);
-      if (!allFailed) {
-        writeSub2Cache(sub2Results);
-        const hits = sub2LowBalanceItems(sub2Results, SUB2API_WARN_BALANCE);
-        if (hits.length) block.push(`⚠️ 余额偏低：${hits.join(" · ")}`);
-      }
-    }
-    if (sub2Dropped > 0) block.push(`另有 ${sub2Dropped} 个站点未显示`);
-    addBlock(block);
-  }
-
-  /* 只配一个 CCH 站点时不必带站名 */
-  const cchShowName = cchResults.length > 1;
-  const cchBlocks = cchResults.map((item) => (item.error
-    ? [`${cchSitePrefix(item.site, cchShowName)}❌ ${String((item.error && item.error.message) || item.error)}`]
-    : item.data.kind === "admin"
-      ? cchAdminLines(item.site, item.data, cchShowName)
-      : cchUserLines(item.site, item.data, cchShowName)));
-
-  if (cchDropped > 0 && cchBlocks.length) cchBlocks[cchBlocks.length - 1].push(`另有 ${cchDropped} 个站点未显示`);
-  for (const block of cchBlocks) addBlock(block);
-
-  if (deepseek) addBlock(deepseekPanelLines(deepseek));
-
+  const lines = cchBalanceLines(cchResults, true);
   lines.push("");
   lines.push(`更新 ${formatTime()}`);
 
-  /* 风险色取各部分最高值 */
-  let risk = sub2Results.every((item) => !item.ok) && sub2Results.length ? 1 : sub2HealthRisk(sub2Results);
-  if (cchResults.some((item) => item.error)) risk = Math.max(risk, 1);
-  for (const item of cchResults) if (item.data) risk = Math.max(risk, cchRisk(item.data));
-
-  const cchFailed = cchResults.length > 0 && cchResults.every((item) => item.error);
-  const sub2Failed = sub2Results.length > 0 && sub2Results.every((item) => !item.ok);
-  if (cchFailed && sub2Failed) risk = 2;
-
-  risk = Math.max(risk, deepseekLowRisk(deepseek));
-  if (deepseek && !deepseek.ok && DEEPSEEK_KEY) risk = Math.max(risk, 1);
-
-  if (!cchFailed || sub2Results.some((item) => item.ok)) notifySub2LowBalance(sub2Results);
-  notifyDeepSeekLowBalance(deepseek);
+  /* 风险色取各站点最高值：站点取数失败或余额整体查不到都会变色 */
+  let risk = 0;
+  for (const item of cchResults) {
+    if (item.error) risk = Math.max(risk, 1);
+    else if (item.data) risk = Math.max(risk, cchRisk(item.data));
+  }
+  if (cchResults.every((item) => item.error)) risk = 2;
 
   const color = risk >= 2 ? PANEL_DANGER_COLOR : risk >= 1 ? PANEL_WARN_COLOR : PANEL_ICON_COLOR;
   finish(lines.join("\n"), PANEL_ICON, color);
@@ -1136,93 +842,15 @@ async function runPanel() {
 
 /* ── 日报 ── */
 
-/* CCH 站点的日报正文：admin 站点列上游余额（与面板同一套归并规则），其余模式仍是账户余额 */
-function cchDailyLines(site, data, showName) {
-  const prefix = showName ? `${site.name}：` : "";
-  const overview = data.overview || {};
-
-  if (data.kind !== "admin") {
-    const amount = data.total
-      ? `余额 ${money(data.total.limit - data.total.used)}`
-      : "余额 未设置";
-    return [`${prefix}${amount}`];
-  }
-
-  const providers = Array.isArray(data.providers) ? data.providers : [];
-  const rows = cchUpstreamRows(providers, data.balances, data.vendors);
-  const lines = [];
-
-  if (rows.length) {
-    lines.push(`${prefix}上游 ${rows.length}`);
-    for (const row of rows.slice(0, CCH_ADMIN_MAX)) lines.push(row.parts.join(" · "));
-    if (rows.length > CCH_ADMIN_MAX) lines.push(`另有 ${rows.length - CCH_ADMIN_MAX} 个上游`);
-  } else {
-    lines.push(`${prefix}${data.balances === null ? "⚠️ 上游余额查询失败" : "上游未提供余额接口"}`);
-  }
-
-  const parts = [];
-  const concurrent = numeric(overview.concurrentSessions);
-  if (concurrent !== null) parts.push(`并发 ${concurrent}`);
-  const cost = numeric(overview.todayCost);
-  if (cost !== null) parts.push(`今日 ${money(cost)}`);
-  const errorRate = numeric(overview.todayErrorRate);
-  if (errorRate !== null) parts.push(`错误 ${formatPercent(errorRate)}`);
-  if (parts.length) lines.push(parts.join(" · "));
-
-  return lines;
-}
-
 async function runDaily() {
   const dailyFlag = String(ARGS.aiapi_daily_notify || "true").trim().toLowerCase();
   if (dailyFlag === "false" || dailyFlag === "0" || dailyFlag === "no" || dailyFlag === "off") return $done();
 
-  const sub2Sites = parseSub2Sites(SUB2API_ENDPOINTS).slice(0, SUB2API_MAX_SITES);
-  const cchSites = collectCchSites().slice(0, 5);
+  const cchResults = await fetchCchResults();
+  if (!cchResults.length) return $done();
 
-  const [sub2Results, cchResults, deepseek] = await Promise.all([
-    Promise.all(sub2Sites.map((site) => fetchSub2Site(site))),
-    Promise.all(cchSites.map((site) => fetchCchSite(site).then(
-      (data) => ({ site, data }),
-      (error) => ({ site, error: error || new Error("请求失败") })
-    ))),
-    fetchDeepSeek(),
-  ]);
-
-  const sections = [];
-
-  if (sub2Results.length) {
-    sections.push(["【中转站】"].concat(sub2Results.map((item) => (item.ok
-      ? `${item.site.name}：${summaryText(item.data)}${expirySuffix(item.data)}`
-      : `${item.site.name}：❌ ${item.error}`))));
-  }
-
-  if (cchResults.length) {
-    /* 只配一个 CCH 站点时不必带站名 */
-    const showName = cchResults.length > 1;
-    const block = ["【CCH】"];
-    for (const item of cchResults) {
-      const prefix = showName ? `${item.site.name}：` : "";
-      if (item.error) {
-        block.push(`${prefix}❌ ${String((item.error && item.error.message) || item.error)}`);
-        continue;
-      }
-      for (const line of cchDailyLines(item.site, item.data, showName)) block.push(line);
-    }
-    sections.push(block);
-  }
-
-  if (deepseek.ok) {
-    sections.push(["【DeepSeek】"].concat(deepseek.infos.map(
-      (info) => `${info.currency}：余额 ${deepseekMoney(info.currency, info.total_balance)}`
-    )));
-  } else if (DEEPSEEK_KEY) {
-    sections.push(["【DeepSeek】", `❌ ${deepseek.error}`]);
-  }
-
-  if (!sections.length) return $done();
-
-  const subtitle = `中转站 ${sub2Results.length} · CCH ${cchResults.length} · DeepSeek ${deepseek.ok ? deepseek.infos.length : 0}`;
-  $notification.post(`${PANEL_TITLE} 日报`, subtitle, sections.map((block) => block.join("\n")).join("\n\n"));
+  const body = ["【CCH】"].concat(cchBalanceLines(cchResults, false)).join("\n");
+  $notification.post(`${PANEL_TITLE} 日报`, `CCH ${cchResults.length}`, body);
   return $done();
 }
 
