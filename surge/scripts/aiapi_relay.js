@@ -701,14 +701,11 @@ function cchSitePriority(site, priorities) {
 function cchBalanceLines(results, wrap) {
   const lines = [];
   const rows = [];
-  const failed = [];
   const priorities = cchSitePriorities(results);
 
   for (const item of results) {
-    if (item.error) {
-      failed.push(`${item.site.name} · ❌ ${String((item.error && item.error.message) || item.error)}`);
-      continue;
-    }
+    /* 取数失败或查不到余额的都不占行，只由面板图标变色提示 */
+    if (item.error) continue;
     if (item.data.kind === "admin") {
       for (const row of cchUpstreamRows(item.data.providers || [], item.data.balances, item.data.vendors)) {
         rows.push(row);
@@ -737,19 +734,23 @@ function cchBalanceLines(results, wrap) {
       }
     }
     if (rows.length > CCH_ADMIN_MAX) lines.push(`另有 ${rows.length - CCH_ADMIN_MAX} 个上游`);
-  } else if (!failed.length) {
-    lines.push("上游未提供余额接口");
+  } else {
+    lines.push("未获取到余额");
   }
-  for (const line of failed) lines.push(line);
 
-  /* 统计与限额取自 admin 站点，多个 admin 站点时带站名区分 */
+  /* 统计与限额取自 admin 站点，多个 admin 站点时带站名区分；与余额之间空一行 */
+  const details = [];
   const admins = results.filter((item) => item.data && item.data.kind === "admin");
   for (const item of admins) {
     const prefix = admins.length > 1 ? `${item.site.name} · ` : "";
-    for (const line of cchOverviewLines(item.data.overview)) lines.push(prefix + line);
+    for (const line of cchOverviewLines(item.data.overview)) details.push(prefix + line);
     if (CCH_SHOW_LIMITS) {
-      for (const line of cchLimitLines(item.data)) lines.push(prefix + line);
+      for (const line of cchLimitLines(item.data)) details.push(prefix + line);
     }
+  }
+  if (details.length) {
+    lines.push("");
+    for (const line of details) lines.push(line);
   }
   return lines;
 }
