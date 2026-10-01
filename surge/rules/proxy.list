@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-09-30T14:00:02Z
-# Total:   20151
+# Updated: 2026-10-01T14:00:02Z
+# Total:   20152
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -7266,6 +7266,7 @@ DOMAIN-SUFFIX,futustatic.com
 DOMAIN-SUFFIX,fututrade.com
 DOMAIN-SUFFIX,fututrustee.com
 DOMAIN-SUFFIX,fuxporn.com
+DOMAIN-SUFFIX,fuyin116.com
 DOMAIN-SUFFIX,fuzokudx.com
 DOMAIN-SUFFIX,fxcm-chinese.com
 DOMAIN-SUFFIX,fxcorporate.com
