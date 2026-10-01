@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-09-29T14:00:21Z
-# Total:   6757
+# Updated: 2026-10-01T14:00:18Z
+# Total:   6761
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -2446,6 +2446,7 @@ DOMAIN-SUFFIX,img.gmo.jp
 DOMAIN-SUFFIX,img.gs
 DOMAIN-SUFFIX,img.haiwaikan.com
 DOMAIN-SUFFIX,img.hellofresh.com
+DOMAIN-SUFFIX,img.helpnetsecurity.com
 DOMAIN-SUFFIX,img.hentaihaven.xxx
 DOMAIN-SUFFIX,img.highporn.net
 DOMAIN-SUFFIX,img.huffingtonpost.com
@@ -2518,6 +2519,7 @@ DOMAIN-SUFFIX,img1.yeggi.com
 DOMAIN-SUFFIX,img1.yna.co.kr
 DOMAIN-SUFFIX,img2.acsta.net
 DOMAIN-SUFFIX,img2.gelbooru.com
+DOMAIN-SUFFIX,img2.helpnetsecurity.com
 DOMAIN-SUFFIX,img2.javmost.com
 DOMAIN-SUFFIX,img2.socialshopwave.com
 DOMAIN-SUFFIX,img2.tnaflix.com
@@ -5130,6 +5132,7 @@ DOMAIN-SUFFIX,dl.flathub.org
 DOMAIN-SUFFIX,dl.getaurora.dev
 DOMAIN-SUFFIX,dl.gl-inet.com
 DOMAIN-SUFFIX,dl.google.com
+DOMAIN-SUFFIX,dl.heycue.io
 DOMAIN-SUFFIX,dl.iina.io
 DOMAIN-SUFFIX,dl.imobie.com
 DOMAIN-SUFFIX,dl.l.google.com
@@ -5200,6 +5203,7 @@ DOMAIN-SUFFIX,download.hikarifield.co.jp
 DOMAIN-SUFFIX,download.iboysoft.com
 DOMAIN-SUFFIX,download.jetbrains.com
 DOMAIN-SUFFIX,download.kde.org
+DOMAIN-SUFFIX,download.manus.im
 DOMAIN-SUFFIX,download.maxmind.com
 DOMAIN-SUFFIX,download.mersenne.ca
 DOMAIN-SUFFIX,download.mikrotik.com
