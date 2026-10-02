@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-10-01T14:00:18Z
-# Total:   6761
+# Updated: 2026-10-02T14:00:19Z
+# Total:   6763
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -378,6 +378,7 @@ DOMAIN-SUFFIX,assets.sendinblue.com
 DOMAIN-SUFFIX,assets.shazam.com
 DOMAIN-SUFFIX,assets.shortbread.aws.dev
 DOMAIN-SUFFIX,assets.shots.so
+DOMAIN-SUFFIX,assets.singaporeair.com
 DOMAIN-SUFFIX,assets.slater.app
 DOMAIN-SUFFIX,assets.sololearn.com
 DOMAIN-SUFFIX,assets.speedvitals.com
@@ -1831,6 +1832,7 @@ DOMAIN-SUFFIX,fa.gsma.com
 DOMAIN-SUFFIX,faceit-cdn.net
 DOMAIN-SUFFIX,fakeimg.pl
 DOMAIN-SUFFIX,fakestoreapi.com
+DOMAIN-SUFFIX,fal.media
 DOMAIN-SUFFIX,fast-sfc.com
 DOMAIN-SUFFIX,fast.appcues.com
 DOMAIN-SUFFIX,fast.chameleon.io
