@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-10-05T14:00:02Z
-# Total:   20153
+# Updated: 2026-10-07T14:00:02Z
+# Total:   20164
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -3027,6 +3027,7 @@ DOMAIN-SUFFIX,blpevents.com
 DOMAIN-SUFFIX,blpprofessional.com
 DOMAIN-SUFFIX,blubank.com
 DOMAIN-SUFFIX,blubrry.com
+DOMAIN-SUFFIX,blue-plus.net
 DOMAIN-SUFFIX,bluefootcms.com
 DOMAIN-SUFFIX,bluehatil.com
 DOMAIN-SUFFIX,bluehatnights.com
@@ -4955,6 +4956,7 @@ DOMAIN-SUFFIX,dezyred.com
 DOMAIN-SUFFIX,dfvpn.com
 DOMAIN-SUFFIX,dgaqp.com
 DOMAIN-SUFFIX,dgwav.com
+DOMAIN-SUFFIX,dh.net
 DOMAIN-SUFFIX,dh44.lol
 DOMAIN-SUFFIX,dhlestudio.com.co
 DOMAIN-SUFFIX,diablo.com
@@ -8034,7 +8036,9 @@ DOMAIN-SUFFIX,hangout
 DOMAIN-SUFFIX,hanime.me
 DOMAIN-SUFFIX,hanime.tv
 DOMAIN-SUFFIX,hanime.xyz
+DOMAIN-SUFFIX,hanime1.com
 DOMAIN-SUFFIX,hanime1.me
+DOMAIN-SUFFIX,hanimeone.me
 DOMAIN-SUFFIX,hanr-bao.mom
 DOMAIN-SUFFIX,hanzhen.xmulib.org
 DOMAIN-SUFFIX,hao21.xyz
@@ -9441,6 +9445,7 @@ DOMAIN-SUFFIX,iosinthecar.com
 DOMAIN-SUFFIX,iotinactionevents.com
 DOMAIN-SUFFIX,ip73.com
 DOMAIN-SUFFIX,ipa-iphone.net
+DOMAIN-SUFFIX,ipac.global
 DOMAIN-SUFFIX,ipad.host
 DOMAIN-SUFFIX,ipad.wang
 DOMAIN-SUFFIX,ipad3.com
@@ -9701,6 +9706,7 @@ DOMAIN-SUFFIX,javbuz.com
 DOMAIN-SUFFIX,javcc.cc
 DOMAIN-SUFFIX,javcc.com
 DOMAIN-SUFFIX,javcdn.cc
+DOMAIN-SUFFIX,javchu.com
 DOMAIN-SUFFIX,javcl.com
 DOMAIN-SUFFIX,javct.net
 DOMAIN-SUFFIX,javcup.com
@@ -11526,6 +11532,7 @@ DOMAIN-SUFFIX,moeero-library.com
 DOMAIN-SUFFIX,moeerolibrary.com
 DOMAIN-SUFFIX,moefuns.co
 DOMAIN-SUFFIX,moeimg.net
+DOMAIN-SUFFIX,moeli-desu.com
 DOMAIN-SUFFIX,moepedia.net
 DOMAIN-SUFFIX,moeshare.cc
 DOMAIN-SUFFIX,moez-m.com
@@ -12085,6 +12092,7 @@ DOMAIN-SUFFIX,nationalgeographic.com
 DOMAIN-SUFFIX,nationalgeographicpartners.com
 DOMAIN-SUFFIX,nationalinterest.org
 DOMAIN-SUFFIX,nationalreview.com
+DOMAIN-SUFFIX,nationthailand.com
 DOMAIN-SUFFIX,nationwide.com
 DOMAIN-SUFFIX,naturalvoices.com
 DOMAIN-SUFFIX,nature.com
@@ -12132,6 +12140,7 @@ DOMAIN-SUFFIX,ncn.org
 DOMAIN-SUFFIX,ndi.org
 DOMAIN-SUFFIX,nebay.net
 DOMAIN-SUFFIX,neborder.com
+DOMAIN-SUFFIX,ned.org
 DOMAIN-SUFFIX,nee4you.com
 DOMAIN-SUFFIX,needforspeed.com
 DOMAIN-SUFFIX,needforspeedboost.com
@@ -14690,6 +14699,7 @@ DOMAIN-SUFFIX,rocksextube.com
 DOMAIN-SUFFIX,rockstargames.com
 DOMAIN-SUFFIX,rockstarnorth.com
 DOMAIN-SUFFIX,rockylinux.org
+DOMAIN-SUFFIX,rocmgov.org
 DOMAIN-SUFFIX,rojo.com
 DOMAIN-SUFFIX,roku.com
 DOMAIN-SUFFIX,rokutime.com
@@ -18847,6 +18857,7 @@ DOMAIN-SUFFIX,xvxx.stream
 DOMAIN-SUFFIX,xvxxtube.com
 DOMAIN-SUFFIX,xwbo.com
 DOMAIN-SUFFIX,xx-map.com
+DOMAIN-SUFFIX,xx.net
 DOMAIN-SUFFIX,xxbay.com
 DOMAIN-SUFFIX,xxbook.cc
 DOMAIN-SUFFIX,xxbrits.com
