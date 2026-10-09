@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-10-02T14:00:19Z
-# Total:   6763
+# Updated: 2026-10-09T14:00:20Z
+# Total:   6768
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -409,6 +409,7 @@ DOMAIN-SUFFIX,assets.unifi-ai.com
 DOMAIN-SUFFIX,assets.unredacted.org
 DOMAIN-SUFFIX,assets.upload.io
 DOMAIN-SUFFIX,assets.userstyles.org
+DOMAIN-SUFFIX,assets.vanta.com
 DOMAIN-SUFFIX,assets.vantage.sh
 DOMAIN-SUFFIX,assets.vercel.com
 DOMAIN-SUFFIX,assets.video.yahoo.net
@@ -3071,6 +3072,7 @@ DOMAIN-SUFFIX,mypinata.cloud
 DOMAIN-SUFFIX,myshopapps.com
 DOMAIN-SUFFIX,myspacecdn.com
 DOMAIN-SUFFIX,myvideos.info
+DOMAIN-SUFFIX,n.approveit.today
 DOMAIN-SUFFIX,na-library.klarnaservices.com
 DOMAIN-SUFFIX,namedotcom-cdn.name.tools
 DOMAIN-SUFFIX,nas2.d.tube
@@ -3537,6 +3539,7 @@ DOMAIN-SUFFIX,rules1.clearurls.xyz
 DOMAIN-SUFFIX,rules2.clearurls.xyz
 DOMAIN-SUFFIX,rum-agent.na-01.cloud.solarwinds.com
 DOMAIN-SUFFIX,rum-cdn.perfops.net
+DOMAIN-SUFFIX,rum-ingest.us1.signalfx.com
 DOMAIN-SUFFIX,rum.cronitor.io
 DOMAIN-SUFFIX,runkit-packages-static-executables.com
 DOMAIN-SUFFIX,runkit-packages-static.com
@@ -3890,6 +3893,7 @@ DOMAIN-SUFFIX,static-www.onlyoffice.com
 DOMAIN-SUFFIX,static-www.sendsafely.com
 DOMAIN-SUFFIX,static.3dporndude.com
 DOMAIN-SUFFIX,static.4shared.com
+DOMAIN-SUFFIX,static.acm.account.sony.com
 DOMAIN-SUFFIX,static.ada.support
 DOMAIN-SUFFIX,static.addtoany.com
 DOMAIN-SUFFIX,static.adguardvpn.com
@@ -6259,6 +6263,7 @@ DOMAIN-SUFFIX,registry.terraform.io
 DOMAIN-SUFFIX,release.arcboxcdn.com
 DOMAIN-SUFFIX,release.runcloud.io
 DOMAIN-SUFFIX,releases.arc.net
+DOMAIN-SUFFIX,releases.claude.com
 DOMAIN-SUFFIX,releases.grapheneos.org
 DOMAIN-SUFFIX,releases.hashicorp.com
 DOMAIN-SUFFIX,releases.landrop.app
