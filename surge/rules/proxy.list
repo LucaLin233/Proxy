@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-10-08T14:00:01Z
-# Total:   20165
+# Updated: 2026-10-10T14:00:02Z
+# Total:   20167
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -5521,7 +5521,6 @@ DOMAIN-SUFFIX,eamythic.com
 DOMAIN-SUFFIX,eamythic.net
 DOMAIN-SUFFIX,eanordic.com
 DOMAIN-SUFFIX,eaplay.com
-DOMAIN-SUFFIX,eaptechka.online
 DOMAIN-SUFFIX,earlytibet.com
 DOMAIN-SUFFIX,earngeek.com
 DOMAIN-SUFFIX,earphonescheapest.com
@@ -5824,6 +5823,7 @@ DOMAIN-SUFFIX,enemarotica.com
 DOMAIN-SUFFIX,enemas4fun.com
 DOMAIN-SUFFIX,enemasexfetish.com
 DOMAIN-SUFFIX,enematube.com
+DOMAIN-SUFFIX,energotransbank.com
 DOMAIN-SUFFIX,energystarbuildings.com
 DOMAIN-SUFFIX,enewstree.com
 DOMAIN-SUFFIX,enf-cmnf.com
@@ -7555,7 +7555,6 @@ DOMAIN-SUFFIX,gibdev.net
 DOMAIN-SUFFIX,giffgaff.com
 DOMAIN-SUFFIX,giffgaff.design
 DOMAIN-SUFFIX,gifnuki.com
-DOMAIN-SUFFIX,giga.chat
 DOMAIN-SUFFIX,gigabyte.com
 DOMAIN-SUFFIX,gigantits.com
 DOMAIN-SUFFIX,gigaporn.org
@@ -8487,6 +8486,7 @@ DOMAIN-SUFFIX,home-made-porn-movies.com
 DOMAIN-SUFFIX,home-made-videos.com
 DOMAIN-SUFFIX,home-sex-tapes.com
 DOMAIN-SUFFIX,home-song.com
+DOMAIN-SUFFIX,home.bank
 DOMAIN-SUFFIX,home.saxo
 DOMAIN-SUFFIX,homealonemilfs.com
 DOMAIN-SUFFIX,homebox.com
@@ -9884,10 +9884,6 @@ DOMAIN-SUFFIX,jiuse821.com
 DOMAIN-SUFFIX,jiuse822.com
 DOMAIN-SUFFIX,jiuse823.com
 DOMAIN-SUFFIX,jivara.global
-DOMAIN-SUFFIX,jivo.chat
-DOMAIN-SUFFIX,jivochat.com
-DOMAIN-SUFFIX,jivochat.com.co
-DOMAIN-SUFFIX,jivosite.com
 DOMAIN-SUFFIX,jiyou520.com
 DOMAIN-SUFFIX,jizzboom.com
 DOMAIN-SUFFIX,jizzbunker.com
@@ -10246,7 +10242,7 @@ DOMAIN-SUFFIX,kopfhorergunstigshop.com
 DOMAIN-SUFFIX,koranmandarin.com
 DOMAIN-SUFFIX,koreanpornmovie.com
 DOMAIN-SUFFIX,korewaeroi.com
-DOMAIN-SUFFIX,korona.com
+DOMAIN-SUFFIX,koronapay.com
 DOMAIN-SUFFIX,kostenlosepornoclips.com
 DOMAIN-SUFFIX,kotlinconf.com
 DOMAIN-SUFFIX,kotlinlang.org
@@ -10914,6 +10910,7 @@ DOMAIN-SUFFIX,mariobroswii.com
 DOMAIN-SUFFIX,mariokart7.com
 DOMAIN-SUFFIX,mariokart8.com
 DOMAIN-SUFFIX,mariosupersluggers.com
+DOMAIN-SUFFIX,maritimebank.com
 DOMAIN-SUFFIX,marketexecutive.net
 DOMAIN-SUFFIX,marketing-cloud.com
 DOMAIN-SUFFIX,marketing-nirvana.com
@@ -11096,7 +11093,6 @@ DOMAIN-SUFFIX,megacamz.com
 DOMAIN-SUFFIX,megaeth.com
 DOMAIN-SUFFIX,megafilmporno.com
 DOMAIN-SUFFIX,megafon.com
-DOMAIN-SUFFIX,megamarket.tech
 DOMAIN-SUFFIX,megapornfreehd.com
 DOMAIN-SUFFIX,megapornpics.com
 DOMAIN-SUFFIX,megaproxy.com
@@ -11536,6 +11532,7 @@ DOMAIN-SUFFIX,moeimg.net
 DOMAIN-SUFFIX,moeli-desu.com
 DOMAIN-SUFFIX,moepedia.net
 DOMAIN-SUFFIX,moeshare.cc
+DOMAIN-SUFFIX,moex.com
 DOMAIN-SUFFIX,moez-m.com
 DOMAIN-SUFFIX,mof.kemomi.me
 DOMAIN-SUFFIX,mofos.com
@@ -14098,6 +14095,7 @@ DOMAIN-SUFFIX,printeron.com
 DOMAIN-SUFFIX,printersetupsupport.com
 DOMAIN-SUFFIX,printspots.com
 DOMAIN-SUFFIX,printspots.net
+DOMAIN-SUFFIX,priovtb.com
 DOMAIN-SUFFIX,prism-break.org
 DOMAIN-SUFFIX,prismlauncher.org
 DOMAIN-SUFFIX,prismlive.com
@@ -14175,6 +14173,7 @@ DOMAIN-SUFFIX,pscdn.co
 DOMAIN-SUFFIX,pscp.tv
 DOMAIN-SUFFIX,pshvpn.com
 DOMAIN-SUFFIX,psiphon3.com
+DOMAIN-SUFFIX,pskb.com
 DOMAIN-SUFFIX,pstatic.net
 DOMAIN-SUFFIX,pstorage.space
 DOMAIN-SUFFIX,psyccareers.com
@@ -14959,11 +14958,7 @@ DOMAIN-SUFFIX,saynow.com
 DOMAIN-SUFFIX,sb-cd.com
 DOMAIN-SUFFIX,sb-telecom.net
 DOMAIN-SUFFIX,sb24.com
-DOMAIN-SUFFIX,sber.pro
-DOMAIN-SUFFIX,sberauto.com
-DOMAIN-SUFFIX,sberbank-tele.com
 DOMAIN-SUFFIX,sberbank.com
-DOMAIN-SUFFIX,sbercloud.tech
 DOMAIN-SUFFIX,sbgkstv.shop
 DOMAIN-SUFFIX,sbitravelcard.com
 DOMAIN-SUFFIX,sbme.me
@@ -15349,6 +15344,7 @@ DOMAIN-SUFFIX,sharkyporn.com
 DOMAIN-SUFFIX,sharmota.com
 DOMAIN-SUFFIX,shazam.com
 DOMAIN-SUFFIX,shdd.ink
+DOMAIN-SUFFIX,shedevrum.com
 DOMAIN-SUFFIX,sheflix.com
 DOMAIN-SUFFIX,shegg.com
 DOMAIN-SUFFIX,shegods.com
@@ -17913,6 +17909,7 @@ DOMAIN-SUFFIX,vsezoo.com
 DOMAIN-SUFFIX,vsphere.com
 DOMAIN-SUFFIX,vsphere.net
 DOMAIN-SUFFIX,vtb-direct.com
+DOMAIN-SUFFIX,vtb.com
 DOMAIN-SUFFIX,vtbglobalperspectives.com
 DOMAIN-SUFFIX,vtsociety.org
 DOMAIN-SUFFIX,vtunnel.com
@@ -19016,17 +19013,23 @@ DOMAIN-SUFFIX,yammer.com
 DOMAIN-SUFFIX,yamoon.club
 DOMAIN-SUFFIX,yandex
 DOMAIN-SUFFIX,yandex-bank.net
+DOMAIN-SUFFIX,yandex-team.com
 DOMAIN-SUFFIX,yandex.aero
 DOMAIN-SUFFIX,yandex.asia
 DOMAIN-SUFFIX,yandex.cloud
 DOMAIN-SUFFIX,yandex.com
 DOMAIN-SUFFIX,yandex.jobs
+DOMAIN-SUFFIX,yandex.market
 DOMAIN-SUFFIX,yandex.mobi
 DOMAIN-SUFFIX,yandex.net
 DOMAIN-SUFFIX,yandex.org
+DOMAIN-SUFFIX,yandex.pro
+DOMAIN-SUFFIX,yandex.taxi
+DOMAIN-SUFFIX,yandex.travel
 DOMAIN-SUFFIX,yandexadexchange.net
 DOMAIN-SUFFIX,yandexcloud.net
 DOMAIN-SUFFIX,yandexcom.net
+DOMAIN-SUFFIX,yandexdataschool.com
 DOMAIN-SUFFIX,yandexgo.com
 DOMAIN-SUFFIX,yandexwebcache.net
 DOMAIN-SUFFIX,yandexwebcache.org
@@ -19057,6 +19060,7 @@ DOMAIN-SUFFIX,yayadizhi.xyz
 DOMAIN-SUFFIX,yazhouse8.com
 DOMAIN-SUFFIX,yclients.com
 DOMAIN-SUFFIX,ycombinator.com
+DOMAIN-SUFFIX,ydb.tech
 DOMAIN-SUFFIX,yeahteentube.com
 DOMAIN-SUFFIX,yecl.net
 DOMAIN-SUFFIX,yeelou.com
@@ -19389,8 +19393,6 @@ DOMAIN-SUFFIX,zunked.com
 DOMAIN-SUFFIX,zuobiao.me
 DOMAIN-SUFFIX,zuola.com
 DOMAIN-SUFFIX,zvereff.com
-DOMAIN-SUFFIX,zvuk-b2b.com
-DOMAIN-SUFFIX,zvuk.com
 DOMAIN-SUFFIX,zweiporn.com
 DOMAIN-SUFFIX,zwtvusa.com
 DOMAIN-SUFFIX,zynamics.com
