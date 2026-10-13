@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-10-09T14:00:20Z
-# Total:   6768
+# Updated: 2026-10-13T14:00:20Z
+# Total:   6769
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -4420,6 +4420,7 @@ DOMAIN-SUFFIX,tiles.maps.eox.at
 DOMAIN-SUFFIX,tiles.maps.opensearch.org
 DOMAIN-SUFFIX,tiles.mapterhorn.com
 DOMAIN-SUFFIX,tiles.meteoguard.dtn.com
+DOMAIN-SUFFIX,tiles.onemap.gov.sg
 DOMAIN-SUFFIX,tiles.openfreemap.org
 DOMAIN-SUFFIX,tiles.openrailwaymap.org
 DOMAIN-SUFFIX,tiles.openseamap.org
