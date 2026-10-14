@@ -417,9 +417,9 @@ async function fetchCchAdminSite(site, headers) {
   const list = await fetchCchProviderList(site, headers);
   /* 限额表默认不展示，也就没必要为它多打一次接口 */
   const quota = CCH_SHOW_LIMITS ? await fetchCchAdminQuota(site, headers, list) : null;
-  const [balances, vendors, overview] = await Promise.all([
-    fetchCchBalances(site, headers, list),
-    fetchCchVendors(site, headers),
+  const vendors = await fetchCchVendors(site, headers);
+  const [balances, overview] = await Promise.all([
+    fetchCchBalances(site, headers, cchBalanceProviders(list, vendors)),
     fetchCchOverview(site, headers),
   ]);
   return {
@@ -563,6 +563,16 @@ function providerBrand(name) {
   return cut || text;
 }
 
+/* 只查启用上游的余额；Clouder 已单独配置账户查询，不从主 CCH 重复获取。 */
+function cchBalanceProviders(providers, vendors) {
+  return providers.filter((provider) => {
+    if (provider.isEnabled === false) return false;
+    const vendor = vendors ? vendors.get(Number(provider.providerVendorId)) : null;
+    return providerBrand(provider.name).toLowerCase() !== "clouder"
+      && providerBrand(vendor && vendor.name).toLowerCase() !== "clouder";
+  });
+}
+
 /* 上游显示名取该厂商下各供应商名称的品牌；名称不一致时才退回 CCH 厂商名 */
 /* 厂商分组信息：显示名取供应商名的品牌部分，优先级取组内最小值（CCH 里数值越小越优先） */
 function cchGroupInfo(providers, vendors) {
@@ -606,6 +616,7 @@ function compareRows(a, b) {
 
 /* 上游余额行：按厂商归并，余额取该厂商最低值 */
 function cchUpstreamRows(providers, balances, vendors) {
+  providers = cchBalanceProviders(providers, vendors);
   const byId = new Map(providers.map((item) => [Number(item.id), item]));
   const info = cchGroupInfo(providers, vendors);
   const groups = new Map();
