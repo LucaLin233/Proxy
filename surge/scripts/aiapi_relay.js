@@ -563,13 +563,14 @@ function providerBrand(name) {
   return cut || text;
 }
 
-/* 只查启用上游的余额；Clouder 已单独配置账户查询，不从主 CCH 重复获取。 */
+/* 只查启用上游的余额；Clouder 已单独查询，Miapi 不限余额，均不从主 CCH 获取。 */
 function cchBalanceProviders(providers, vendors) {
+  const ignoredBrands = ["clouder", "miapi"];
   return providers.filter((provider) => {
     if (provider.isEnabled === false) return false;
     const vendor = vendors ? vendors.get(Number(provider.providerVendorId)) : null;
-    return providerBrand(provider.name).toLowerCase() !== "clouder"
-      && providerBrand(vendor && vendor.name).toLowerCase() !== "clouder";
+    return !ignoredBrands.includes(providerBrand(provider.name).toLowerCase())
+      && !ignoredBrands.includes(providerBrand(vendor && vendor.name).toLowerCase());
   });
 }
 
