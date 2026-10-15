@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-10-13T14:00:20Z
-# Total:   6769
+# Updated: 2026-10-15T14:00:24Z
+# Total:   6773
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -1059,6 +1059,7 @@ DOMAIN-SUFFIX,cdn.plyr.io
 DOMAIN-SUFFIX,cdn.pricespider.com
 DOMAIN-SUFFIX,cdn.printfriendly.com
 DOMAIN-SUFFIX,cdn.prismic.io
+DOMAIN-SUFFIX,cdn.priv.center
 DOMAIN-SUFFIX,cdn.privacy-mgmt.com
 DOMAIN-SUFFIX,cdn.privacy.com
 DOMAIN-SUFFIX,cdn.privacy.paramount.com
@@ -1583,6 +1584,7 @@ DOMAIN-SUFFIX,cthd.icu
 DOMAIN-SUFFIX,ctldl.windowsupdate.com
 DOMAIN-SUFFIX,curl.se
 DOMAIN-SUFFIX,cursor-cdn.com
+DOMAIN-SUFFIX,customer-first-focus.b-cdn.net
 DOMAIN-SUFFIX,customerioforms.com
 DOMAIN-SUFFIX,customeriomail.com
 DOMAIN-SUFFIX,cw-image-resizer.cwg.tw
@@ -2339,6 +2341,7 @@ DOMAIN-SUFFIX,images.kick.com
 DOMAIN-SUFFIX,images.klipfolio.com
 DOMAIN-SUFFIX,images.loox.io
 DOMAIN-SUFFIX,images.macrumors.com
+DOMAIN-SUFFIX,images.macworld.co.uk
 DOMAIN-SUFFIX,images.mathworks.com
 DOMAIN-SUFFIX,images.mattel.net
 DOMAIN-SUFFIX,images.microcms-assets.io
@@ -6269,6 +6272,7 @@ DOMAIN-SUFFIX,releases.grapheneos.org
 DOMAIN-SUFFIX,releases.hashicorp.com
 DOMAIN-SUFFIX,releases.landrop.app
 DOMAIN-SUFFIX,releases.obsidian.md
+DOMAIN-SUFFIX,releases.openai.com
 DOMAIN-SUFFIX,releases.stash.ws
 DOMAIN-SUFFIX,releases.warp.dev
 DOMAIN-SUFFIX,releases.whatpulse.org
