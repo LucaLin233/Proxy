@@ -1,6 +1,6 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-10-15T14:00:24Z
+# Updated: 2026-10-16T14:00:23Z
 # Total:   6773
 
 DOMAIN,res-1.cdn.office.net
@@ -1686,7 +1686,6 @@ DOMAIN-SUFFIX,doppiocdn.org
 DOMAIN-SUFFIX,doppler-config.cbsivideo.com
 DOMAIN-SUFFIX,doujin-assets.dmm.co.jp
 DOMAIN-SUFFIX,download.developer.apple.com
-DOMAIN-SUFFIX,download.microsoft.com
 DOMAIN-SUFFIX,download.visualstudio.microsoft.com
 DOMAIN-SUFFIX,download.windowsupdate.com
 DOMAIN-SUFFIX,downloads.coindesk.com
@@ -2333,6 +2332,7 @@ DOMAIN-SUFFIX,images.github.media
 DOMAIN-SUFFIX,images.gog.com
 DOMAIN-SUFFIX,images.hentaicity.com
 DOMAIN-SUFFIX,images.hibob.com
+DOMAIN-SUFFIX,images.higgs.ai
 DOMAIN-SUFFIX,images.hothardware.com
 DOMAIN-SUFFIX,images.icon-icons.com
 DOMAIN-SUFFIX,images.indianexpress.com
