@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-10-10T14:00:02Z
-# Total:   20167
+# Updated: 2026-10-16T14:00:02Z
+# Total:   20171
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -13588,6 +13588,7 @@ DOMAIN-SUFFIX,playshowtv.com
 DOMAIN-SUFFIX,playstation
 DOMAIN-SUFFIX,playstation.com
 DOMAIN-SUFFIX,playstation.net
+DOMAIN-SUFFIX,playstationnetwork.com
 DOMAIN-SUFFIX,playvalorant.com
 DOMAIN-SUFFIX,playvids.com
 DOMAIN-SUFFIX,playwarcraft3.com
@@ -14989,6 +14990,7 @@ DOMAIN-SUFFIX,scatsite.com
 DOMAIN-SUFFIX,scatvids.club
 DOMAIN-SUFFIX,scatville.com
 DOMAIN-SUFFIX,scdn.co
+DOMAIN-SUFFIX,scea.com
 DOMAIN-SUFFIX,scene7.com
 DOMAIN-SUFFIX,scenesource.me
 DOMAIN-SUFFIX,scharferporno.com
@@ -15738,7 +15740,9 @@ DOMAIN-SUFFIX,sonyclassics.com
 DOMAIN-SUFFIX,sonydesign.com
 DOMAIN-SUFFIX,sonydna.com
 DOMAIN-SUFFIX,sonyentertainmentnetwork.com
+DOMAIN-SUFFIX,sonyinteractive.com
 DOMAIN-SUFFIX,sonylatvija.com
+DOMAIN-SUFFIX,sonymusic.com.hk
 DOMAIN-SUFFIX,sonypictures.com
 DOMAIN-SUFFIX,sonypicturesanimation.com
 DOMAIN-SUFFIX,sonypicturesmuseum.com
