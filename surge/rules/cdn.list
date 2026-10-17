@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-10-16T14:00:23Z
-# Total:   6773
+# Updated: 2026-10-17T14:00:16Z
+# Total:   6775
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -3064,6 +3064,7 @@ DOMAIN-SUFFIX,mui.com
 DOMAIN-SUFFIX,muscache.com
 DOMAIN-SUFFIX,music.apple.com
 DOMAIN-SUFFIX,mwcm.nyt.com
+DOMAIN-SUFFIX,mweb-cdn.karousell.com
 DOMAIN-SUFFIX,mwf-service.akamaized.net
 DOMAIN-SUFFIX,mxmcdn.net
 DOMAIN-SUFFIX,my-json-server.typicode.com
@@ -3751,6 +3752,7 @@ DOMAIN-SUFFIX,skills-assets.pstmn.io
 DOMAIN-SUFFIX,skyearth8.xyz
 DOMAIN-SUFFIX,skypack.dev
 DOMAIN-SUFFIX,skypeassets.com
+DOMAIN-SUFFIX,sl3-cdn.karousell.com
 DOMAIN-SUFFIX,slack-edge.com
 DOMAIN-SUFFIX,slack-imgs.com
 DOMAIN-SUFFIX,slidesharecdn.com
