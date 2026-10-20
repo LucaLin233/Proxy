@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-10-17T14:00:16Z
-# Total:   6775
+# Updated: 2026-10-20T14:00:19Z
+# Total:   6778
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -1959,6 +1959,7 @@ DOMAIN-SUFFIX,frontend-apps.workos.com
 DOMAIN-SUFFIX,frontend-assets.supabase.com
 DOMAIN-SUFFIX,frontend-cdn.perplexity.ai
 DOMAIN-SUFFIX,frontend.floatplane.com
+DOMAIN-SUFFIX,frontend2.locally.com
 DOMAIN-SUFFIX,fs.mingpao.com
 DOMAIN-SUFFIX,fscdn.eppo.cloud
 DOMAIN-SUFFIX,fsdn.com
@@ -2987,6 +2988,7 @@ DOMAIN-SUFFIX,media.themoviedb.org
 DOMAIN-SUFFIX,media.theporndude.com
 DOMAIN-SUFFIX,media.theresanaiforthat.com
 DOMAIN-SUFFIX,media.trakt.tv
+DOMAIN-SUFFIX,media.trekbikes.com
 DOMAIN-SUFFIX,media.tumblr.com
 DOMAIN-SUFFIX,media.user.com
 DOMAIN-SUFFIX,media.wd40.asia
@@ -4597,6 +4599,7 @@ DOMAIN-SUFFIX,vanilla-extract.style
 DOMAIN-SUFFIX,vanillicon.com
 DOMAIN-SUFFIX,variations.brave.com
 DOMAIN-SUFFIX,vbmspic.video.friday.tw
+DOMAIN-SUFFIX,vcc-assets.8x8.com
 DOMAIN-SUFFIX,vcdn.anysex.com
 DOMAIN-SUFFIX,vcmdiawe.com
 DOMAIN-SUFFIX,vector.hereapi.com
