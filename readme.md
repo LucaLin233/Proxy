@@ -113,8 +113,12 @@ CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:
 - Clouder 的余额仍由 CCH 站点（`user`/`cookie`/`login`）提供；**只有**站点名称等于 provider 名或品牌（如 `Clouder`），
   或站点域名与 provider 的 `website_url` 域名一致，才会沿用 CCHP 里该 provider 的 key 优先级；两者都对不上时该站排到最后，
   可在站点末尾手写优先级（`=凭据:user:1`）兜底。
-- 余额与优先级分开缓存，默认 600 秒，受 `cch_quota_interval` 控制。
-- 失败回退：余额沿用旧缓存并提示「⚠️ CCHP 余额来自缓存」；key 优先级按 provider ID 回退旧值，**没有旧值才**按缺失处理
+- 余额**每次刷新都强制查上游**：对每个 provider 的第一把 active key 调 `?refresh=true` 复查，再取一次列表拿服务端聚合值；
+  Mi（`miapi`）与原 CCH 一致不展示，Clouder 不在此模式取余额也不刷新，只保留其 key 优先级用于排序。
+- 失败回退：刷新失败或被 27 秒预算跳过时，沿用列表里的服务端缓存值并提示「⚠️ 余额未刷新，来自服务端缓存」；
+  只有列表请求本身失败才回退上次快照并提示「⚠️ CCHP 余额来自缓存」（两者不会同时出现）。
+  上游余额接口有频率限制：一次刷新对每个 provider 只刷一次、失败不重试。
+- key 优先级仍缓存 600 秒（受 `cch_quota_interval` 控制），按 provider ID 回退旧值，**没有旧值才**按缺失处理
   （「⚠️ 部分排序信息缺失」）。CCHP 需要串行多段请求，接近模块 30 秒上限前会主动停止后续请求并降级
   （「⚠️ 部分请求超时」，与缺失提示合并只出现一次），已拿到的余额照常显示。
 - 多币种：`totals` 里每种币种按原单位并列显示（如 `余额 $2.00 + ¥70.00`），不做汇率换算；排序只用 `total_usd`，
@@ -139,7 +143,7 @@ CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:
 
 | 脚本 | 用途 | 来源 |
 | --- | --- | --- |
-| `aiapi_relay.js` | 中转站面板：CCH / CCHP 站点余额，按优先级排序，Clouder 走 CCH（CCH 的 admin 走 `/api/v1/providers/balances:batch` 列本站各上游，按厂商归并、名称取供应商名的品牌部分；user/cookie/login 走 `/api/v1/me/quota` 列账户余额；CCHP 的 cchp 走 `/api/account/orgs/{orgId}/providers` 取余额，并按各 provider 的 key 优先级排序），合并成一张表；同一脚本供 cron 日报推送同一列表 | 自建 |
+| `aiapi_relay.js` | 中转站面板：CCH / CCHP 站点余额，按优先级排序，Clouder 走 CCH（CCH 的 admin 走 `/api/v1/providers/balances:batch` 列本站各上游，按厂商归并、名称取供应商名的品牌部分；user/cookie/login 走 `/api/v1/me/quota` 列账户余额；CCHP 的 cchp 走 `/api/account/orgs/{orgId}/providers` 取余额，每次刷新先按各 provider 的第一把 active key 调 `?refresh=true` 实时复查上游、再重取列表拿聚合值，并按 key 优先级排序），合并成一张表；同一脚本供 cron 日报推送同一列表 | 自建 |
 | `server_overview.js` | 服务器概览：AWS Lightsail 各实例流量（SigV4 直连 CloudWatch 指标）+ Peekabo 流量与到期，合并显示；同一脚本供 cron 日报 | 自建 |
 | `function.js` | Surge 运行时长与功能开关状态面板，点击重载配置 | 参考 chaizia/Profiles |
 | `ip_check.js` | 当前节点详情面板 | 感谢 @congcong |
