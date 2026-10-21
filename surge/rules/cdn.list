@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-10-20T14:00:19Z
-# Total:   6778
+# Updated: 2026-10-21T14:00:21Z
+# Total:   6779
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -3017,6 +3017,7 @@ DOMAIN-SUFFIX,mesu-china.apple.com.akadns.net
 DOMAIN-SUFFIX,mesu.apple.com
 DOMAIN-SUFFIX,meteorclient.com
 DOMAIN-SUFFIX,metrics.kapa.ai
+DOMAIN-SUFFIX,metrics.manus.im
 DOMAIN-SUFFIX,mfcimg.com
 DOMAIN-SUFFIX,mgx-backend-cdn.metadl.com
 DOMAIN-SUFFIX,micro.rubiconproject.com
@@ -3882,6 +3883,7 @@ DOMAIN-SUFFIX,static-media.fox.com
 DOMAIN-SUFFIX,static-mh.content.disney.io
 DOMAIN-SUFFIX,static-oforms.onlyoffice.com
 DOMAIN-SUFFIX,static-overlay.ubisoft.com
+DOMAIN-SUFFIX,static-page.tp-link.com
 DOMAIN-SUFFIX,static-prod-web.miniclip.com
 DOMAIN-SUFFIX,static-production.npmjs.com
 DOMAIN-SUFFIX,static-r.kamihimeproject.net
@@ -6277,7 +6279,6 @@ DOMAIN-SUFFIX,releases.grapheneos.org
 DOMAIN-SUFFIX,releases.hashicorp.com
 DOMAIN-SUFFIX,releases.landrop.app
 DOMAIN-SUFFIX,releases.obsidian.md
-DOMAIN-SUFFIX,releases.openai.com
 DOMAIN-SUFFIX,releases.stash.ws
 DOMAIN-SUFFIX,releases.warp.dev
 DOMAIN-SUFFIX,releases.whatpulse.org
