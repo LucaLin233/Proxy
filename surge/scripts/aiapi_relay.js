@@ -830,11 +830,14 @@ async function fetchCchpPriorities(site, orgId, providers, headers) {
   if (cached) return { items: cached.items, missing: false, timedOut: false };
   let failed = false;
   let timedOut = false;
+  /* 只有真正失败或被预算跳过的 provider 才回填旧值；成功返回空 keys 的保持 null */
+  const failedIds = new Set();
   const items = await mapLimit(providers, CCHP_KEY_CONCURRENCY, async (provider) => {
     /* 预算耗尽就不再派发后续 key 请求，已发出的等它自己回来 */
     if (cchpBudgetSpent()) {
       timedOut = true;
       failed = true;
+      failedIds.add(String(provider.id));
       return { id: provider.id, priority: null };
     }
     try {
@@ -849,6 +852,7 @@ async function fetchCchpPriorities(site, orgId, providers, headers) {
       if (error && error.code === "cchp_timeout") timedOut = true;
       /* 单把 key 查不到只丢排序元数据，余额行照常显示 */
       failed = true;
+      failedIds.add(String(provider.id));
       return { id: provider.id, priority: null };
     }
   });
@@ -860,6 +864,8 @@ async function fetchCchpPriorities(site, orgId, providers, headers) {
   let fellBack = false;
   const merged = items.map((item) => {
     if (numeric(item.priority) !== null) return item;
+    /* 成功返回空 keys 的 provider 不属于失败集合，不回填旧值 */
+    if (!failedIds.has(String(item.id))) return item;
     const old = stale.get(String(item.id));
     if (old === undefined) return { id: item.id, priority: null };
     fellBack = true;
@@ -1080,8 +1086,10 @@ function cchBalanceLines(results, wrap) {
   const cchpItems = results.filter((item) => item.data && item.data.kind === "cchp");
   if (cchpItems.some((item) => item.data.stale)) notices.push("⚠️ CCHP 余额来自缓存");
   if (cchpItems.some((item) => cchpOld(item.data))) notices.push("⚠️ 部分余额较旧");
-  /* 超时会连带造成 priority 缺失，两者只提示一次 */
-  if (cchpItems.some((item) => item.data.timedOut)) notices.push("⚠️ 部分请求超时");
+  /* 超时会连带造成 priority 缺失，两者只提示一次；整站超时也要提示 */
+  const cchpTimedOut = cchpItems.some((item) => item.data.timedOut)
+    || results.some((item) => item.error && item.error.code === "cchp_timeout");
+  if (cchpTimedOut) notices.push("⚠️ 部分请求超时");
   else if (cchpItems.some((item) => item.data.priorityMissing)) notices.push("⚠️ 部分排序信息缺失");
   if (notices.length) {
     lines.push("");
