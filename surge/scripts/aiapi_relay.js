@@ -666,6 +666,28 @@ function cchUpstreamRows(providers, balances, vendors) {
 /* CCHP 的 key 列表按 provider 逐个查，最多 5 个请求在途 */
 const CCHP_KEY_CONCURRENCY = 5;
 
+/* 模块 timeout=30 秒，而 CCHP 要串行跑 org-tree → providers → keys、keys 还要分批，
+   累起来会直接把面板掐断（无输出）。$httpClient 没有超时参数、已发出的请求无法取消，
+   只能按 27 秒总预算停止后续派发，把已拿到的余额先显示出来。 */
+const CCHP_BUDGET_MS = 27000;
+let cchpDeadlineAt = 0;
+
+function cchpBeginBudget() {
+  if (!cchpDeadlineAt) cchpDeadlineAt = Date.now() + CCHP_BUDGET_MS;
+  return cchpDeadlineAt;
+}
+
+/* 每次派发请求前调用：预算耗尽就不发，调用方降级处理 */
+function cchpBudgetSpent() {
+  return cchpDeadlineAt > 0 && Date.now() >= cchpDeadlineAt;
+}
+
+function cchpTimeoutError() {
+  const error = new Error("请求超时");
+  error.code = "cchp_timeout";
+  return error;
+}
+
 function cchpCacheKey(kind, base, orgId) {
   return `cchp_${kind}_${hashString(`${base}|${orgId}`)}`;
 }
@@ -718,6 +740,7 @@ async function fetchCchpOrgId(site, headers) {
   const cached = readCchpOrg(site.base, false);
   if (cached) return cached;
   try {
+    if (cchpBudgetSpent()) throw cchpTimeoutError();
     const response = await request("get", `${site.base}/api/account/org-tree`, headers);
     checkStatus(response, "管理令牌");
     const root = parseBody(response).root;
@@ -735,12 +758,15 @@ async function fetchCchpOrgId(site, headers) {
 /* 余额与优先级分开缓存：余额常变，优先级基本不变 */
 async function fetchCchpProviders(site, orgId, headers) {
   const cached = readCchpCache("balance", site.base, orgId, false);
-  if (cached) return { providers: cached.items, stale: false };
+  if (cached) return { providers: cached.items, stale: false, timedOut: false };
   try {
+    if (cchpBudgetSpent()) throw cchpTimeoutError();
     const response = await request("get", `${site.base}/api/account/orgs/${orgId}/providers`, headers);
     checkStatus(response, "管理令牌");
     const list = parseBody(response).providers;
-    const providers = (Array.isArray(list) ? list : []).map((item) => ({
+    /* 200 但结构不对（网关错误页、字段改名）时不能当成空数组写缓存，否则会盖掉旧值 */
+    if (!Array.isArray(list)) throw new Error("返回缺少 providers");
+    const providers = list.map((item) => ({
       id: String(item.id || ""),
       name: String(item.name || ""),
       /* 官网地址：CCH 站点按域名匹配优先级时用 */
@@ -748,10 +774,12 @@ async function fetchCchpProviders(site, orgId, headers) {
       /* balance.accounts 会按 key 重复计数，只用 totals / total_usd */
       balance: item.balance && typeof item.balance === "object" ? item.balance : null,
     }));
-    return { providers: writeCchpCache("balance", site.base, orgId, providers), stale: false };
+    return { providers: writeCchpCache("balance", site.base, orgId, providers), stale: false, timedOut: false };
   } catch (error) {
     const stale = readCchpCache("balance", site.base, orgId, true);
-    if (stale) return { providers: stale.items, stale: true };
+    if (stale) {
+      return { providers: stale.items, stale: true, timedOut: Boolean(error && error.code === "cchp_timeout") };
+    }
     throw error;
   }
 }
@@ -785,11 +813,30 @@ async function mapLimit(items, limit, worker) {
   return results;
 }
 
+/* 旧 priority 缓存按 provider ID 取用：请求失败时回退，缺旧值才算缺失 */
+function cchpStalePriorities(site, orgId) {
+  const stale = readCchpCache("priority", site.base, orgId, true);
+  const map = new Map();
+  for (const item of stale ? stale.items : []) {
+    if (!item || item.id === undefined) continue;
+    const priority = numeric(item.priority);
+    if (priority !== null) map.set(String(item.id), priority);
+  }
+  return map;
+}
+
 async function fetchCchpPriorities(site, orgId, providers, headers) {
   const cached = readCchpCache("priority", site.base, orgId, false);
-  if (cached) return cached.items;
+  if (cached) return { items: cached.items, missing: false, timedOut: false };
   let failed = false;
+  let timedOut = false;
   const items = await mapLimit(providers, CCHP_KEY_CONCURRENCY, async (provider) => {
+    /* 预算耗尽就不再派发后续 key 请求，已发出的等它自己回来 */
+    if (cchpBudgetSpent()) {
+      timedOut = true;
+      failed = true;
+      return { id: provider.id, priority: null };
+    }
     try {
       const response = await request(
         "get",
@@ -798,25 +845,44 @@ async function fetchCchpPriorities(site, orgId, providers, headers) {
       );
       if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
       return { id: provider.id, priority: cchpKeyPriority(parseBody(response).keys) };
-    } catch (_) {
+    } catch (error) {
+      if (error && error.code === "cchp_timeout") timedOut = true;
       /* 单把 key 查不到只丢排序元数据，余额行照常显示 */
       failed = true;
       return { id: provider.id, priority: null };
     }
   });
-  /* 有失败时不写缓存，免得把 null 优先级固化一轮 */
-  return failed ? items : writeCchpCache("priority", site.base, orgId, items);
+  if (!failed) {
+    return { items: writeCchpCache("priority", site.base, orgId, items), missing: false, timedOut: false };
+  }
+  /* 有失败：按 ID 用旧 priority 补，没有旧值才置 null；不写缓存，免得把缺失固化一轮 */
+  const stale = cchpStalePriorities(site, orgId);
+  let fellBack = false;
+  const merged = items.map((item) => {
+    if (numeric(item.priority) !== null) return item;
+    const old = stale.get(String(item.id));
+    if (old === undefined) return { id: item.id, priority: null };
+    fellBack = true;
+    return { id: item.id, priority: old };
+  });
+  return { items: merged, missing: merged.some((item) => numeric(item.priority) === null), timedOut, fellBack };
 }
 
 async function fetchCchpSite(site, headers) {
+  /* 从进入 CCHP 开始记总预算，后续每个请求派发前都检查 */
+  cchpBeginBudget();
   const orgId = await fetchCchpOrgId(site, headers);
   const snapshot = await fetchCchpProviders(site, orgId, headers);
   const providers = snapshot.providers || [];
   const priorities = await fetchCchpPriorities(site, orgId, providers, headers);
-  const priorityById = new Map(priorities.map((item) => [item.id, item.priority]));
+  const priorityById = new Map(priorities.items.map((item) => [item.id, item.priority]));
   return {
     kind: "cchp",
     stale: snapshot.stale,
+    /* 部分请求因总预算耗尽被跳过；priority 回退过旧值 / 回退后仍缺 */
+    timedOut: Boolean(snapshot.timedOut || priorities.timedOut),
+    priorityStale: Boolean(priorities.fellBack),
+    priorityMissing: Boolean(priorities.missing),
     /* 保留 name/host/priority，供 cchSitePriorities 给 CCH 站点排序 */
     providers: providers.map((provider) => ({
       name: provider.name,
@@ -832,6 +898,19 @@ function cchpIsClouder(name) {
   return providerBrand(name).toLowerCase() === "clouder";
 }
 
+/* totals 可能同时给多个币种，也可能同币种多条：各自按原单位拼接，不做汇率换算 */
+function cchpAmountParts(balance) {
+  const totals = Array.isArray(balance && balance.totals) ? balance.totals : [];
+  const parts = [];
+  for (const total of totals) {
+    const amount = numeric(total && total.amount);
+    if (amount === null) continue;
+    const unit = String((total && total.unit) || "USD").trim().toUpperCase() || "USD";
+    parts.push(cchMoney(unit, amount));
+  }
+  return parts;
+}
+
 /* 余额行：只显示 status=ok 且有数值（或 unlimited）的 provider；Clouder 由 CCH 站点提供 */
 function cchpRows(data) {
   const rows = [];
@@ -839,21 +918,16 @@ function cchpRows(data) {
     if (cchpIsClouder(provider.name)) continue;
     const balance = provider.balance || {};
     if (String(balance.status || "").toLowerCase() !== "ok") continue;
-    const totals = Array.isArray(balance.totals) ? balance.totals : [];
-    const total = totals.length ? totals[0] : null;
-    /* 有 totals 时用原币种原单位；否则退回 total_usd + USD */
-    const amount = total ? numeric(total.amount) : null;
-    const totalUsd = numeric(balance.total_usd);
-    const value = amount === null ? totalUsd : amount;
-    const unit = amount === null ? "USD" : String(total.unit || "USD").toUpperCase();
     const unlimited = balance.unlimited === true;
-    if (!unlimited && value === null) continue;
-    rows.push({
-      /* total_usd 只用于同级排序 */
-      amount: totalUsd === null ? value : totalUsd,
-      priority: provider.priority,
-      parts: [providerBrand(provider.name), unlimited ? "余额 不限量" : `余额 ${cchMoney(unit, value)}`],
-    });
+    /* 排序只用 total_usd：不同币种的原值不能直接比较，缺失时 amount=null 排最后 */
+    const totalUsd = numeric(balance.total_usd);
+    const totals = cchpAmountParts(balance);
+    if (!unlimited && !totals.length && totalUsd === null) continue;
+    let text;
+    if (unlimited) text = "余额 不限量";
+    else if (totals.length) text = `余额 ${totals.join(" + ")}`;
+    else text = `余额 ${money(totalUsd)}`;
+    rows.push({ amount: totalUsd, priority: provider.priority, parts: [providerBrand(provider.name), text] });
   }
   rows.sort(compareRows);
   return rows;
@@ -865,9 +939,8 @@ function cchpAbnormal(data) {
     if (cchpIsClouder(provider.name)) continue;
     const balance = provider.balance || {};
     if (String(balance.status || "").toLowerCase() !== "ok") return true;
-    const total = Array.isArray(balance.totals) ? balance.totals[0] : null;
-    const hasAmount = total ? numeric(total.amount) !== null : false;
-    if (!hasAmount && numeric(balance.total_usd) === null && balance.unlimited !== true) return true;
+    const hasAmount = cchpAmountParts(balance).length > 0 || numeric(balance.total_usd) !== null;
+    if (!hasAmount && balance.unlimited !== true) return true;
   }
   return false;
 }
@@ -1007,6 +1080,9 @@ function cchBalanceLines(results, wrap) {
   const cchpItems = results.filter((item) => item.data && item.data.kind === "cchp");
   if (cchpItems.some((item) => item.data.stale)) notices.push("⚠️ CCHP 余额来自缓存");
   if (cchpItems.some((item) => cchpOld(item.data))) notices.push("⚠️ 部分余额较旧");
+  /* 超时会连带造成 priority 缺失，两者只提示一次 */
+  if (cchpItems.some((item) => item.data.timedOut)) notices.push("⚠️ 部分请求超时");
+  else if (cchpItems.some((item) => item.data.priorityMissing)) notices.push("⚠️ 部分排序信息缺失");
   if (notices.length) {
     lines.push("");
     for (const line of notices) lines.push(line);
@@ -1054,6 +1130,7 @@ function cchRisk(data) {
   if (data.kind === "cchp") {
     let risk = 0;
     if (data.stale) risk = 1;
+    if (data.timedOut || data.priorityMissing) risk = Math.max(risk, 1);
     if (cchpAbnormal(data)) risk = Math.max(risk, 1);
     return risk;
   }

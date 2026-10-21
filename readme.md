@@ -97,6 +97,29 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 `snell-tun.service` 与 `hysteria2-tun.service` 以 `tun` 用户运行，适合已配置好 TUN 转发的机器；
 `snell.service` 以 `nobody` 运行。ExecStart 中的二进制与配置文件路径请按实际部署修改。
 
+### 中转站面板（CCH / CCHP）
+
+`aiapi.sgmodule` 的 `cch_endpoints` 一站一条、竖线分隔，模式接在凭据后面（`:cchp` 即 CCHP 管理令牌）。
+把余额源切到 CCHP 时，请用 CCHP 条目**替换**原来的主站 admin 条目，不要两条同时保留（同一个站会出现两行）：
+
+```text
+# 改前：CCH 主站 admin 条目
+主站@cch.example.com=<管理员令牌>:admin|Clouder@cc2.example.tech=<用户 Key>:user
+
+# 改后：CCHP 条目替换主站 admin，Clouder 仍保留 user 条目
+CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:user
+```
+
+- Clouder 的余额仍由 CCH 站点（`user`/`cookie`/`login`）提供；**只有**站点名称等于 provider 名或品牌（如 `Clouder`），
+  或站点域名与 provider 的 `website_url` 域名一致，才会沿用 CCHP 里该 provider 的 key 优先级；两者都对不上时该站排到最后，
+  可在站点末尾手写优先级（`=凭据:user:1`）兜底。
+- 余额与优先级分开缓存，默认 600 秒，受 `cch_quota_interval` 控制。
+- 失败回退：余额沿用旧缓存并提示「⚠️ CCHP 余额来自缓存」；key 优先级按 provider ID 回退旧值，**没有旧值才**按缺失处理
+  （「⚠️ 部分排序信息缺失」）。CCHP 需要串行多段请求，接近模块 30 秒上限前会主动停止后续请求并降级
+  （「⚠️ 部分请求超时」，与缺失提示合并只出现一次），已拿到的余额照常显示。
+- 多币种：`totals` 里每种币种按原单位并列显示（如 `余额 $2.00 + ¥70.00`），不做汇率换算；排序只用 `total_usd`，
+  该字段缺失时该行排在同优先级末尾。
+
 ## 模块一览
 
 | 模块 | 功能 | 参数 |
