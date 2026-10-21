@@ -1043,7 +1043,7 @@ async function refreshCchpBalances(site, orgId, providers, headers) {
       ok += 1;
     } catch (_) { /* 单把 key 失败不影响其它 provider；由调用方按 ok < total 标记降级 */ }
   });
-  return { ok, total, timedOut };
+  return { ok, total, timedOut: timedOut || cchpBudgetSpent() };
 }
 
 async function fetchCchpSite(site, headers) {
@@ -1061,6 +1061,8 @@ async function fetchCchpSite(site, headers) {
   let balanceStale = false;
   let balancePartial = false;
   let balanceTimedOut = false;
+  /* 刷新本身不全且重取超时：超时提示已解释未刷新，不再重复 */
+  let balanceSuppressStale = false;
   if (!snapshot.stale && providers.length) {
     const refresh = await refreshCchpBalances(
       site,
@@ -1081,8 +1083,14 @@ async function fetchCchpSite(site, headers) {
         current = await fetchCchpProviderList(site, orgId, headers);
       } catch (error) {
         /* 重取失败：服务端聚合没拿到，仍显示首次列表值；预算耗尽也算超时 */
-        if (error && error.code === "cchp_timeout") balanceTimedOut = true;
+        if (error && error.code === "cchp_timeout") {
+          balanceTimedOut = true;
+          /* 刷新本身不全时，超时提示已解释；刷新全成功但重取失败仍要提示未刷新 */
+          balanceSuppressStale = refresh.ok < refresh.total;
+        }
         balanceStale = true;
+        /* 重取失败意味着所有行都是首次列表值，不能再说「部分未刷新」 */
+        balancePartial = false;
       }
     }
     writeCchpCache("balance", site.base, orgId, current);
@@ -1096,6 +1104,8 @@ async function fetchCchpSite(site, headers) {
     balanceStale: Boolean(balanceStale),
     /* 只有一部分 provider 刷新成功：提示部分未刷新，而不是整块未刷新 */
     balancePartial: Boolean(balancePartial),
+    /* 刷新不全且重取超时：超时提示已解释，不再重复「余额未刷新」 */
+    balanceSuppressStale: Boolean(balanceSuppressStale),
     /* 部分请求因总预算耗尽被跳过（含刷新阶段与重取列表）；priority 回退过旧值 / 回退后仍缺 */
     timedOut: Boolean(snapshot.timedOut || priorities.timedOut || balanceTimedOut),
     priorityStale: Boolean(priorities.fellBack),
@@ -1397,7 +1407,7 @@ function cchBalanceLines(results, wrap) {
   else if (cchpItems.some((item) => item.data.balancePartial && !item.data.timedOut)) {
     /* 只有部分 provider 没刷到；这部分若已被超时提示解释，就不再重复 */
     notices.push("⚠️ 部分余额未刷新");
-  } else if (cchpItems.some((item) => item.data.balanceStale && !item.data.balancePartial)) {
+  } else if (cchpItems.some((item) => item.data.balanceStale && !item.data.balancePartial && !item.data.balanceSuppressStale)) {
     notices.push("⚠️ 余额未刷新，来自服务端缓存");
   }
   if (cchpItems.some((item) => cchpOld(item.data))) notices.push("⚠️ 部分余额较旧");
