@@ -123,6 +123,39 @@ function layoutRows(parts, budget) {
   return rows;
 }
 
+/* 截短到指定显示宽度，末尾加省略号；已经放得下就原样返回 */
+function truncateToWidth(text, budget) {
+  const source = String(text);
+  if (budget <= 0) return "";
+  if (measure(source) <= budget) return source;
+  if (budget <= 1) return "…";
+  let out = "";
+  for (const char of source) {
+    if (measure(`${out}${char}…`) > budget) break;
+    out += char;
+  }
+  /* 截断点正好落在分隔符上时先收干净，避免出现「 + …」 */
+  out = out.replace(/[\s·+]+$/, "");
+  return `${out}…`;
+}
+
+/* 单行收尾：各变体都放不下时按剩余宽度截短首字段（名称），必要时从尾部舍弃字段，
+   保证 measure(join(" · ")) <= budget；连一个字段都放不下时硬截断 */
+function fitRowWidth(parts, budget) {
+  const list = parts.map((part) => String(part === undefined || part === null ? "" : part))
+    .filter((part) => part !== "");
+  if (!list.length) return [];
+  if (measure(list.join(" · ")) <= budget) return list;
+  const name = list[0];
+  /* 从尾部逐项舍弃，尽量保留名称与靠前的金额字段 */
+  for (let count = list.length - 1; count >= 1; count--) {
+    const rest = list.slice(1, count + 1);
+    const room = budget - measure(rest.join(" · ")) - 3;
+    if (room >= 2) return [truncateToWidth(name, room)].concat(rest);
+  }
+  return [truncateToWidth(list.join(" · "), budget)];
+}
+
 function hashString(value) {
   let hash = 2166136261;
   for (let i = 0; i < value.length; i++) {
@@ -910,12 +943,31 @@ async function fetchCchpHealth(site, headers) {
   return map;
 }
 
-/* 两个端点互不依赖：并发取，任一失败只丢该项 */
+/* 单个请求与剩余预算赛跑：超时（或失败）返回 null 并清掉 timer，
+   另一项先返回的成功值照常保留 */
+function cchpWithin(leftMs, promise) {
+  if (!(leftMs > 0)) return Promise.resolve(null);
+  let timer = 0;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(null), leftMs);
+  });
+  const settled = promise.then(
+    (value) => (value === undefined ? null : value),
+    () => null
+  );
+  return Promise.race([settled, timeout]).then((value) => {
+    clearTimeout(timer);
+    return value === undefined ? null : value;
+  });
+}
+
+/* 两个端点互不依赖：并发取，各自受剩余预算封顶，任一失败或超时只丢该项 */
 async function fetchCchpUsage(site, headers) {
-  if (cchpBudgetSpent()) return { summary: null, health: null };
+  const left = cchpDeadlineAt - Date.now();
+  if (cchpBudgetSpent() || !(left > 0)) return { summary: null, health: null };
   const results = await Promise.all([
-    fetchCchpSummary(site, headers).catch(() => null),
-    fetchCchpHealth(site, headers).catch(() => null),
+    cchpWithin(left, fetchCchpSummary(site, headers)),
+    cchpWithin(left, fetchCchpHealth(site, headers)),
   ]);
   return { summary: results[0], health: results[1] };
 }
@@ -1003,7 +1055,8 @@ function cchpRowParts(label, text, amountText, healthParts) {
   for (const parts of variants) {
     if (measure(parts.join(" · ")) <= CCH_ROW_WIDTH) return parts;
   }
-  return [label, amountText];
+  /* 收尾：仍超宽就截短供应商名，保证单行 */
+  return fitRowWidth([label, amountText], CCH_ROW_WIDTH);
 }
 
 /* 余额行：只显示 status=ok 且有数值（或 unlimited）的 provider；Clouder 由 CCH 站点提供 */
@@ -1033,21 +1086,35 @@ function cchpRows(data) {
   return rows;
 }
 
-/* 今日用量：summary 缺失或 requests=0 不占行；超宽时先省首字再省百分比，保证单行 */
+/* 今日用量：summary 缺失或 requests=0 不占行；超宽时先截短/去掉站名前缀，
+   再依次省首字、百分比，保证单行 */
 function cchpUsageLine(summary, prefix) {
   const requests = numeric(summary && summary.requests);
   if (requests === null || requests <= 0) return "";
-  const head = `${prefix || ""}今日 ${Math.round(requests)} 次`;
+  const body = `今日 ${Math.round(requests)} 次`;
   const extras = [];
   const rate = numeric(summary.successRate);
   if (rate !== null) extras.push(`${(rate * 100).toFixed(1)}%`);
   const ttft = numeric(summary.avgTtftMs);
   if (ttft !== null) extras.push(`首字 ${(ttft / 1000).toFixed(1)}s`);
+  const name = String(prefix || "").replace(/\s*·\s*$/, "");
+  const tails = [];
   for (let count = extras.length; count >= 0; count--) {
-    const line = [head].concat(extras.slice(0, count)).join(" · ");
-    if (measure(line) <= CCH_ROW_WIDTH) return line;
+    tails.push([body].concat(extras.slice(0, count)).join(" · "));
   }
-  return head;
+  /* 带站名：前缀按剩余宽度截短；放不下时去掉站名，最后只留次数 */
+  if (name) {
+    for (const tail of tails) {
+      const room = CCH_ROW_WIDTH - measure(tail) - 3;
+      if (room < 2) continue;
+      const line = `${truncateToWidth(name, room)} · ${tail}`;
+      if (measure(line) <= CCH_ROW_WIDTH) return line;
+    }
+  }
+  for (const tail of tails) {
+    if (measure(tail) <= CCH_ROW_WIDTH) return tail;
+  }
+  return truncateToWidth(body, CCH_ROW_WIDTH);
 }
 
 /* 多个 CCHP 站点时前缀站名，避免分不清是哪家的用量 */
@@ -1171,7 +1238,11 @@ function cchBalanceLines(results, wrap) {
     rows.push({
       amount,
       priority: cchSitePriority(item.site, priorities),
-      parts: [item.site.name, total ? `余额 ${money(amount)}` : "余额 未设置"],
+      /* 与 CCHP 行同一收尾：窄宽度下截短站名，不折行 */
+      parts: fitRowWidth(
+        [item.site.name, total ? `余额 ${money(amount)}` : "余额 未设置"],
+        CCH_ROW_WIDTH
+      ),
     });
   }
 
