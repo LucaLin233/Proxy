@@ -3,7 +3,7 @@
    - 日报（mode=daily）：每天 23:50 推送同一条列表
    余额从两处取：CCH 的 admin 模式一次拿到本站各上游余额（CCH 用各上游自己的密钥查），
    user/cookie/login 模式取该站账户余额；CCHP 的 cchp 模式按组织取各 provider 余额，
-   并用其 key 优先级排序（Clouder 的余额仍由 CCH 站点提供）。面板只显示余额。
+   并用其 key 优先级排序（Clouder 的余额仍由 CCH 站点提供）。面板与日报显示余额、今日用量与供应商健康。
    参数用 cch_*，模块级用 aiapi_* */
 
 const ARGS = parseArgs($argument || "");
@@ -874,6 +874,52 @@ async function fetchCchpPriorities(site, orgId, providers, headers) {
   return { items: merged, missing: merged.some((item) => numeric(item.priority) === null), timedOut, fellBack };
 }
 
+/* 今日用量与供应商健康：只用于展示，失败或预算耗尽都静默降级，不写缓存 */
+async function fetchCchpSummary(site, headers) {
+  const response = await request("get", `${site.base}/api/account/usage/summary`, headers);
+  checkStatus(response, "管理令牌");
+  const today = parseBody(response).today;
+  if (!today || typeof today !== "object") throw new Error("返回缺少 today");
+  return {
+    requests: numeric(today.requests),
+    successRate: numeric(today.successRate),
+    avgTtftMs: numeric(today.avgTtftMs),
+  };
+}
+
+async function fetchCchpHealth(site, headers) {
+  const response = await request(
+    "get",
+    `${site.base}/api/account/usage/provider-health?since=24h&limit=50`,
+    headers
+  );
+  checkStatus(response, "管理令牌");
+  const rows = parseBody(response).rows;
+  /* 200 但结构不对时按失败处理，避免把空表当成“没有请求” */
+  if (!Array.isArray(rows)) throw new Error("返回缺少 rows");
+  const map = new Map();
+  for (const row of rows) {
+    const id = String((row && row.providerId) || "").trim();
+    if (!id) continue;
+    map.set(id, {
+      successRate: numeric(row.successRate),
+      ttftP50Ms: numeric(row.ttftP50Ms),
+      requests: numeric(row.requests),
+    });
+  }
+  return map;
+}
+
+/* 两个端点互不依赖：并发取，任一失败只丢该项 */
+async function fetchCchpUsage(site, headers) {
+  if (cchpBudgetSpent()) return { summary: null, health: null };
+  const results = await Promise.all([
+    fetchCchpSummary(site, headers).catch(() => null),
+    fetchCchpHealth(site, headers).catch(() => null),
+  ]);
+  return { summary: results[0], health: results[1] };
+}
+
 async function fetchCchpSite(site, headers) {
   /* 从进入 CCHP 开始记总预算，后续每个请求派发前都检查 */
   cchpBeginBudget();
@@ -882,6 +928,8 @@ async function fetchCchpSite(site, headers) {
   const providers = snapshot.providers || [];
   const priorities = await fetchCchpPriorities(site, orgId, providers, headers);
   const priorityById = new Map(priorities.items.map((item) => [item.id, item.priority]));
+  /* 余额与优先级之后再取今日用量：失败或超预算只丢这块，不影响余额行 */
+  const usage = await fetchCchpUsage(site, headers);
   return {
     kind: "cchp",
     stale: snapshot.stale,
@@ -889,8 +937,12 @@ async function fetchCchpSite(site, headers) {
     timedOut: Boolean(snapshot.timedOut || priorities.timedOut),
     priorityStale: Boolean(priorities.fellBack),
     priorityMissing: Boolean(priorities.missing),
-    /* 保留 name/host/priority，供 cchSitePriorities 给 CCH 站点排序 */
+    /* 今日用量（today）与按 providerId 的健康数据；取不到为 null */
+    summary: usage.summary,
+    health: usage.health,
+    /* 保留 id/name/host/priority：id 用于关联健康数据，其余供 cchSitePriorities 排序 */
     providers: providers.map((provider) => ({
+      id: provider.id,
       name: provider.name,
       host: provider.host,
       priority: priorityById.has(provider.id) ? priorityById.get(provider.id) : null,
@@ -917,6 +969,43 @@ function cchpAmountParts(balance) {
   return parts;
 }
 
+/* 成功率一位小数、TTFT P50 一位小数秒；缺行或 requests=0 不追加，单个字段缺失只省该段 */
+function cchpHealthParts(data, provider) {
+  const health = data.health && provider.id ? data.health.get(String(provider.id)) : null;
+  if (!health) return [];
+  const requests = numeric(health.requests);
+  if (requests === null || requests <= 0) return [];
+  const parts = [];
+  const rate = numeric(health.successRate);
+  const ttft = numeric(health.ttftP50Ms);
+  /* 成功率是锚点：缺失时不追加（裸一个秒数看不出是什么），TTFT 缺失只加成功率 */
+  if (rate === null) return parts;
+  parts.push(`${(rate * 100).toFixed(1)}%`);
+  if (ttft !== null) parts.push(`${(ttft / 1000).toFixed(1)}s`);
+  return parts;
+}
+
+/* 供应商行必须一行内显示：超宽时依次省掉「余额」二字、舍弃 TTFT，最后只留余额 */
+function cchpRowParts(label, text, amountText, healthParts) {
+  const full = healthParts;
+  const rateOnly = healthParts.slice(0, 1);
+  const variants = [];
+  if (full.length) {
+    variants.push([label, text].concat(full));
+    if (amountText !== text) variants.push([label, amountText].concat(full));
+    if (full.length > 1) {
+      variants.push([label, text].concat(rateOnly));
+      if (amountText !== text) variants.push([label, amountText].concat(rateOnly));
+    }
+  }
+  variants.push([label, text]);
+  variants.push([label, amountText]);
+  for (const parts of variants) {
+    if (measure(parts.join(" · ")) <= CCH_ROW_WIDTH) return parts;
+  }
+  return [label, amountText];
+}
+
 /* 余额行：只显示 status=ok 且有数值（或 unlimited）的 provider；Clouder 由 CCH 站点提供 */
 function cchpRows(data) {
   const rows = [];
@@ -929,14 +1018,48 @@ function cchpRows(data) {
     const totalUsd = numeric(balance.total_usd);
     const totals = cchpAmountParts(balance);
     if (!unlimited && !totals.length && totalUsd === null) continue;
-    let text;
-    if (unlimited) text = "余额 不限量";
-    else if (totals.length) text = `余额 ${totals.join(" + ")}`;
-    else text = `余额 ${money(totalUsd)}`;
-    rows.push({ amount: totalUsd, priority: provider.priority, parts: [providerBrand(provider.name), text] });
+    let amountText;
+    if (unlimited) amountText = "不限量";
+    else if (totals.length) amountText = totals.join(" + ");
+    else amountText = money(totalUsd);
+    const text = `余额 ${amountText}`;
+    rows.push({
+      amount: totalUsd,
+      priority: provider.priority,
+      parts: cchpRowParts(providerBrand(provider.name), text, amountText, cchpHealthParts(data, provider)),
+    });
   }
   rows.sort(compareRows);
   return rows;
+}
+
+/* 今日用量：summary 缺失或 requests=0 不占行；超宽时先省首字再省百分比，保证单行 */
+function cchpUsageLine(summary, prefix) {
+  const requests = numeric(summary && summary.requests);
+  if (requests === null || requests <= 0) return "";
+  const head = `${prefix || ""}今日 ${Math.round(requests)} 次`;
+  const extras = [];
+  const rate = numeric(summary.successRate);
+  if (rate !== null) extras.push(`${(rate * 100).toFixed(1)}%`);
+  const ttft = numeric(summary.avgTtftMs);
+  if (ttft !== null) extras.push(`首字 ${(ttft / 1000).toFixed(1)}s`);
+  for (let count = extras.length; count >= 0; count--) {
+    const line = [head].concat(extras.slice(0, count)).join(" · ");
+    if (measure(line) <= CCH_ROW_WIDTH) return line;
+  }
+  return head;
+}
+
+/* 多个 CCHP 站点时前缀站名，避免分不清是哪家的用量 */
+function cchpUsageLines(results) {
+  const sites = results.filter((item) => item.site && item.site.mode === "cchp");
+  const lines = [];
+  for (const item of sites) {
+    if (!item.data || item.data.kind !== "cchp") continue;
+    const line = cchpUsageLine(item.data.summary, sites.length > 1 ? `${item.site.name} · ` : "");
+    if (line) lines.push(line);
+  }
+  return lines;
 }
 
 /* 行不显示时用警告色提示：状态非 ok，或既无金额也无不限量 */
@@ -1195,6 +1318,11 @@ async function runPanel() {
   if (!cchResults.length) return finish("未配置", PANEL_ICON, "8E8E93");
 
   const lines = cchBalanceLines(cchResults, true);
+  const usage = cchpUsageLines(cchResults);
+  if (usage.length) {
+    lines.push("");
+    for (const line of usage) lines.push(line);
+  }
   lines.push("");
   lines.push(`更新 ${formatTime()}`);
 
@@ -1219,8 +1347,13 @@ async function runDaily() {
   const cchResults = await fetchCchResults();
   if (!cchResults.length) return $done();
 
-  const body = ["【余额】"].concat(cchBalanceLines(cchResults, false)).join("\n");
-  $notification.post(`${PANEL_TITLE} 日报`, `CCH ${cchResults.length}`, body);
+  const body = ["【余额】"].concat(cchBalanceLines(cchResults, false));
+  const usage = cchpUsageLines(cchResults);
+  if (usage.length) {
+    body.push("");
+    for (const line of usage) body.push(line);
+  }
+  $notification.post(`${PANEL_TITLE} 日报`, `CCH ${cchResults.length}`, body.join("\n"));
   return $done();
 }
 
