@@ -1,14 +1,14 @@
 #!name=AI 中转站
-#!desc=各 CCH 站点的余额（本站各上游余额与账户余额）合并为一个面板，并供日报推送
+#!desc=CCH / CCHP 站点余额，按优先级排序，Clouder 走 CCH
 #!category=System
 #!system=ios
 
 #!arguments=aiapi_query_interval:600,aiapi_daily_notify:true,aiapi_icon:dollarsign.circle,aiapi_icon_color:5B8DEF,cch_endpoints,cch_admin_max:8,cch_row_width:38,cch_quota_interval:600,cch_show_limits:false
-#!arguments-desc=CCH:\n    ├ 站点：一行一个，名称@地址=凭据:模式，多个用竖线分隔\n    ├ 模式：直接接在凭据后面，不要加括号，如 =<凭据>:admin；省略即 user\n    ├ user 普通用户 Key | cookie 会话 auth-token | admin 管理员令牌 | login Key 自动登录\n    ├ admin 模式列本站各上游余额：CCH 已用各上游自己的密钥查好，面板不接触上游密钥\n    ├ user/cookie/login 模式列该站账户余额，与上游余额并列显示\n    ├ 例：cch@cch.example.com=<管理员令牌>:admin|clouder@cc2.example.com=<用户 Key>:user\n    ├ 站点末尾可再加优先级（=凭据:模式:优先级，可小数），不写则按域名/名称匹配主 CCH 的厂商优先级\n    ├ 上游按厂商归并（同一站点的多把密钥合成一行），名称取供应商名的品牌部分\n    ├ 每行只显示余额，按 CCH 优先级升序排（同级按余额升序）；查不到余额的上游不列出\n    ├ cch_show_limits 打开后额外展示供应商限额（5 小时/日/周/月用量）\n    └ 额度缓存默认 600 秒，与面板刷新一致\n\n其余参数:\n    ├ 面板刷新间隔默认 600 秒\n    ├ 日报默认开启；每天 23:50 推送一条同样的列表；填 false 即关闭\n    └ 图标使用 SF Symbol 名称与六位 HEX 颜色
+#!arguments-desc=CCH:\n    ├ 站点：一行一个，名称@地址=凭据:模式，多个用竖线分隔\n    ├ 模式：直接接在凭据后面，不要加括号，如 =<凭据>:admin；省略即 user\n    ├ user 普通用户 Key | cookie 会话 auth-token | admin 管理员令牌 | login Key 自动登录 | cchp CCHP 管理令牌\n    ├ admin 模式列本站各上游余额：CCH 已用各上游自己的密钥查好，面板不接触上游密钥\n    ├ user/cookie/login 模式列该站账户余额，与上游余额并列显示\n    ├ 例：cch@cch.example.com=<管理员令牌>:admin|clouder@cc2.example.com=<用户 Key>:user\n    ├ 站点末尾可再加优先级（=凭据:模式:优先级，可小数），不写则按域名/名称匹配主 CCH 的厂商优先级\n    ├ 上游按厂商归并（同一站点的多把密钥合成一行），名称取供应商名的品牌部分\n    ├ 每行只显示余额，按 CCH 优先级升序排（同级按余额升序）；查不到余额的上游不列出\n    ├ cch_show_limits 打开后额外展示供应商限额（5 小时/日/周/月用量）\n    └ 额度缓存默认 600 秒，与面板刷新一致\n\nCCHP:\n    ├ 写法：名称@地址=管理令牌:cchp，地址填 CCHP 站点\n    ├ 组织由 /api/account/org-tree 自动获取并缓存 600 秒\n    ├ 按各 provider 的 key 优先级升序排（无 active key 时取全部 key 的最小值），同级按余额升序\n    ├ Clouder 不在此模式取余额，仍按 CCH 站点填写（user/cookie/login），排序沿用 CCHP 的优先级\n    ├ 只显示余额（status=ok 才占行，unlimited 显示「不限量」），不查今日统计与限额\n    └ 余额与优先级分开缓存 600 秒；请求失败时回退旧缓存并提示\n\n其余参数:\n    ├ 面板刷新间隔默认 600 秒\n    ├ 日报默认开启；每天 23:50 推送一条同样的列表；填 false 即关闭\n    └ 图标使用 SF Symbol 名称与六位 HEX 颜色
 
 [Panel]
 API 中转站概览 = title="API 中转站概览",content="正在获取...",style=info,script-name=aiapi-relay-panel,update-interval={{{aiapi_query_interval}}}
 
 [Script]
 aiapi-relay-panel = type=generic,script-path=https://raw.githubusercontent.com/LucaLin233/Proxy/main/surge/scripts/aiapi_relay.js,timeout=30,argument="cch_endpoints={{{cch_endpoints}}}&cch_admin_max={{{cch_admin_max}}}&cch_row_width={{{cch_row_width}}}&cch_quota_interval={{{cch_quota_interval}}}&cch_show_limits={{{cch_show_limits}}}&aiapi_icon={{{aiapi_icon}}}&aiapi_icon_color={{{aiapi_icon_color}}}"
-aiapi-relay-daily = type=cron,cronexp="50 23 * * *",wake-system=true,timeout=30,script-path=https://raw.githubusercontent.com/LucaLin233/Proxy/main/surge/scripts/aiapi_relay.js,argument="cch_endpoints={{{cch_endpoints}}}&cch_admin_max={{{cch_admin_max}}}&cch_row_width={{{cch_row_width}}}&cch_show_limits={{{cch_show_limits}}}&aiapi_daily_notify={{{aiapi_daily_notify}}}&mode=daily"
+aiapi-relay-daily = type=cron,cronexp="50 23 * * *",wake-system=true,timeout=30,script-path=https://raw.githubusercontent.com/LucaLin233/Proxy/main/surge/scripts/aiapi_relay.js,argument="cch_endpoints={{{cch_endpoints}}}&cch_admin_max={{{cch_admin_max}}}&cch_row_width={{{cch_row_width}}}&cch_quota_interval={{{cch_quota_interval}}}&cch_show_limits={{{cch_show_limits}}}&aiapi_daily_notify={{{aiapi_daily_notify}}}&mode=daily"

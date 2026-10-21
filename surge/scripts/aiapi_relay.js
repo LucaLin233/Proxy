@@ -1,8 +1,9 @@
 /* AI 中转站面板与日报：
-   - 面板（mode=panel，默认）：各 CCH 站点的余额，合并成一个列表
+   - 面板（mode=panel，默认）：各 CCH / CCHP 站点的余额，合并成一个列表
    - 日报（mode=daily）：每天 23:50 推送同一条列表
-   余额统一从 CCH 取：admin 模式一次拿到本站各上游余额（CCH 用各上游自己的密钥查），
-   user/cookie/login 模式取该站账户余额，两种来源并列展示。
+   余额从两处取：CCH 的 admin 模式一次拿到本站各上游余额（CCH 用各上游自己的密钥查），
+   user/cookie/login 模式取该站账户余额；CCHP 的 cchp 模式按组织取各 provider 余额，
+   并用其 key 优先级排序（Clouder 的余额仍由 CCH 站点提供）。面板只显示余额。
    参数用 cch_*，模块级用 aiapi_* */
 
 const ARGS = parseArgs($argument || "");
@@ -177,7 +178,7 @@ function fail(message) {
 
 /* ── CCH：各上游余额（限额可选） ── */
 
-const CCH_MODES = ["user", "cookie", "admin", "login"];
+const CCH_MODES = ["user", "cookie", "admin", "login", "cchp"];
 /* CCH 单次批量查询余额的供应商上限 */
 const CCH_BALANCE_MAX_IDS = 50;
 const CCH_WINDOWS = [
@@ -405,23 +406,12 @@ async function fetchCchAdminQuota(site, headers, list) {
   }
 }
 
-async function fetchCchOverview(site, headers) {
-  try {
-    const response = await request("get", `${site.base}/api/v1/dashboard/overview`, headers);
-    if (response.status !== 200) return null;
-    return unwrap(parseBody(response));
-  } catch (_) { return null; }
-}
-
 async function fetchCchAdminSite(site, headers) {
   const list = await fetchCchProviderList(site, headers);
   /* 限额表默认不展示，也就没必要为它多打一次接口 */
   const quota = CCH_SHOW_LIMITS ? await fetchCchAdminQuota(site, headers, list) : null;
   const vendors = await fetchCchVendors(site, headers);
-  const [balances, overview] = await Promise.all([
-    fetchCchBalances(site, headers, cchBalanceProviders(list, vendors)),
-    fetchCchOverview(site, headers),
-  ]);
+  const balances = await fetchCchBalances(site, headers, cchBalanceProviders(list, vendors));
   return {
     kind: "admin",
     providers: list,
@@ -429,7 +419,6 @@ async function fetchCchAdminSite(site, headers) {
     quota: quota ? quota.data : null,
     stale: quota ? quota.stale : false,
     balances,
-    overview,
   };
 }
 
@@ -502,10 +491,11 @@ async function fetchCchLoginSite(site) {
 async function fetchCchSite(site) {
   const headers = { Accept: "application/json" };
   if (site.mode === "cookie") headers.Cookie = `auth-token=${site.credential}`;
-  else if (site.mode === "admin") headers.Authorization = `Bearer ${site.credential}`;
+  else if (site.mode === "admin" || site.mode === "cchp") headers.Authorization = `Bearer ${site.credential}`;
   else headers["X-API-Key"] = site.credential;
 
   if (site.mode === "admin") return fetchCchAdminSite(site, headers);
+  if (site.mode === "cchp") return fetchCchpSite(site, headers);
   if (site.mode === "login") return fetchCchLoginSite(site);
   return fetchCchUserSite(site, headers);
 }
@@ -671,6 +661,230 @@ function cchUpstreamRows(providers, balances, vendors) {
   return rows;
 }
 
+/* ── CCHP：按 key 优先级排序的站点余额（Clouder 仍由 CCH 站点提供） ── */
+
+/* CCHP 的 key 列表按 provider 逐个查，最多 5 个请求在途 */
+const CCHP_KEY_CONCURRENCY = 5;
+
+function cchpCacheKey(kind, base, orgId) {
+  return `cchp_${kind}_${hashString(`${base}|${orgId}`)}`;
+}
+
+/* allowStale=true 时忽略时效，用于请求失败后回退旧值 */
+function readCchpCache(kind, base, orgId, allowStale) {
+  try {
+    const raw = $persistentStore.read(cchpCacheKey(kind, base, orgId));
+    if (!raw) return null;
+    const cache = JSON.parse(raw);
+    if (!cache || cache.version !== 1 || !Array.isArray(cache.items)) return null;
+    const fresh = Date.now() - Number(cache.updatedAt || 0) < CCH_QUOTA_CACHE_SECONDS * 1000;
+    if (!fresh && !allowStale) return null;
+    return { items: cache.items, fresh };
+  } catch (_) { return null; }
+}
+
+function writeCchpCache(kind, base, orgId, items) {
+  try {
+    $persistentStore.write(
+      JSON.stringify({ version: 1, updatedAt: Date.now(), items }),
+      cchpCacheKey(kind, base, orgId)
+    );
+  } catch (_) {}
+  return items;
+}
+
+/* 组织树只用于取组织 ID，可缓存；失败时用旧 ID 继续查余额 */
+function readCchpOrg(base, allowStale) {
+  try {
+    const raw = $persistentStore.read(`cchp_org_${hashString(base)}`);
+    if (!raw) return "";
+    const cache = JSON.parse(raw);
+    if (!cache || cache.version !== 1 || !cache.orgId) return "";
+    const fresh = Date.now() - Number(cache.updatedAt || 0) < CCH_QUOTA_CACHE_SECONDS * 1000;
+    return fresh || allowStale ? String(cache.orgId) : "";
+  } catch (_) { return ""; }
+}
+
+function writeCchpOrg(base, orgId) {
+  try {
+    $persistentStore.write(
+      JSON.stringify({ version: 1, updatedAt: Date.now(), orgId }),
+      `cchp_org_${hashString(base)}`
+    );
+  } catch (_) {}
+}
+
+async function fetchCchpOrgId(site, headers) {
+  const cached = readCchpOrg(site.base, false);
+  if (cached) return cached;
+  try {
+    const response = await request("get", `${site.base}/api/account/org-tree`, headers);
+    checkStatus(response, "管理令牌");
+    const root = parseBody(response).root;
+    const orgId = String((root && root.id) || "").trim();
+    if (!orgId) throw new Error("返回缺少组织 ID");
+    writeCchpOrg(site.base, orgId);
+    return orgId;
+  } catch (error) {
+    const stale = readCchpOrg(site.base, true);
+    if (stale) return stale;
+    throw error;
+  }
+}
+
+/* 余额与优先级分开缓存：余额常变，优先级基本不变 */
+async function fetchCchpProviders(site, orgId, headers) {
+  const cached = readCchpCache("balance", site.base, orgId, false);
+  if (cached) return { providers: cached.items, stale: false };
+  try {
+    const response = await request("get", `${site.base}/api/account/orgs/${orgId}/providers`, headers);
+    checkStatus(response, "管理令牌");
+    const list = parseBody(response).providers;
+    const providers = (Array.isArray(list) ? list : []).map((item) => ({
+      id: String(item.id || ""),
+      name: String(item.name || ""),
+      /* 官网地址：CCH 站点按域名匹配优先级时用 */
+      host: String(item.website_url || ""),
+      /* balance.accounts 会按 key 重复计数，只用 totals / total_usd */
+      balance: item.balance && typeof item.balance === "object" ? item.balance : null,
+    }));
+    return { providers: writeCchpCache("balance", site.base, orgId, providers), stale: false };
+  } catch (error) {
+    const stale = readCchpCache("balance", site.base, orgId, true);
+    if (stale) return { providers: stale.items, stale: true };
+    throw error;
+  }
+}
+
+/* 优先级：active key 的最小值；没有 active key 时取全部 key 的最小值（仅作排序元数据） */
+function cchpKeyPriority(keys) {
+  const list = Array.isArray(keys) ? keys : [];
+  const active = list.filter((key) => String(key.status || "").toLowerCase() === "active");
+  const pool = active.length ? active : list;
+  let best = null;
+  for (const key of pool) {
+    const priority = numeric(key.priority);
+    if (priority !== null && (best === null || priority < best)) best = priority;
+  }
+  return best;
+}
+
+/* provider 可能不少，逐个查 key 时限制同时进行的请求数 */
+async function mapLimit(items, limit, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  async function run() {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await worker(items[index]);
+    }
+  }
+  const runners = [];
+  for (let i = 0; i < Math.min(limit, items.length); i++) runners.push(run());
+  await Promise.all(runners);
+  return results;
+}
+
+async function fetchCchpPriorities(site, orgId, providers, headers) {
+  const cached = readCchpCache("priority", site.base, orgId, false);
+  if (cached) return cached.items;
+  let failed = false;
+  const items = await mapLimit(providers, CCHP_KEY_CONCURRENCY, async (provider) => {
+    try {
+      const response = await request(
+        "get",
+        `${site.base}/api/account/orgs/${orgId}/providers/${encodeURIComponent(provider.id)}/keys`,
+        headers
+      );
+      if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
+      return { id: provider.id, priority: cchpKeyPriority(parseBody(response).keys) };
+    } catch (_) {
+      /* 单把 key 查不到只丢排序元数据，余额行照常显示 */
+      failed = true;
+      return { id: provider.id, priority: null };
+    }
+  });
+  /* 有失败时不写缓存，免得把 null 优先级固化一轮 */
+  return failed ? items : writeCchpCache("priority", site.base, orgId, items);
+}
+
+async function fetchCchpSite(site, headers) {
+  const orgId = await fetchCchpOrgId(site, headers);
+  const snapshot = await fetchCchpProviders(site, orgId, headers);
+  const providers = snapshot.providers || [];
+  const priorities = await fetchCchpPriorities(site, orgId, providers, headers);
+  const priorityById = new Map(priorities.map((item) => [item.id, item.priority]));
+  return {
+    kind: "cchp",
+    stale: snapshot.stale,
+    /* 保留 name/host/priority，供 cchSitePriorities 给 CCH 站点排序 */
+    providers: providers.map((provider) => ({
+      name: provider.name,
+      host: provider.host,
+      priority: priorityById.has(provider.id) ? priorityById.get(provider.id) : null,
+      balance: provider.balance,
+    })),
+  };
+}
+
+/* 品牌取名称第一段：Clouder-Astra → Clouder */
+function cchpIsClouder(name) {
+  return providerBrand(name).toLowerCase() === "clouder";
+}
+
+/* 余额行：只显示 status=ok 且有数值（或 unlimited）的 provider；Clouder 由 CCH 站点提供 */
+function cchpRows(data) {
+  const rows = [];
+  for (const provider of data.providers || []) {
+    if (cchpIsClouder(provider.name)) continue;
+    const balance = provider.balance || {};
+    if (String(balance.status || "").toLowerCase() !== "ok") continue;
+    const totals = Array.isArray(balance.totals) ? balance.totals : [];
+    const total = totals.length ? totals[0] : null;
+    /* 有 totals 时用原币种原单位；否则退回 total_usd + USD */
+    const amount = total ? numeric(total.amount) : null;
+    const totalUsd = numeric(balance.total_usd);
+    const value = amount === null ? totalUsd : amount;
+    const unit = amount === null ? "USD" : String(total.unit || "USD").toUpperCase();
+    const unlimited = balance.unlimited === true;
+    if (!unlimited && value === null) continue;
+    rows.push({
+      /* total_usd 只用于同级排序 */
+      amount: totalUsd === null ? value : totalUsd,
+      priority: provider.priority,
+      parts: [providerBrand(provider.name), unlimited ? "余额 不限量" : `余额 ${cchMoney(unit, value)}`],
+    });
+  }
+  rows.sort(compareRows);
+  return rows;
+}
+
+/* 行不显示时用警告色提示：状态非 ok，或既无金额也无不限量 */
+function cchpAbnormal(data) {
+  for (const provider of data.providers || []) {
+    if (cchpIsClouder(provider.name)) continue;
+    const balance = provider.balance || {};
+    if (String(balance.status || "").toLowerCase() !== "ok") return true;
+    const total = Array.isArray(balance.totals) ? balance.totals[0] : null;
+    const hasAmount = total ? numeric(total.amount) !== null : false;
+    if (!hasAmount && numeric(balance.total_usd) === null && balance.unlimited !== true) return true;
+  }
+  return false;
+}
+
+/* 显示中的余额超过 24 小时未复查时提示 */
+function cchpOld(data) {
+  const cutoff = Date.now() - 24 * 3600 * 1000;
+  for (const provider of data.providers || []) {
+    if (cchpIsClouder(provider.name)) continue;
+    const balance = provider.balance || {};
+    if (String(balance.status || "").toLowerCase() !== "ok") continue;
+    const stamp = Date.parse(String(balance.oldest_checked_at || balance.checked_at || ""));
+    if (Number.isFinite(stamp) && stamp < cutoff) return true;
+  }
+  return false;
+}
+
 /* 站点优先级：配置里显式写了就用它，否则按域名（其次名称）匹配主 CCH 里的厂商，
    取该厂商各供应商的最小优先级——查不到余额的站点靠这一步排进正确位置 */
 function cchSitePriorities(results) {
@@ -678,7 +892,28 @@ function cchSitePriorities(results) {
   const byName = new Map();
 
   for (const item of results) {
-    if (!item.data || item.data.kind !== "admin") continue;
+    if (!item.data) continue;
+
+    /* CCHP 的 provider 自带 key 优先级：Clouder 的 CCH 站点靠这里排回 1 */
+    if (item.data.kind === "cchp") {
+      for (const provider of item.data.providers || []) {
+        const priority = numeric(provider.priority);
+        if (priority === null) continue;
+        const domain = providerHost(provider.host);
+        if (domain && (byDomain.get(domain) === undefined || priority < byDomain.get(domain))) {
+          byDomain.set(domain, priority);
+        }
+        for (const name of [provider.name, providerBrand(provider.name)]) {
+          const key = String(name || "").trim().toLowerCase();
+          if (key && (byName.get(key) === undefined || priority < byName.get(key))) {
+            byName.set(key, priority);
+          }
+        }
+      }
+      continue;
+    }
+
+    if (item.data.kind !== "admin") continue;
     const vendors = item.data.vendors;
     for (const provider of item.data.providers || []) {
       const priority = Number(provider.priority);
@@ -709,7 +944,8 @@ function cchSitePriority(site, priorities) {
   return null;
 }
 
-/* CCH 各站余额合成一张表：admin 站点展开各上游，user/cookie/login 站点是该站账户余额 */
+/* CCH / CCHP 各站余额合成一张表：admin 站点展开各上游，CCHP 站点展开各 provider，
+   user/cookie/login 站点是该站账户余额 */
 function cchBalanceLines(results, wrap) {
   const lines = [];
   const rows = [];
@@ -722,6 +958,10 @@ function cchBalanceLines(results, wrap) {
       for (const row of cchUpstreamRows(item.data.providers || [], item.data.balances, item.data.vendors)) {
         rows.push(row);
       }
+      continue;
+    }
+    if (item.data.kind === "cchp") {
+      for (const row of cchpRows(item.data)) rows.push(row);
       continue;
     }
     const total = item.data.total;
@@ -749,46 +989,28 @@ function cchBalanceLines(results, wrap) {
     lines.push("未获取到余额");
   }
 
-  /* 统计与限额取自 admin 站点，多个 admin 站点时带站名区分；与余额之间空一行 */
+  /* 限额取自 admin 站点，多个 admin 站点时带站名区分；与余额之间空一行 */
   const details = [];
   const admins = results.filter((item) => item.data && item.data.kind === "admin");
   for (const item of admins) {
+    if (!CCH_SHOW_LIMITS) continue;
     const prefix = admins.length > 1 ? `${item.site.name} · ` : "";
-    for (const line of cchOverviewLines(item.data.overview)) details.push(prefix + line);
-    if (CCH_SHOW_LIMITS) {
-      for (const line of cchLimitLines(item.data)) details.push(prefix + line);
-    }
+    for (const line of cchLimitLines(item.data)) details.push(prefix + line);
   }
   if (details.length) {
     lines.push("");
     for (const line of details) lines.push(line);
   }
-  return lines;
-}
 
-/* 今日请求与成本、错误率与响应时间 */
-function cchOverviewLines(overview) {
-  const data = overview || {};
-  const lines = [];
-
-  const requests = numeric(data.todayRequests);
-  const cost = numeric(data.todayCost);
-  if (requests !== null || cost !== null) {
-    const head = [];
-    if (requests !== null) head.push(`今日 ${formatInteger(requests)} 次`);
-    if (cost !== null) head.push(money(cost));
-    lines.push(head.join(" · "));
+  /* CCHP 的余额可能来自旧缓存，或上游太久没复查，底部给出提示 */
+  const notices = [];
+  const cchpItems = results.filter((item) => item.data && item.data.kind === "cchp");
+  if (cchpItems.some((item) => item.data.stale)) notices.push("⚠️ CCHP 余额来自缓存");
+  if (cchpItems.some((item) => cchpOld(item.data))) notices.push("⚠️ 部分余额较旧");
+  if (notices.length) {
+    lines.push("");
+    for (const line of notices) lines.push(line);
   }
-
-  const errorRate = numeric(data.todayErrorRate);
-  const responseTime = numeric(data.avgResponseTime);
-  if (errorRate !== null || responseTime !== null) {
-    const tail = [];
-    if (errorRate !== null) tail.push(`错误 ${formatPercent(errorRate)}`);
-    if (responseTime !== null) tail.push(`响应 ${formatDuration(responseTime)}`);
-    lines.push(tail.join(" · "));
-  }
-
   return lines;
 }
 
@@ -817,24 +1039,6 @@ function cchLimitLines(data) {
   return lines;
 }
 
-function formatInteger(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return "-";
-  return String(Math.round(number)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
-
-function formatPercent(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return "-";
-  return `${number.toFixed(number >= 10 ? 0 : 2)}%`;
-}
-
-function formatDuration(milliseconds) {
-  const number = Number(milliseconds);
-  if (!Number.isFinite(number)) return "-";
-  return number >= 1000 ? `${(number / 1000).toFixed(1)}s` : `${Math.round(number)}ms`;
-}
-
 /* 风险等级：0 正常、1 警告、2 危险 */
 function cchRisk(data) {
   if (data.kind === "user") {
@@ -846,10 +1050,15 @@ function cchRisk(data) {
     return 0;
   }
 
+  /* CCHP：余额状态异常（行不显示）或用了旧缓存时给提示色 */
+  if (data.kind === "cchp") {
+    let risk = 0;
+    if (data.stale) risk = 1;
+    if (cchpAbnormal(data)) risk = Math.max(risk, 1);
+    return risk;
+  }
+
   let risk = 0;
-  const errorRate = num(data.overview && data.overview.todayErrorRate);
-  if (errorRate >= 10) risk = 2;
-  else if (errorRate >= 5) risk = 1;
 
   /* 余额一条都查不到时给个提示色：上游可能都换了密钥或都不可达 */
   if (Array.isArray(data.balances) && data.balances.length
@@ -925,7 +1134,7 @@ async function runDaily() {
   const cchResults = await fetchCchResults();
   if (!cchResults.length) return $done();
 
-  const body = ["【CCH】"].concat(cchBalanceLines(cchResults, false)).join("\n");
+  const body = ["【余额】"].concat(cchBalanceLines(cchResults, false)).join("\n");
   $notification.post(`${PANEL_TITLE} 日报`, `CCH ${cchResults.length}`, body);
   return $done();
 }

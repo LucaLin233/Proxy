@@ -103,7 +103,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 | --- | --- | --- |
 | `surge_status.sgmodule` | Surge 运行时长与 MITM、Rewrite、Scripting 状态；点击面板可重载配置 | 不需要 |
 | `server.sgmodule` | 服务器流量与到期（Lightsail + Peekabo 合并为一个面板） | 需要，见模块内 `#!arguments-desc` |
-| `aiapi.sgmodule` | 各 CCH 站点的余额：本站各上游余额与账户余额合并为一个面板 | 需要，见模块内 `#!arguments-desc` |
+| `aiapi.sgmodule` | CCH / CCHP 站点余额，按优先级排序，Clouder 走 CCH | 需要，见模块内 `#!arguments-desc` |
 | `app_js.sgmodule` | APP JS 重写合集：Netflix 评分与单集评分、淘票票豆瓣评分、TestFlight 账户管理、彩云天气 SVIP | 不需要 |
 | `bilibili_cdn.sgmodule` | 哔哩哔哩 CDN 优化 | 不需要 |
 | `block_startup.sgmodule` | 开屏与启动广告拦截 | 不需要 |
@@ -115,7 +115,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 
 | 脚本 | 用途 | 来源 |
 | --- | --- | --- |
-| `aiapi_relay.js` | 中转站面板：各 CCH 站点余额（admin 走 `/api/v1/providers/balances:batch` 列本站各上游，按厂商归并、名称取供应商名的品牌部分；user/cookie/login 走 `/api/v1/me/quota` 列账户余额），合并成一张按 CCH 优先级排序的表；同一脚本供 cron 日报推送同一列表 | 自建 |
+| `aiapi_relay.js` | 中转站面板：CCH / CCHP 站点余额，按优先级排序，Clouder 走 CCH（CCH 的 admin 走 `/api/v1/providers/balances:batch` 列本站各上游，按厂商归并、名称取供应商名的品牌部分；user/cookie/login 走 `/api/v1/me/quota` 列账户余额；CCHP 的 cchp 走 `/api/account/orgs/{orgId}/providers` 取余额，并按各 provider 的 key 优先级排序），合并成一张表；同一脚本供 cron 日报推送同一列表 | 自建 |
 | `server_overview.js` | 服务器概览：AWS Lightsail 各实例流量（SigV4 直连 CloudWatch 指标）+ Peekabo 流量与到期，合并显示；同一脚本供 cron 日报 | 自建 |
 | `function.js` | Surge 运行时长与功能开关状态面板，点击重载配置 | 参考 chaizia/Profiles |
 | `ip_check.js` | 当前节点详情面板 | 感谢 @congcong |
