@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-10-20T14:00:01Z
-# Total:   20182
+# Updated: 2026-10-21T14:00:02Z
+# Total:   20184
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -2015,6 +2015,8 @@ DOMAIN-SUFFIX,avidemux.org
 DOMAIN-SUFFIX,avinetworks.com
 DOMAIN-SUFFIX,avinin.com
 DOMAIN-SUFFIX,avira.com
+DOMAIN-SUFFIX,avito.com
+DOMAIN-SUFFIX,avito.tech
 DOMAIN-SUFFIX,avizoon.site
 DOMAIN-SUFFIX,avizoone.com
 DOMAIN-SUFFIX,avjb.com
