@@ -209,6 +209,13 @@ function fail(message) {
   finish(`❌ ${message}`, ERROR_ICON, PANEL_DANGER_COLOR);
 }
 
+/* 诊断日志：只在异常路径记录摘要，正常刷新不刷屏；Surge 里可用 script-log 查看 */
+function cchpLog(message) {
+  try {
+    if (typeof console !== "undefined" && console.log) console.log(`[aiapi] ${message}`);
+  } catch (_) {}
+}
+
 /* ── CCH：各上游余额（限额可选） ── */
 
 const CCH_MODES = ["user", "cookie", "admin", "login", "cchp"];
@@ -231,10 +238,22 @@ function problemCode(body) {
 }
 
 function checkStatus(response, label) {
-  if (response.status === 401) throw new Error(`${label}被拒${problemCode(response.body)}`);
-  if (response.status === 403) throw new Error("无权限，请检查令牌权限");
-  if (response.status === 404) throw new Error("接口不存在，请检查地址与版本");
-  if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
+  if (response.status === 401) {
+    cchpLog(`${label} HTTP 401 ${problemCode(response.body)}`);
+    throw new Error(`${label}被拒${problemCode(response.body)}`);
+  }
+  if (response.status === 403) {
+    cchpLog(`${label} HTTP 403`);
+    throw new Error("无权限，请检查令牌权限");
+  }
+  if (response.status === 404) {
+    cchpLog(`${label} HTTP 404`);
+    throw new Error("接口不存在，请检查地址与版本");
+  }
+  if (response.status !== 200) {
+    cchpLog(`${label} HTTP ${response.status}`);
+    throw new Error(`HTTP ${response.status}`);
+  }
   return response;
 }
 
@@ -822,6 +841,7 @@ async function fetchCchpProviders(site, orgId, headers) {
     const providers = await fetchCchpProviderList(site, orgId, headers);
     return { providers: writeCchpCache("balance", site.base, orgId, providers), stale: false, timedOut: false };
   } catch (error) {
+    cchpLog(`providers 请求失败，回退快照: ${(error && error.message) || error}`);
     const stale = readCchpCache("balance", site.base, orgId, true);
     if (stale) {
       return {
@@ -1506,7 +1526,10 @@ async function fetchCchResults() {
   const sites = collectCchSites();
   return Promise.all(sites.map((site) => fetchCchSite(site).then(
     (data) => ({ site, data }),
-    (error) => ({ site, error: error || new Error("请求失败") })
+    (error) => {
+      cchpLog(`${site.name} 取数失败: ${(error && error.message) || error}`);
+      return { site, error: error || new Error("请求失败") };
+    }
   )));
 }
 
