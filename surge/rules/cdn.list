@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-10-21T14:00:21Z
-# Total:   6779
+# Updated: 2026-10-22T14:00:20Z
+# Total:   6781
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -4489,9 +4489,11 @@ DOMAIN-SUFFIX,trackerslist.com
 DOMAIN-SUFFIX,tracking.inflection.io
 DOMAIN-SUFFIX,trafficdeposit.com
 DOMAIN-SUFFIX,transcend-cdn.com
+DOMAIN-SUFFIX,travel-assets.com
 DOMAIN-SUFFIX,trekcdnprod.azureedge.net
 DOMAIN-SUFFIX,trustless-gateway.link
 DOMAIN-SUFFIX,truth.bahamut.com.tw
+DOMAIN-SUFFIX,trvl-media.com
 DOMAIN-SUFFIX,ttcache.com
 DOMAIN-SUFFIX,ttl.sh
 DOMAIN-SUFFIX,ttwstatic.com
