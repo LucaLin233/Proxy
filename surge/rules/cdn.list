@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-10-22T14:00:20Z
-# Total:   6781
+# Updated: 2026-10-24T14:00:17Z
+# Total:   6788
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -211,7 +211,9 @@ DOMAIN-SUFFIX,assets-next.mattersprotocol.io
 DOMAIN-SUFFIX,assets-proxy.anthropic.com
 DOMAIN-SUFFIX,assets-s3-us-east-1.ceros.com
 DOMAIN-SUFFIX,assets-servd.host
+DOMAIN-SUFFIX,assets-static.99.co
 DOMAIN-SUFFIX,assets-themes.chess.com
+DOMAIN-SUFFIX,assets-v2.99.co
 DOMAIN-SUFFIX,assets-v2.i-scmp.com
 DOMAIN-SUFFIX,assets-v2.super.so
 DOMAIN-SUFFIX,assets-www.readspeaker.com
@@ -299,6 +301,7 @@ DOMAIN-SUFFIX,assets.getpostman.com
 DOMAIN-SUFFIX,assets.github.dev
 DOMAIN-SUFFIX,assets.goat.com
 DOMAIN-SUFFIX,assets.gorgias.help
+DOMAIN-SUFFIX,assets.grab.com
 DOMAIN-SUFFIX,assets.grammarly.com
 DOMAIN-SUFFIX,assets.grooveapps.com
 DOMAIN-SUFFIX,assets.guim.co.uk
@@ -1379,6 +1382,7 @@ DOMAIN-SUFFIX,certificates.godaddy.com
 DOMAIN-SUFFIX,certs.apple.com
 DOMAIN-SUFFIX,cf-assets.www.cloudflare.com
 DOMAIN-SUFFIX,cf-images.ap-northeast-1.prod.boltdns.net
+DOMAIN-SUFFIX,cf-images.ap-southeast-1.prod.boltdns.net
 DOMAIN-SUFFIX,cf-images.us-east-1.prod.boltdns.net
 DOMAIN-SUFFIX,cf-ipfs.com
 DOMAIN-SUFFIX,cf.channel.io
@@ -3269,6 +3273,7 @@ DOMAIN-SUFFIX,pic.imge.cc
 DOMAIN-SUFFIX,pic.macked.app
 DOMAIN-SUFFIX,pic.onlinewebfonts.com
 DOMAIN-SUFFIX,pic.skk.moe
+DOMAIN-SUFFIX,pic2.99.co
 DOMAIN-SUFFIX,piccdn.7mmtv.sx
 DOMAIN-SUFFIX,pichost.top
 DOMAIN-SUFFIX,picjs.xyz
@@ -3655,6 +3660,7 @@ DOMAIN-SUFFIX,screenshots.debian.net
 DOMAIN-SUFFIX,screenshots.downloadtorrentfile.com
 DOMAIN-SUFFIX,screenshots.webflow.com
 DOMAIN-SUFFIX,scribdassets.com
+DOMAIN-SUFFIX,scribe-web-sdk.grab.com
 DOMAIN-SUFFIX,script.custobar.com
 DOMAIN-SUFFIX,scripts.dailymail.co.uk
 DOMAIN-SUFFIX,scripts.gatorapi.com
@@ -4186,6 +4192,7 @@ DOMAIN-SUFFIX,static1.e621.net
 DOMAIN-SUFFIX,static1.lottiefiles.com
 DOMAIN-SUFFIX,static1.smartbear.co
 DOMAIN-SUFFIX,static1.squarespace.com
+DOMAIN-SUFFIX,static1.straitstimes.com.sg
 DOMAIN-SUFFIX,static10.lottiefiles.com
 DOMAIN-SUFFIX,static2.avg.com
 DOMAIN-SUFFIX,static2.giroditalia.it
