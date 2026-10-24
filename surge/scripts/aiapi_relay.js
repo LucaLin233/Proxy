@@ -719,8 +719,9 @@ function cchUpstreamRows(providers, balances, vendors) {
 const CCHP_KEY_CONCURRENCY = 5;
 
 /* 模块 timeout=30 秒，而 CCHP 要串行跑 org-tree → providers → keys、keys 还要分批，
-   累起来会直接把面板掐断（无输出）。$httpClient 没有超时参数、已发出的请求无法取消，
-   只能按 27 秒总预算停止后续派发，把已拿到的余额先显示出来。 */
+   每把 key 各刷一次后请求数按 key 放大，只限制派发仍可能在多轮在途请求上等满 30 秒
+   （11 把 key × 12 秒、并发 5 约 36 秒）。$httpClient 没有超时参数、已发出的请求无法取消，
+   所以 27 秒总预算同时限制派发与等待：到点停止等待并降级，晚到的响应丢弃。 */
 const CCHP_BUDGET_MS = 27000;
 let cchpDeadlineAt = 0;
 
@@ -793,7 +794,7 @@ async function fetchCchpOrgId(site, headers) {
   if (cached) return cached;
   try {
     if (cchpBudgetSpent()) throw cchpTimeoutError();
-    const response = await request("get", `${site.base}/api/account/org-tree`, headers);
+    const response = await cchpRequest("get", `${site.base}/api/account/org-tree`, headers);
     checkStatus(response, "管理令牌");
     const root = parseBody(response).root;
     const orgId = String((root && root.id) || "").trim();
@@ -816,7 +817,7 @@ function cchpHidden(provider) {
 
 /* 只发一次 providers 列表请求；失败时由调用方决定是否回退上次快照 */
 async function fetchCchpProviderList(site, orgId, headers) {
-  const response = await request("get", `${site.base}/api/account/orgs/${orgId}/providers`, headers);
+  const response = await cchpRequest("get", `${site.base}/api/account/orgs/${orgId}/providers`, headers);
   checkStatus(response, "管理令牌");
   const list = parseBody(response).providers;
   /* 200 但结构不对（网关错误页、字段改名）时不能当成空数组写缓存，否则会盖掉旧值 */
@@ -928,7 +929,7 @@ async function fetchCchpPriorities(site, orgId, providers, headers) {
       return { id: provider.id, priority: null, keyIds: [] };
     }
     try {
-      const response = await request(
+      const response = await cchpRequest(
         "get",
         `${site.base}/api/account/orgs/${orgId}/providers/${encodeURIComponent(provider.id)}/keys`,
         headers
@@ -1017,6 +1018,20 @@ function cchpWithin(leftMs, promise) {
   });
 }
 
+/* 带预算的请求包装：派发前看剩余预算，等待期与预算赛跑，到点抛 cchp_timeout 交给既有降级分支；
+   原始错误原样抛出。已发出的请求无法取消，晚到的响应由这里的 then 接住丢弃，不会变成未捕获异常。 */
+async function cchpRequest(method, url, headers) {
+  const left = cchpDeadlineAt - Date.now();
+  if (!(left > 0)) throw cchpTimeoutError();
+  const settled = await cchpWithin(left, request(method, url, headers).then(
+    (value) => ({ value }),
+    (error) => ({ error })
+  ));
+  if (settled === null) throw cchpTimeoutError();
+  if (settled.error) throw settled.error;
+  return settled.value;
+}
+
 /* 两个端点互不依赖：并发取，各自受剩余预算封顶，任一失败或超时只丢该项 */
 async function fetchCchpUsage(site, headers) {
   const left = cchpDeadlineAt - Date.now();
@@ -1066,13 +1081,16 @@ async function refreshCchpBalances(site, orgId, providers, headers) {
     try {
       const url = `${site.base}/api/account/orgs/${orgId}/providers/${encodeURIComponent(target.id)}`
         + `/keys/${encodeURIComponent(target.keyId)}/balance?refresh=true`;
-      const response = await request("get", url, headers);
+      const response = await cchpRequest("get", url, headers);
       if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
       /* 只关心是否成功；上游返回的明细不进面板，也不落缓存 */
       const body = parseBody(response);
       if (body && body.error) throw new Error("上游查询失败");
       ok += 1;
-    } catch (_) { /* 单把 key 失败不影响其它 key；由调用方按 ok < total 标记降级 */ }
+    } catch (error) { /* 单把 key 失败不影响其它 key；由调用方按 ok < total 标记降级 */
+      /* 等待期撞上预算：和其它失败一样只降级，但要让调用方知道是超时不是拒绝 */
+      if (error && error.code === "cchp_timeout") timedOut = true;
+    }
   });
   return { ok, total, timedOut: timedOut || cchpBudgetSpent() };
 }
