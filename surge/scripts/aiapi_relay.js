@@ -30,6 +30,9 @@ const CCH_SHOW_LIMITS = boolArg(ARGS.cch_show_limits, false);
 /* 用户拓扑是一个 provider 一个上游账户；CCHP 的 balance.accounts 按真实账户分行，
    同一账户读数不一致时会被拆成两条、totals 相加双计，默认只刷一把代表 key、只显示单账户金额 */
 const CCHP_SINGLE_ACCOUNT = boolArg(ARGS.aiapi_cchp_single_account, true);
+/* 临时诊断开关：面板底部显示版本标记，限额站点缺窗口时把上游字段名（只有键名）打到提示区。
+   默认关闭；排障完可删。 */
+const CMDCODE_DEBUG = boolArg(ARGS.aiapi_cmdcode_debug, false);
 
 function intArg(value, fallback, min, max) {
   const text = String(value === undefined || value === null ? "" : value).trim();
@@ -1690,6 +1693,17 @@ function cchBalanceLines(results, wrap) {
   if (results.some((item) => item.data && item.data.kind === "limits" && item.data.stale)) {
     notices.push("⚠️ 限额来自缓存");
   }
+  /* 诊断开关：缺窗口时把上游字段名（只有键名/类型）亮在提示区，省得去翻 script-log */
+  if (CMDCODE_DEBUG) {
+    for (const item of results) {
+      if (!item.data || item.data.kind !== "limits") continue;
+      if (Array.isArray(item.data.windows) && item.data.windows.length) continue;
+      const f = item.data.fields || {};
+      const list = (value) => (Array.isArray(value) ? value.join(",") : "");
+      notices.push(`⚠️ 限额字段 ${item.site.name}: C[${list(f.credits)}] B[${list(f.body)}]`
+        + ` WL[${list(f.windowLimits)}] ${f.window || ""}`);
+    }
+  }
   if (cchpItems.some((item) => cchpOld(item.data))) notices.push("⚠️ 部分余额较旧");
   if (cchpTimedOut) notices.push("⚠️ 部分请求超时");
   else if (cchpItems.some((item) => item.data.priorityMissing)) notices.push("⚠️ 部分排序信息缺失");
@@ -2037,6 +2051,16 @@ async function fetchCommandCodeLimits(site, headers) {
     limited,
     windows: cmdcodeWindows(windowLimits, limited),
     monthly: cmdcodeMonthly(credits),
+    /* 诊断用：只有键名，不含任何响应值；默认不落缓存内容之外的地方 */
+    fields: CMDCODE_DEBUG ? {
+      credits: cmdcodeKeyList(credits),
+      body: cmdcodeKeyList(body),
+      windowLimits: cmdcodeKeyList(windowLimits),
+      window: CMDCODE_WINDOWS.map((pair) => {
+        const found = cmdcodeFindWindow(windowLimits, pair[2]);
+        return `${pair[0]}=${cmdcodeTypeName(found.value)}[${cmdcodeKeyList(found.value)}]`;
+      }).join(" "),
+    } : null,
     stale: false,
   };
   cmdcodeLogMissingWindows(limits, credits, body, windowLimits);
@@ -2057,7 +2081,8 @@ function cmdcodeDisplayable(limits) {
 /* 缓存有效期内不发请求；取数失败回退上次缓存并标 stale，没有缓存才抛错（该站点不占行，由面板图标提示） */
 async function fetchCommandCodeSite(site, headers) {
   const cached = readCmdcodeCache(site);
-  if (cached && cached.fresh) return Object.assign({}, cached.data, { stale: false });
+  /* 诊断开关打开时不走新鲜缓存：要拿到本次响应的字段名（失败仍回退缓存） */
+  if (cached && cached.fresh && !CMDCODE_DEBUG) return Object.assign({}, cached.data, { stale: false });
   try {
     return writeCmdcodeCache(site, await fetchCommandCodeLimits(site, headers));
   } catch (error) {
@@ -2192,7 +2217,7 @@ async function runPanel() {
     for (const line of usage) lines.push(line);
   }
   lines.push("");
-  lines.push(`更新 ${formatTime()}`);
+  lines.push(`更新 ${formatTime()}${CMDCODE_DEBUG ? " · dbg-882c0d" : ""}`);
 
   /* 风险色取各站点最高值：站点取数失败或余额整体查不到都会变色 */
   let risk = 0;
