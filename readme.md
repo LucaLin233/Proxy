@@ -113,9 +113,17 @@ CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:
 - Clouder 的余额仍由 CCH 站点（`user`/`cookie`/`login`）提供；**只有**站点名称等于 provider 名或品牌（如 `Clouder`），
   或站点域名与 provider 的 `website_url` 域名一致，才会沿用 CCHP 里该 provider 的 key 优先级；两者都对不上时该站排到最后，
   可在站点末尾手写优先级（`=凭据:user:1`）兜底。
-- 余额**每次刷新都强制查上游**：对每个 provider 的每把 active key 各调一次 `?refresh=true` 复查
+- 余额**默认只刷一把代表 key**：`aiapi_cchp_single_account` 默认开启，每个可见 provider 取 active `keyIds`
+  去重后字符串升序第一把调 `?refresh=true`，面板只显示该 key 关联的 `balance.accounts` 单账户金额，
+  不再把同一账户被拆出的两条 `totals` 相加。默认拓扑就是一个 provider 一个上游账户、新账户另开 provider。
+  **风险**：默认开启，多账户 provider 只会显示一个账户（少算）；需要合计时显式设
+  `aiapi_cchp_single_account=false`，恢复逐把 key 刷新与 `totals` 聚合。
+  该开关只影响面板与日报展示，不修 CCHP 页面自身按账户相加的总额。
+- 关闭单账户开关时余额**每次刷新都强制查上游**：对每个 provider 的每把 active key 各调一次 `?refresh=true` 复查
   （同一上游账户常挂多把 key，只刷一把会让另一把停在旧值，CCHP 据此把同一账户拆成两条并重复计入总额），再取一次列表拿服务端聚合值；
   Mi（`miapi`）与原 CCH 一致不展示，Clouder 不在此模式取余额也不刷新，只保留其 key 优先级用于排序。
+- 单账户模式下找不到唯一账户（多账户且没有一条的 `key_ids` 含代表 key）的 provider 不显示金额，
+  底部提示「⚠️ 单账户余额不可用」；没有 active key 的 provider 不刷新，但仍计 1 个未完成目标（「⚠️ 部分余额未刷新」）。
 - 失败回退：全部刷新失败、被 27 秒预算跳过或在途请求被预算截断时，沿用列表里的服务端缓存值并提示「⚠️ 余额未刷新，来自服务端缓存」；
   只有部分 provider 没刷到时（含没有 active key、拿不到 keyIds 无法刷新的），仍重取一次列表并提示「⚠️ 部分余额未刷新」，
   该提示与超时提示去重（超时优先）。
