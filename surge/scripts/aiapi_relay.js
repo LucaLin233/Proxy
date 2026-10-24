@@ -2079,6 +2079,12 @@ function cchLimitMoney(value) {
   return `$${amount.toFixed(1).replace(/\.0$/, "")}`;
 }
 
+/* 百分比固定两位小数，与余额两位小数同一口径（0.8577 → 85.77%，满额 100.00%、清零 0.00%）。
+   只影响显示精度，风险色仍按原始 ratio 判断（见 cchRisk） */
+function cmdcodePercent(ratio) {
+  return `${(Number(ratio) * 100).toFixed(2)}%`;
+}
+
 /* 限额行字段：只写 5H / W / 月度的剩余百分比，不出现「余额」二字；limited=false 时该窗口写「不限」。
    M 有可用上限时写剩余百分比，上限缺失/非法才回退成剩余金额 */
 function cchLimitFields(data, label) {
@@ -2091,18 +2097,18 @@ function cchLimitFields(data, label) {
       continue;
     }
     if (window.ratio === null) continue;
-    windows.push({ label: window.label, value: `${Math.round(window.ratio * 100)}%` });
+    windows.push({ label: window.label, value: cmdcodePercent(window.ratio) });
   }
   const monthly = data.monthly && typeof data.monthly === "object" ? data.monthly : {};
   const ratio = numeric(monthly.ratio);
   const remaining = numeric(monthly.remaining);
   let month = null;
-  if (ratio !== null) month = `${Math.round(ratio * 100)}%`;
+  if (ratio !== null) month = cmdcodePercent(ratio);
   else if (remaining !== null) month = cchLimitMoney(remaining);
   return { name, windows, month };
 }
 
-/* 三项指标（两个窗口 + 月度）的三种排法：空格分隔 · 紧凑 · 紧凑空格分隔 */
+/* 三项指标（两个窗口 + 月度）的四种排法：完整 · 紧凑 · 紧凑空格 · 无分隔（最窄一档） */
 function cchLimitMetrics(fields, spaced, separator) {
   const items = [];
   for (const window of fields.windows) {
@@ -2125,8 +2131,10 @@ function cchLimitNamed(name, metrics, budget) {
   return measure(truncated) <= budget ? truncated : null;
 }
 
-/* 限额行：只压缩排法与站名，不丢指标——宽度再窄也保留三项。
-   通用 fitRowWidth 会从尾部丢字段（20–22 宽会丢月度），这里不再交给它。
+/* 限额行：先压指标排法、再截短站名、最后才去掉站名——三项指标在能放下时一个不丢。
+   百分比固定两位小数后完整排法要 45 列，默认 38 列改用「紧凑空格」保住完整站名：
+   `CommandCode · 5H68.00% W59.00% M57.14%`（38 列）。
+   通用 fitRowWidth 会从尾部丢字段（20–22 宽会丢月度），这里不交给它。
    金额已是紧凑档（$12345678 → $12.3M）；最紧排法仍超宽时截短收尾，
    绝不返回超过 budget 的行（cch_row_width 下限 20） */
 function cchLimitRowParts(data, label, budget) {
@@ -2135,18 +2143,28 @@ function cchLimitRowParts(data, label, budget) {
   const wide = cchLimitMetrics(fields, true, " · ");
   /* 一个可展示字段都没有：返回空数组，不占行（由面板图标提示异常） */
   if (!wide) return [];
-  const compact = cchLimitMetrics(fields, false, " · ");
-  const tight = cchLimitMetrics(fields, false, " ");
-  for (const metrics of [wide, compact, tight]) {
+  const variants = [
+    wide,
+    cchLimitMetrics(fields, false, " · "),
+    cchLimitMetrics(fields, false, " "),
+    cchLimitMetrics(fields, false, ""),
+  ];
+  /* 完整站名优先：只压指标排法 */
+  for (const metrics of variants) {
+    const line = `${fields.name} · ${metrics}`;
+    if (measure(line) <= width) return [line];
+  }
+  /* 站名确实放不下才截短（截完只剩省略号时返回 null） */
+  for (const metrics of variants) {
     const line = cchLimitNamed(fields.name, metrics, width);
     if (line) return [line];
   }
   /* 站名连 1 列都放不下：整段去掉，指标仍从宽到窄挑第一种放得下的 */
-  for (const metrics of [wide, compact, tight]) {
+  for (const metrics of variants) {
     if (measure(metrics) <= width) return [metrics];
   }
-  /* 比最紧的排法还窄：只截短紧凑金额的最紧排法，保证 measure(line) <= width */
-  return [truncateToWidth(tight, width)];
+  /* 比最紧的排法还窄：只截短空格分隔的最紧排法，保证 measure(line) <= width */
+  return [truncateToWidth(variants[2], width)];
 }
 
 /* ── 币种 ── */
