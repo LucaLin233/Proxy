@@ -754,15 +754,27 @@ function cchGroupInfo(providers, vendors) {
   return info;
 }
 
-/* 排序：CCH 优先级升序（数值越小越优先），同级按余额升序；没有优先级的排最后 */
+/* 排序：CCH 优先级升序（数值越小越优先）；同级按显示名（大小写不敏感）升序，
+   名字也相同时按插入序号。金额只用于展示，不参与排序——余额变化不会让行序跳动；
+   没有优先级的排最后 */
 function compareRows(a, b) {
   const leftPriority = a.priority === null || a.priority === undefined ? Infinity : a.priority;
   const rightPriority = b.priority === null || b.priority === undefined ? Infinity : b.priority;
   if (leftPriority !== rightPriority) return leftPriority - rightPriority;
 
-  const leftAmount = a.amount === null ? Infinity : a.amount;
-  const rightAmount = b.amount === null ? Infinity : b.amount;
-  return leftAmount - rightAmount;
+  const leftName = String(a.name || "").toLowerCase();
+  const rightName = String(b.name || "").toLowerCase();
+  if (leftName !== rightName) {
+    /* localeCompare 可用时按本地排序；它把不同字符串判成相等（返回 0）时再用码位兜底 */
+    let order = 0;
+    if (typeof leftName.localeCompare === "function") order = leftName.localeCompare(rightName);
+    if (order) return order < 0 ? -1 : 1;
+    return leftName < rightName ? -1 : 1;
+  }
+
+  const leftSeq = typeof a.seq === "number" ? a.seq : 0;
+  const rightSeq = typeof b.seq === "number" ? b.seq : 0;
+  return leftSeq - rightSeq;
 }
 
 /* 上游余额行：按厂商归并，余额取该厂商最低值 */
@@ -814,10 +826,9 @@ function cchUpstreamRows(providers, balances, vendors) {
       : group.label;
     const parts = [label];
     parts.push(group.unlimited ? "余额 不限量" : `余额 ${cchMoney(group.currency, group.amount)}`);
-    rows.push({ amount: group.amount, priority: group.priority, parts });
+    rows.push({ amount: group.amount, priority: group.priority, name: label, parts });
   }
 
-  rows.sort(compareRows);
   return rows;
 }
 
@@ -1431,7 +1442,7 @@ function cchpRows(data) {
     const balance = provider.balance || {};
     if (String(balance.status || "").toLowerCase() !== "ok") continue;
     const unlimited = balance.unlimited === true;
-    /* 排序只用 total_usd：不同币种的原值不能直接比较，缺失时 amount=null 排最后 */
+    /* total_usd 只用于金额展示与出行判断：不同币种的原值不能直接比较，金额不参与排序 */
     const totalUsd = numeric(balance.total_usd);
     const totals = cchpAmountParts(balance);
     if (!unlimited && !totals.length && totalUsd === null) continue;
@@ -1440,13 +1451,14 @@ function cchpRows(data) {
     else if (totals.length) amountText = totals.join(" + ");
     else amountText = money(totalUsd);
     const text = `余额 ${amountText}`;
+    const label = providerBrand(provider.name);
     rows.push({
       amount: totalUsd,
       priority: provider.priority,
-      parts: cchpRowParts(providerBrand(provider.name), text, amountText, cchpHealthParts(data, provider)),
+      name: label,
+      parts: cchpRowParts(label, text, amountText, cchpHealthParts(data, provider)),
     });
   }
-  rows.sort(compareRows);
   return rows;
 }
 
@@ -1599,12 +1611,17 @@ function cchBalanceLines(results, wrap) {
       for (const row of cchpRows(item.data)) rows.push(row);
       continue;
     }
-    /* 余额查不到的供应商按限额占一行；排序值 null，同优先级里排最后 */
+    /* 余额查不到的供应商按限额占一行；amount 留空只用于展示，不参与排序 */
     if (item.data.kind === "limits") {
       const parts = cchLimitRowParts(item.data, item.site.name, CCH_ROW_WIDTH);
       /* 上游 200 但一个可用字段都没有：返回空数组，不占行（由图标提示异常） */
       if (!parts.length) continue;
-      rows.push({ amount: null, priority: cchSitePriority(item.site, priorities), parts });
+      rows.push({
+        amount: null,
+        priority: cchSitePriority(item.site, priorities),
+        name: item.site.name,
+        parts,
+      });
       continue;
     }
     const total = item.data.total;
@@ -1612,6 +1629,7 @@ function cchBalanceLines(results, wrap) {
     rows.push({
       amount,
       priority: cchSitePriority(item.site, priorities),
+      name: item.site.name,
       /* 与 CCHP 行同一收尾：窄宽度下截短站名，不折行 */
       parts: fitRowWidth(
         [item.site.name, total ? `余额 ${money(amount)}` : "余额 未设置"],
@@ -1620,6 +1638,9 @@ function cchBalanceLines(results, wrap) {
     });
   }
 
+  /* 每行按收集顺序记插入序号：同优先级、同名的行靠它收尾，
+     不依赖 Array.prototype.sort 对相等元素的稳定性 */
+  rows.forEach((row, index) => { row.seq = index; });
   rows.sort(compareRows);
 
   if (rows.length) {
@@ -1724,7 +1745,8 @@ function cchRisk(data) {
     return risk;
   }
 
-  /* 限额站点：窗口与月度使用率都参与着色，缓存值至少警告色。
+  /* 限额站点：窗口与月度都按剩余比例着色——剩余 ≤5% 红、≤20% 黄（stale 至少黄）。
+     1e-9 是给 3.5/70、14/70 这类边界值的浮点余量，避免算出来的 5.0000000000001% 被判成非红。
      limited=false 时窗口比率已在 cmdcodeWindow 里置空（不限量），但月度比率照常参与 */
   if (data.kind === "limits") {
     const ratios = (Array.isArray(data.windows) ? data.windows : []).map((window) => window.ratio);
@@ -1732,8 +1754,8 @@ function cchRisk(data) {
     let risk = 0;
     for (const ratio of ratios) {
       if (ratio === null) continue;
-      if (ratio >= 0.95) risk = Math.max(risk, 2);
-      else if (ratio >= 0.8) risk = Math.max(risk, 1);
+      if (ratio <= 0.05 + 1e-9) risk = Math.max(risk, 2);
+      else if (ratio <= 0.2 + 1e-9) risk = Math.max(risk, 1);
     }
     if (data.stale) risk = Math.max(risk, 1);
     return risk;
@@ -1760,8 +1782,19 @@ function cchRisk(data) {
 
 /* 上游契约（据 command-code CLI 1.88.0 反查）：/alpha/whoami?limits=1 取 org.id，
    再按 orgId 取 credits.windowLimits 与月度额度；金额单位为 USD，面板不做汇率换算。
-   orgId 为 null（个人账户）时 credits 不带 orgId 参数。 */
-const CMDCODE_WINDOWS = [["fiveHour", "5H"], ["weekly", "W"]];
+   orgId 为 null（个人账户）时 credits 不带 orgId 参数。
+   线上还见过 windowLimits 挂在 body 顶层、下划线命名、窗口键与 used/cap 换名：都按别名兼容，
+   但 canonical 字段存在即不再回退别名（值非法按缺失处理），取不到时不影响原有结果。 */
+const CMDCODE_WINDOWS = [
+  ["fiveHour", "5H", ["fiveHour", "five_hour", "five_hours", "5h"]],
+  ["weekly", "W", ["weekly", "week", "sevenDay", "7d"]],
+];
+/* windowLimits 的两种写法，按顺序在 credits、body 上各找一遍 */
+const CMDCODE_LIMIT_HOLDERS = ["windowLimits", "window_limits"];
+const CMDCODE_USED_KEYS = ["used", "current", "spent"];
+const CMDCODE_CAP_KEYS = ["cap", "limit", "max", "total"];
+/* 诊断每轮运行最多一条：多个 cmdcode 站点同时缺窗口时不重复刷屏 */
+let cmdcodeMissingLogged = false;
 
 /* 缓存按「站点地址 + 凭据指纹」分区：换 key 不会读到上一账户的限额。
    指纹取 SHA-256(`base|credential`) 的前 32 个十六进制字符（128 bit，生日界约 2^64，
@@ -1840,37 +1873,85 @@ async function cmdcodeGet(site, path, headers) {
   return parseBody(response);
 }
 
-/* limited=false 是不限量：历史 used/cap 不再代表当前用量，窗口比率置空（窗口仍写「不限」）；
-   上限缺失或为 0 时没有使用率可言，同样不能当成 0% */
+/* 三个指标统一显示「剩余」百分比：值 = 剩余 / 上限 = 100% − 已用%，clamp 到 0–1。
+   limited=false 是不限量：历史 used/cap 不再代表当前用量，比率置空（窗口仍写「不限」）；
+   上限缺失或为 0 时没有使用率可言，同样不能当成 100% */
 function cmdcodeWindow(key, label, raw, unlimited) {
   const source = raw && typeof raw === "object" ? raw : {};
-  const used = numeric(source.used);
-  const cap = numeric(source.cap);
+  const used = cmdcodePick(source, CMDCODE_USED_KEYS);
+  const cap = cmdcodePick(source, CMDCODE_CAP_KEYS);
   const ratio = !unlimited && used !== null && cap !== null && cap > 0
-    ? Math.min(1, Math.max(0, used / cap))
+    ? Math.min(1, Math.max(0, (cap - used) / cap))
     : null;
   return { key, label, used, cap, ratio };
 }
 
+/* 字段别名取值：canonical 字段只要存在就定了结果——值必须是有限 number，否则按缺失处理，
+   不再回退后面的别名（数组/对象/布尔/空串/数字字符串都不是数值） */
+function cmdcodePick(source, keys) {
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+    const value = source[key];
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  }
+  return null;
+}
+
+/* 窗口对象：按属性存在性取第一个出现的键，值与类型都留给调用方判断（诊断要报原始类型）；
+   存在即定案，值非法也不回退后面的别名 */
+function cmdcodeFindWindow(source, aliases) {
+  for (const alias of aliases) {
+    if (Object.prototype.hasOwnProperty.call(source, alias)) return { alias, value: source[alias] };
+  }
+  return { alias: null, value: undefined };
+}
+
+/* limited 归一：布尔原样，字符串 "true"/"false"（大小写与空白不敏感）也认，其它值按缺失处理 */
+function cmdcodeLimited(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const text = value.trim().toLowerCase();
+    if (text === "true") return true;
+    if (text === "false") return false;
+  }
+  return null;
+}
+
 /* limited=false 是「不限量」：上游没给窗口数据时也照样写「不限」；
-   limited=true 或缺失时只保留真给了 cap 的窗口，缺的窗口整段省略 */
-function cmdcodeWindows(windowLimits) {
+   limited=true 或缺失时只保留真给了窗口对象的窗口，缺的窗口整段省略 */
+function cmdcodeWindows(windowLimits, limited) {
   const source = windowLimits && typeof windowLimits === "object" ? windowLimits : {};
-  const limited = typeof source.limited === "boolean" ? source.limited : null;
+  const flag = limited === undefined ? cmdcodeLimited(source.limited) : limited;
+  const unlimited = flag === false;
   const windows = [];
   for (const pair of CMDCODE_WINDOWS) {
-    const raw = source[pair[0]];
-    const present = raw && typeof raw === "object";
-    if (!present && limited !== false) continue;
-    windows.push(cmdcodeWindow(pair[0], pair[1], present ? raw : null, limited === false));
+    const found = cmdcodeFindWindow(source, pair[2]);
+    const present = found.value && typeof found.value === "object";
+    if (!present && !unlimited) continue;
+    windows.push(cmdcodeWindow(pair[0], pair[1], present ? found.value : null, unlimited));
   }
   return windows;
 }
 
-/* 月度：剩余 = 计划内额度 + 已购 + 赠送；三项全缺才算未知（缺其中一项按 0 计，不能凭空少算）。
-   使用率按套餐上限折算：M% = clamp((cap - monthlyCredits) / cap, 0, 1)；接口不返回本月已用，
-   只能用「套餐价 - 计划内剩余额度」反推。monthlyCredits 缺失或 cap 非法（≤0/非数字）时不给比率，
-   行内回退成剩余金额。 */
+/* windowLimits 的落点：credits.windowLimits → credits.window_limits → body.windowLimits → body.window_limits，
+   按属性存在性取第一个命中的层：命中即定案（值是 null/非对象就给空对象），不再往低优先级找 */
+function cmdcodeWindowLimits(credits, body) {
+  for (const holder of [credits, body]) {
+    if (!holder || typeof holder !== "object") continue;
+    for (const name of CMDCODE_LIMIT_HOLDERS) {
+      if (!Object.prototype.hasOwnProperty.call(holder, name)) continue;
+      const value = holder[name];
+      return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    }
+  }
+  return {};
+}
+
+/* 月度：剩余金额 = 计划内额度 + 已购 + 赠送；三项全缺才算未知（缺其中一项按 0 计，不能凭空少算）。
+   剩余百分比按套餐上限折算：M% = clamp(monthlyCredits / cap, 0, 1)，即 100% − 已用%；
+   接口不返回本月已用，只能用「套餐价 - 计划内剩余额度」反推，所以分子只取计划内额度，
+   已购/赠送只进「剩余金额」、不由它们抬高剩余比例。monthlyCredits 缺失或 cap 非法
+   （≤0/非数字）时不给比率，行内回退成剩余金额。 */
 function cmdcodeMonthly(credits) {
   const monthly = numeric(credits.monthlyCredits);
   const purchased = numeric(credits.purchasedCredits);
@@ -1880,9 +1961,54 @@ function cmdcodeMonthly(credits) {
     : num(monthly) + num(purchased) + num(free);
   const cap = CMDCODE_MONTH_CAP;
   const ratio = monthly !== null && cap !== null && cap > 0
-    ? Math.min(1, Math.max(0, (cap - monthly) / cap))
+    ? Math.min(1, Math.max(0, monthly / cap))
     : null;
   return { remaining, monthly, purchased, free, cap, ratio };
+}
+
+/* 诊断只报字段名与类型：金额、凭据一律不进日志（线上排查用，不需要数值） */
+function cmdcodeTypeName(value) {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value;
+}
+
+/* 键名列表（对象才有意义）：[a,b]；非对象/数组/空对象统一给 - 或 [] */
+function cmdcodeKeyList(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "-";
+  const keys = Object.keys(value);
+  return keys.length ? `[${keys.join(",")}]` : "[]";
+}
+
+/* 第一个「存在该属性」的原始值（只看存在性，不看类型）：诊断只报它的类型，不报值 */
+function cmdcodeFirstRaw(holders, name) {
+  for (const holder of holders) {
+    if (!holder || typeof holder !== "object") continue;
+    if (Object.prototype.hasOwnProperty.call(holder, name)) return holder[name];
+  }
+  return undefined;
+}
+
+/* limited 不为 false 却一个窗口都取不到时打一行：上游换了字段名、层级或命名风格，靠这行定位。
+   只含字段名与类型名（plan/limited 也只报 number/string/object/null/undefined），
+   不写任何响应值、金额与凭据；整轮运行最多一条（多个站点同时缺窗口不刷屏） */
+function cmdcodeLogMissingWindows(limits, credits, body, windowLimits) {
+  const windows = Array.isArray(limits && limits.windows) ? limits.windows : [];
+  if (windows.length || (limits && limits.limited === false)) return;
+  if (cmdcodeMissingLogged) return;
+  const source = windowLimits && typeof windowLimits === "object" ? windowLimits : {};
+  const holders = body && body !== credits ? [credits, body] : [credits];
+  const planType = cmdcodeTypeName(cmdcodeFirstRaw(holders, "planId"));
+  const limitedType = cmdcodeTypeName(cmdcodeFirstRaw([windowLimits, credits, body], "limited"));
+  const shapes = CMDCODE_WINDOWS.map((pair) => {
+    const found = cmdcodeFindWindow(source, pair[2]);
+    return `${pair[0]}:${cmdcodeTypeName(found.value)}/${cmdcodeKeyList(found.value)}`;
+  });
+  cmdcodeMissingLogged = true;
+  cchpLog(`CommandCode 限额字段缺失: plan=${planType} limited=${limitedType}`
+    + ` credits=${cmdcodeKeyList(credits)} body=${cmdcodeKeyList(body)}`
+    + ` windowLimits=${cmdcodeKeyList(windowLimits)}`
+    + ` window=${shapes.join(" ")}`);
 }
 
 async function fetchCommandCodeLimits(site, headers) {
@@ -1895,19 +2021,25 @@ async function fetchCommandCodeLimits(site, headers) {
     headers
   );
   /* 契约是 { credits: {...} }；直接给扁平对象时也认 */
-  const source = body && body.credits && typeof body.credits === "object" ? body.credits : (body || {});
-  const windowLimits = source.windowLimits && typeof source.windowLimits === "object" ? source.windowLimits : {};
-  const planId = String(source.planId || "").trim();
+  const credits = body && body.credits && typeof body.credits === "object" ? body.credits : (body || {});
+  /* windowLimits 可能挂在 credits 或 body 上（驼峰/下划线两种写法都见过） */
+  const windowLimits = cmdcodeWindowLimits(credits, body);
+  const planId = String(credits.planId || (body && body.planId) || "").trim();
+  /* limited 可能写在 windowLimits 里，也可能在 credits/body 顶层；"false"/"true" 字符串同样归一 */
+  let limited = cmdcodeLimited(windowLimits.limited);
+  if (limited === null) limited = cmdcodeLimited(credits.limited);
+  if (limited === null && body && body !== credits) limited = cmdcodeLimited(body.limited);
   const limits = {
     kind: "limits",
     site: { name: site.name },
     /* 上游 planId 原样保留：面板不展示，不猜套餐名映射 */
     plan: planId || null,
-    limited: typeof windowLimits.limited === "boolean" ? windowLimits.limited : null,
-    windows: cmdcodeWindows(windowLimits),
-    monthly: cmdcodeMonthly(source),
+    limited,
+    windows: cmdcodeWindows(windowLimits, limited),
+    monthly: cmdcodeMonthly(credits),
     stale: false,
   };
+  cmdcodeLogMissingWindows(limits, credits, body, windowLimits);
   /* 200 但一个可展示字段都没有（credits 缺失/空对象/字段全缺）：当成取数失败，
      不能拿空响应覆盖上次有效缓存 */
   if (!cmdcodeDisplayable(limits)) throw new Error("credits 里没有任何可展示字段");
@@ -1947,8 +2079,8 @@ function cchLimitMoney(value) {
   return `$${amount.toFixed(1).replace(/\.0$/, "")}`;
 }
 
-/* 限额行字段：只写 5H / W 使用率与月度 M，不出现「余额」二字；limited=false 时该窗口写「不限」。
-   M 有可用上限时写使用率，上限缺失/非法才回退成剩余金额 */
+/* 限额行字段：只写 5H / W / 月度的剩余百分比，不出现「余额」二字；limited=false 时该窗口写「不限」。
+   M 有可用上限时写剩余百分比，上限缺失/非法才回退成剩余金额 */
 function cchLimitFields(data, label) {
   const name = String(label || (data.site && data.site.name) || "CommandCode");
   const unlimited = data.limited === false;
