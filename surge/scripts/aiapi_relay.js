@@ -21,7 +21,10 @@ const ERROR_ICON = "exclamationmark.triangle.fill";
 const CCH_ENDPOINTS = String(ARGS.cch_endpoints || "").trim();
 const CCH_ADMIN_MAX = intArg(ARGS.cch_admin_max, 8, 1, 20);
 const CCH_ROW_WIDTH = intArg(ARGS.cch_row_width, 38, 20, 60);
+/* 额度缓存秒数：模块默认传 600；直接调用脚本且未传 cch_quota_interval 时回退 300 */
 const CCH_QUOTA_CACHE_SECONDS = intArg(ARGS.cch_quota_interval, 300, 60, 3600);
+/* 月度额度上限（USD）：官方 GOAT 套餐每月 70；填非法值（≤0/非数字）时 M 段回退成剩余金额 */
+const CMDCODE_MONTH_CAP = monthCapArg(ARGS.cch_cmdcode_month_cap, 70);
 /* 供应商限额（5 小时/日/周/月用量）与上游余额是两回事，默认只展示余额 */
 const CCH_SHOW_LIMITS = boolArg(ARGS.cch_show_limits, false);
 /* 用户拓扑是一个 provider 一个上游账户；CCHP 的 balance.accounts 按真实账户分行，
@@ -43,6 +46,15 @@ function boolArg(value, fallback) {
   if (text === "true" || text === "1" || text === "yes" || text === "on") return true;
   if (text === "false" || text === "0" || text === "no" || text === "off") return false;
   return fallback;
+}
+
+/* 月度上限参数：留空按默认套餐价；明确填了非法值（≤0/非数字）时返回 null，让 M 段回退成剩余金额 */
+function monthCapArg(value, fallback) {
+  const text = String(value === undefined || value === null ? "" : value).trim();
+  if (text === "") return fallback;
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
 }
 
 /* ── 通用工具 ── */
@@ -168,6 +180,98 @@ function hashString(value) {
   return (hash >>> 0).toString(16);
 }
 
+/* ── 凭据指纹：SHA-256（纯 JS，无外部依赖） ──
+   FNV-1a 32bit 只有 32 位，不同凭据会撞到同一指纹（换 key 却读到上一账户的限额），
+   指纹改用 SHA-256；调用方只取前 32 个十六进制字符（128 bit）。原始凭据只参与哈希，不落盘 */
+const SHA256_K = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+];
+const SHA256_INIT = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+  0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+
+function rotr(value, bits) {
+  return (value >>> bits) | (value << (32 - bits));
+}
+
+/* 字符串按 UTF-8 编码：凭据里可能有邮箱、中文备注 */
+function utf8Bytes(text) {
+  const bytes = [];
+  for (const char of String(text)) {
+    const code = char.codePointAt(0);
+    if (code < 0x80) {
+      bytes.push(code);
+    } else if (code < 0x800) {
+      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 63));
+    } else if (code < 0x10000) {
+      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+    } else {
+      bytes.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 63),
+        0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+    }
+  }
+  return bytes;
+}
+
+function sha256Hex(text) {
+  const bytes = utf8Bytes(text);
+  /* 补位：0x80 + 若干 0 + 64bit 比特长度；块数按「长度 + 8 + 1」向上取整 */
+  const blocks = ((bytes.length + 8) >> 6) + 1;
+  const words = [];
+  for (let i = 0; i < blocks * 16; i++) words.push(0);
+  for (let i = 0; i < bytes.length; i++) {
+    words[i >> 2] |= bytes[i] << (24 - (i % 4) * 8);
+  }
+  words[bytes.length >> 2] |= 0x80 << (24 - (bytes.length % 4) * 8);
+  const bits = bytes.length * 8;
+  words[blocks * 16 - 1] = bits >>> 0;
+  words[blocks * 16 - 2] = Math.floor(bits / 0x100000000) >>> 0;
+
+  let h0 = SHA256_INIT[0], h1 = SHA256_INIT[1], h2 = SHA256_INIT[2], h3 = SHA256_INIT[3];
+  let h4 = SHA256_INIT[4], h5 = SHA256_INIT[5], h6 = SHA256_INIT[6], h7 = SHA256_INIT[7];
+  const w = [];
+  for (let block = 0; block < blocks; block++) {
+    for (let i = 0; i < 16; i++) w[i] = words[block * 16 + i] | 0;
+    for (let i = 16; i < 64; i++) {
+      const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+      const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
+    }
+    let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+    for (let i = 0; i < 64; i++) {
+      const t1 = (h + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25))
+        + ((e & f) ^ (~e & g)) + SHA256_K[i] + w[i]) | 0;
+      const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22))
+        + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+      h = g;
+      g = f;
+      f = e;
+      e = (d + t1) | 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (t1 + t2) | 0;
+    }
+    h0 = (h0 + a) | 0;
+    h1 = (h1 + b) | 0;
+    h2 = (h2 + c) | 0;
+    h3 = (h3 + d) | 0;
+    h4 = (h4 + e) | 0;
+    h5 = (h5 + f) | 0;
+    h6 = (h6 + g) | 0;
+    h7 = (h7 + h) | 0;
+  }
+  return [h0, h1, h2, h3, h4, h5, h6, h7]
+    .map((word) => (word >>> 0).toString(16).padStart(8, "0"))
+    .join("");
+}
+
 function normalizeBaseUrl(value) {
   let base = String(value || "").trim();
   if (!base) return "";
@@ -221,7 +325,7 @@ function cchpLog(message) {
 
 /* ── CCH：各上游余额（限额可选） ── */
 
-const CCH_MODES = ["user", "cookie", "admin", "login", "cchp"];
+const CCH_MODES = ["user", "cookie", "admin", "login", "cchp", "cmdcode"];
 /* CCH 单次批量查询余额的供应商上限 */
 const CCH_BALANCE_MAX_IDS = 50;
 const CCH_WINDOWS = [
@@ -546,10 +650,11 @@ async function fetchCchLoginSite(site) {
 async function fetchCchSite(site) {
   const headers = { Accept: "application/json" };
   if (site.mode === "cookie") headers.Cookie = `auth-token=${site.credential}`;
-  else if (site.mode === "admin" || site.mode === "cchp") headers.Authorization = `Bearer ${site.credential}`;
+  else if (site.mode === "admin" || site.mode === "cchp" || site.mode === "cmdcode") headers.Authorization = `Bearer ${site.credential}`;
   else headers["X-API-Key"] = site.credential;
 
   if (site.mode === "admin") return fetchCchAdminSite(site, headers);
+  if (site.mode === "cmdcode") return fetchCommandCodeSite(site, headers);
   if (site.mode === "cchp") return fetchCchpSite(site, headers);
   if (site.mode === "login") return fetchCchLoginSite(site);
   return fetchCchUserSite(site, headers);
@@ -1071,7 +1176,10 @@ async function fetchCchpUsage(site, headers) {
 async function refreshCchpBalances(site, orgId, providers, headers) {
   /* Clouder 行由 CCH 提供，不算刷新目标；没有 keyIds 的 provider 无法刷新，但按 provider 计入 total，
      由调用方按 ok < total 提示，而不是静默沿用旧值 */
-  const visible = providers.filter((provider) => !cchpIsClouder(provider.name));
+  /* unsupported（如 CommandCode）是「上游不支持查余额」，不是刷新失败：既没有账户也没有可刷的目标，
+     计进 total 只会把正常状态算成未刷新，限额改由 cmdcode 站点展示 */
+  const visible = providers.filter((provider) => !cchpIsClouder(provider.name)
+    && !cchpUnsupported(provider.status));
   let total = 0;
   const targets = [];
   for (const provider of visible) {
@@ -1143,6 +1251,7 @@ async function fetchCchpSite(site, headers) {
       site,
       orgId,
       providers.map((provider) => ({ id: provider.id, name: provider.name,
+        status: provider.balance ? provider.balance.status : null,
         keyIds: keyIdsById.get(String(provider.id)) || [] })),
       headers
     );
@@ -1177,8 +1286,10 @@ async function fetchCchpSite(site, headers) {
   let singleAccountUnavailable = false;
   const displayProviders = current.map((provider) => {
     let balance = provider.balance;
-    /* Clouder 的余额行由 CCH 站点提供，投影会误判不可用；保持原样 */
-    if (CCHP_SINGLE_ACCOUNT && !cchpIsClouder(provider.name)) {
+    /* Clouder 的余额行由 CCH 站点提供，投影会误判不可用；保持原样。
+       unsupported 的 provider 本来就没有账户，投影只会造出「单账户余额不可用」 */
+    if (CCHP_SINGLE_ACCOUNT && !cchpIsClouder(provider.name)
+      && !cchpUnsupported(provider.balance && provider.balance.status)) {
       const view = cchpSingleAccountView(
         provider.balance,
         cchpRepresentativeKey(keyIdsById.get(String(provider.id)) || [])
@@ -1220,6 +1331,11 @@ async function fetchCchpSite(site, headers) {
 /* 品牌取名称第一段：Clouder-Astra → Clouder */
 function cchpIsClouder(name) {
   return providerBrand(name).toLowerCase() === "clouder";
+}
+
+/* 上游自报「不支持查余额」（CCHP 的 balance.status=unsupported）：不是刷新失败，也不该投影成单账户 */
+function cchpUnsupported(status) {
+  return String(status === undefined || status === null ? "" : status).trim().toLowerCase() === "unsupported";
 }
 
 /* 单账户展示投影：按代表 key 找 account，找不到再退回唯一的 account；
@@ -1377,11 +1493,13 @@ function cchpUsageLines(results) {
   return lines;
 }
 
-/* 行不显示时用警告色提示：状态非 ok，或既无金额也无不限量 */
+/* 行不显示时用警告色提示：状态非 ok，或既无金额也无不限量；
+   上游自报 unsupported（如 CommandCode）是「查不了」而非「查坏了」，不据此提高风险 */
 function cchpAbnormal(data) {
   for (const provider of data.providers || []) {
     if (cchpIsClouder(provider.name)) continue;
     const balance = provider.balance || {};
+    if (cchpUnsupported(balance.status)) continue;
     if (String(balance.status || "").toLowerCase() !== "ok") return true;
     const hasAmount = cchpAmountParts(balance).length > 0 || numeric(balance.total_usd) !== null;
     if (!hasAmount && balance.unlimited !== true) return true;
@@ -1481,6 +1599,14 @@ function cchBalanceLines(results, wrap) {
       for (const row of cchpRows(item.data)) rows.push(row);
       continue;
     }
+    /* 余额查不到的供应商按限额占一行；排序值 null，同优先级里排最后 */
+    if (item.data.kind === "limits") {
+      const parts = cchLimitRowParts(item.data, item.site.name, CCH_ROW_WIDTH);
+      /* 上游 200 但一个可用字段都没有：返回空数组，不占行（由图标提示异常） */
+      if (!parts.length) continue;
+      rows.push({ amount: null, priority: cchSitePriority(item.site, priorities), parts });
+      continue;
+    }
     const total = item.data.total;
     const amount = total ? total.limit - total.used : null;
     rows.push({
@@ -1539,6 +1665,10 @@ function cchBalanceLines(results, wrap) {
   }
   /* 单账户模式找不到唯一 account：该 provider 不显示金额，与余额刷新提示并列只出现一次 */
   if (cchpItems.some((item) => item.data.singleAccountUnavailable)) notices.push("⚠️ 单账户余额不可用");
+  /* 限额站点取数失败时显示的是上次缓存，与余额缓存提示分开 */
+  if (results.some((item) => item.data && item.data.kind === "limits" && item.data.stale)) {
+    notices.push("⚠️ 限额来自缓存");
+  }
   if (cchpItems.some((item) => cchpOld(item.data))) notices.push("⚠️ 部分余额较旧");
   if (cchpTimedOut) notices.push("⚠️ 部分请求超时");
   else if (cchpItems.some((item) => item.data.priorityMissing)) notices.push("⚠️ 部分排序信息缺失");
@@ -1594,8 +1724,22 @@ function cchRisk(data) {
     return risk;
   }
 
-  let risk = 0;
+  /* 限额站点：窗口与月度使用率都参与着色，缓存值至少警告色。
+     limited=false 时窗口比率已在 cmdcodeWindow 里置空（不限量），但月度比率照常参与 */
+  if (data.kind === "limits") {
+    const ratios = (Array.isArray(data.windows) ? data.windows : []).map((window) => window.ratio);
+    ratios.push(data.monthly && typeof data.monthly === "object" ? numeric(data.monthly.ratio) : null);
+    let risk = 0;
+    for (const ratio of ratios) {
+      if (ratio === null) continue;
+      if (ratio >= 0.95) risk = Math.max(risk, 2);
+      else if (ratio >= 0.8) risk = Math.max(risk, 1);
+    }
+    if (data.stale) risk = Math.max(risk, 1);
+    return risk;
+  }
 
+  let risk = 0;
   /* 余额一条都查不到时给个提示色：上游可能都换了密钥或都不可达 */
   if (Array.isArray(data.balances) && data.balances.length
     && data.balances.every((item) => item.status !== "ok")) {
@@ -1610,6 +1754,267 @@ function cchRisk(data) {
   }
   if (data.stale) risk = Math.max(risk, 1);
   return risk;
+}
+
+/* ── CommandCode：余额查不到、只能读限额的站点 ── */
+
+/* 上游契约（据 command-code CLI 1.88.0 反查）：/alpha/whoami?limits=1 取 org.id，
+   再按 orgId 取 credits.windowLimits 与月度额度；金额单位为 USD，面板不做汇率换算。
+   orgId 为 null（个人账户）时 credits 不带 orgId 参数。 */
+const CMDCODE_WINDOWS = [["fiveHour", "5H"], ["weekly", "W"]];
+
+/* 缓存按「站点地址 + 凭据指纹」分区：换 key 不会读到上一账户的限额。
+   指纹取 SHA-256(`base|credential`) 的前 32 个十六进制字符（128 bit，生日界约 2^64，
+   足够抗碰撞又不让键名冗长）；原始凭据只参与哈希，不落盘 */
+function cmdcodeCacheKey(site) {
+  return `cch_limits_v2_${sha256Hex(`${site.base}|${String(site.credential || "")}`).slice(0, 32)}`;
+}
+
+/* 缓存只存原始额度：cap 与 ratio 依赖运行参数 cch_cmdcode_month_cap，
+   存进缓存后改上限会一直显示旧比例；读取时按当前参数重算，且不改写缓存对象 */
+function cmdcodeCacheData(limits) {
+  const monthly = limits.monthly && typeof limits.monthly === "object" ? limits.monthly : {};
+  return {
+    kind: limits.kind,
+    site: limits.site,
+    plan: limits.plan,
+    limited: limits.limited,
+    windows: (Array.isArray(limits.windows) ? limits.windows : []).map((window) => ({
+      key: window.key, label: window.label, used: window.used, cap: window.cap,
+    })),
+    /* remaining 只由三项原始额度相加得到，与 cap 无关，随缓存一起保存 */
+    monthly: { monthly: monthly.monthly, purchased: monthly.purchased, free: monthly.free,
+      remaining: monthly.remaining },
+    stale: false,
+  };
+}
+
+/* 读到缓存后按当前 CMDCODE_MONTH_CAP 重新投影：窗口比率也由原始 used/cap 重算，
+   返回新对象（缓存里的 data 保持原样） */
+function cmdcodeProject(data) {
+  const source = data && typeof data === "object" ? data : {};
+  const monthly = source.monthly && typeof source.monthly === "object" ? source.monthly : {};
+  const unlimited = source.limited === false;
+  return {
+    kind: source.kind || "limits",
+    site: source.site,
+    plan: source.plan === undefined ? null : source.plan,
+    limited: typeof source.limited === "boolean" ? source.limited : null,
+    windows: (Array.isArray(source.windows) ? source.windows : []).map((window) =>
+      cmdcodeWindow(window.key, window.label, window, unlimited)),
+    monthly: cmdcodeMonthly({ monthlyCredits: monthly.monthly, purchasedCredits: monthly.purchased,
+      freeCredits: monthly.free }),
+    stale: source.stale === true,
+  };
+}
+
+/* 有效期与其它额度缓存一致：模块默认 600 秒；直接调用脚本且未传 cch_quota_interval 时回退 300 秒。
+   过期缓存仍返回，由调用方决定是否回退；fresh 与 stale 两条路径都走同一套重投影 */
+function readCmdcodeCache(site) {
+  try {
+    const raw = $persistentStore.read(cmdcodeCacheKey(site));
+    if (!raw) return null;
+    const cache = JSON.parse(raw);
+    /* v1 是上一版缓存：同样带原始额度，只是多了已算好的 cap/ratio；一并重投影，升级不丢缓存 */
+    if (!cache || (cache.version !== 2 && cache.version !== 1) || !cache.data) return null;
+    const fresh = Date.now() - Number(cache.updatedAt || 0) < CCH_QUOTA_CACHE_SECONDS * 1000;
+    return { data: cmdcodeProject(cache.data), fresh };
+  } catch (_) { return null; }
+}
+
+function writeCmdcodeCache(site, data) {
+  try {
+    $persistentStore.write(JSON.stringify({ version: 2, updatedAt: Date.now(), data: cmdcodeCacheData(data) }),
+      cmdcodeCacheKey(site));
+  } catch (_) {}
+  return data;
+}
+
+/* 非 200 与传输失败一律抛错：由调用方回退缓存，或让该站点不占行（不写半截数据） */
+async function cmdcodeGet(site, path, headers) {
+  const response = await request("get", `${site.base}${path}`, headers);
+  if (response.status !== 200) {
+    cchpLog(`CommandCode ${String(path).split("?")[0]} HTTP ${response.status}`);
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return parseBody(response);
+}
+
+/* limited=false 是不限量：历史 used/cap 不再代表当前用量，窗口比率置空（窗口仍写「不限」）；
+   上限缺失或为 0 时没有使用率可言，同样不能当成 0% */
+function cmdcodeWindow(key, label, raw, unlimited) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const used = numeric(source.used);
+  const cap = numeric(source.cap);
+  const ratio = !unlimited && used !== null && cap !== null && cap > 0
+    ? Math.min(1, Math.max(0, used / cap))
+    : null;
+  return { key, label, used, cap, ratio };
+}
+
+/* limited=false 是「不限量」：上游没给窗口数据时也照样写「不限」；
+   limited=true 或缺失时只保留真给了 cap 的窗口，缺的窗口整段省略 */
+function cmdcodeWindows(windowLimits) {
+  const source = windowLimits && typeof windowLimits === "object" ? windowLimits : {};
+  const limited = typeof source.limited === "boolean" ? source.limited : null;
+  const windows = [];
+  for (const pair of CMDCODE_WINDOWS) {
+    const raw = source[pair[0]];
+    const present = raw && typeof raw === "object";
+    if (!present && limited !== false) continue;
+    windows.push(cmdcodeWindow(pair[0], pair[1], present ? raw : null, limited === false));
+  }
+  return windows;
+}
+
+/* 月度：剩余 = 计划内额度 + 已购 + 赠送；三项全缺才算未知（缺其中一项按 0 计，不能凭空少算）。
+   使用率按套餐上限折算：M% = clamp((cap - monthlyCredits) / cap, 0, 1)；接口不返回本月已用，
+   只能用「套餐价 - 计划内剩余额度」反推。monthlyCredits 缺失或 cap 非法（≤0/非数字）时不给比率，
+   行内回退成剩余金额。 */
+function cmdcodeMonthly(credits) {
+  const monthly = numeric(credits.monthlyCredits);
+  const purchased = numeric(credits.purchasedCredits);
+  const free = numeric(credits.freeCredits);
+  const remaining = monthly === null && purchased === null && free === null
+    ? null
+    : num(monthly) + num(purchased) + num(free);
+  const cap = CMDCODE_MONTH_CAP;
+  const ratio = monthly !== null && cap !== null && cap > 0
+    ? Math.min(1, Math.max(0, (cap - monthly) / cap))
+    : null;
+  return { remaining, monthly, purchased, free, cap, ratio };
+}
+
+async function fetchCommandCodeLimits(site, headers) {
+  const whoami = await cmdcodeGet(site, "/alpha/whoami?limits=1", headers);
+  const org = whoami && whoami.org && typeof whoami.org === "object" ? whoami.org : null;
+  const orgId = org && org.id ? String(org.id) : "";
+  const body = await cmdcodeGet(
+    site,
+    `/alpha/billing/credits${orgId ? `?orgId=${encodeURIComponent(orgId)}` : ""}`,
+    headers
+  );
+  /* 契约是 { credits: {...} }；直接给扁平对象时也认 */
+  const source = body && body.credits && typeof body.credits === "object" ? body.credits : (body || {});
+  const windowLimits = source.windowLimits && typeof source.windowLimits === "object" ? source.windowLimits : {};
+  const planId = String(source.planId || "").trim();
+  const limits = {
+    kind: "limits",
+    site: { name: site.name },
+    /* 上游 planId 原样保留：面板不展示，不猜套餐名映射 */
+    plan: planId || null,
+    limited: typeof windowLimits.limited === "boolean" ? windowLimits.limited : null,
+    windows: cmdcodeWindows(windowLimits),
+    monthly: cmdcodeMonthly(source),
+    stale: false,
+  };
+  /* 200 但一个可展示字段都没有（credits 缺失/空对象/字段全缺）：当成取数失败，
+     不能拿空响应覆盖上次有效缓存 */
+  if (!cmdcodeDisplayable(limits)) throw new Error("credits 里没有任何可展示字段");
+  return limits;
+}
+
+/* 至少一个能写进限额行的字段：不限量的窗口，或带比率/金额的窗口与月度 */
+function cmdcodeDisplayable(limits) {
+  if (numeric(limits && limits.monthly && limits.monthly.remaining) !== null) return true;
+  if (limits && limits.limited === false) return true;
+  return (Array.isArray(limits && limits.windows) ? limits.windows : [])
+    .some((window) => window.ratio !== null);
+}
+
+/* 缓存有效期内不发请求；取数失败回退上次缓存并标 stale，没有缓存才抛错（该站点不占行，由面板图标提示） */
+async function fetchCommandCodeSite(site, headers) {
+  const cached = readCmdcodeCache(site);
+  if (cached && cached.fresh) return Object.assign({}, cached.data, { stale: false });
+  try {
+    return writeCmdcodeCache(site, await fetchCommandCodeLimits(site, headers));
+  } catch (error) {
+    cchpLog(`${site.name} 限额取数失败: ${(error && error.message) || error}`);
+    if (cached) return Object.assign({}, cached.data, { stale: true });
+    throw error;
+  }
+}
+
+/* 金额：≥1e6 用 M（12345678 → $12.3M）、≥1e4 用 k（12345 → $12k），
+   ≥100 取整（$1234），其余一位小数并去掉尾部 .0（56.0 → $56）；不用 cchMoney，它会固定两位小数 */
+function cchLimitMoney(value) {
+  const amount = numeric(value);
+  if (amount === null) return "-";
+  const abs = Math.abs(amount);
+  if (abs >= 1e6) return `$${(amount / 1e6).toFixed(1).replace(/\.0$/, "")}M`;
+  if (abs >= 1e4) return `$${Math.round(amount / 1e3)}k`;
+  if (abs >= 100) return `$${Math.round(amount)}`;
+  return `$${amount.toFixed(1).replace(/\.0$/, "")}`;
+}
+
+/* 限额行字段：只写 5H / W 使用率与月度 M，不出现「余额」二字；limited=false 时该窗口写「不限」。
+   M 有可用上限时写使用率，上限缺失/非法才回退成剩余金额 */
+function cchLimitFields(data, label) {
+  const name = String(label || (data.site && data.site.name) || "CommandCode");
+  const unlimited = data.limited === false;
+  const windows = [];
+  for (const window of Array.isArray(data.windows) ? data.windows : []) {
+    if (unlimited) {
+      windows.push({ label: window.label, value: "不限" });
+      continue;
+    }
+    if (window.ratio === null) continue;
+    windows.push({ label: window.label, value: `${Math.round(window.ratio * 100)}%` });
+  }
+  const monthly = data.monthly && typeof data.monthly === "object" ? data.monthly : {};
+  const ratio = numeric(monthly.ratio);
+  const remaining = numeric(monthly.remaining);
+  let month = null;
+  if (ratio !== null) month = `${Math.round(ratio * 100)}%`;
+  else if (remaining !== null) month = cchLimitMoney(remaining);
+  return { name, windows, month };
+}
+
+/* 三项指标（两个窗口 + 月度）的三种排法：空格分隔 · 紧凑 · 紧凑空格分隔 */
+function cchLimitMetrics(fields, spaced, separator) {
+  const items = [];
+  for (const window of fields.windows) {
+    items.push(spaced ? `${window.label} ${window.value}` : `${window.label}${window.value}`);
+  }
+  if (fields.month !== null) items.push(spaced ? `M ${fields.month}` : `M${fields.month}`);
+  return items.join(separator);
+}
+
+/* 站名 + 指标：放不下只截短站名；截完只剩省略号（或剩余不足 1 列）返回 null，
+   由调用方整段去掉站名。返回前再量一次，绝不超宽（省略号本身按 2 列计） */
+function cchLimitNamed(name, metrics, budget) {
+  const line = `${name} · ${metrics}`;
+  if (measure(line) <= budget) return line;
+  const room = budget - measure(metrics) - 3;
+  if (room < 1) return null;
+  const short = truncateToWidth(name, room);
+  if (!short || short === "…") return null;
+  const truncated = `${short} · ${metrics}`;
+  return measure(truncated) <= budget ? truncated : null;
+}
+
+/* 限额行：只压缩排法与站名，不丢指标——宽度再窄也保留三项。
+   通用 fitRowWidth 会从尾部丢字段（20–22 宽会丢月度），这里不再交给它。
+   金额已是紧凑档（$12345678 → $12.3M）；最紧排法仍超宽时截短收尾，
+   绝不返回超过 budget 的行（cch_row_width 下限 20） */
+function cchLimitRowParts(data, label, budget) {
+  const width = Math.max(20, Number(budget) || 0);
+  const fields = cchLimitFields(data, label);
+  const wide = cchLimitMetrics(fields, true, " · ");
+  /* 一个可展示字段都没有：返回空数组，不占行（由面板图标提示异常） */
+  if (!wide) return [];
+  const compact = cchLimitMetrics(fields, false, " · ");
+  const tight = cchLimitMetrics(fields, false, " ");
+  for (const metrics of [wide, compact, tight]) {
+    const line = cchLimitNamed(fields.name, metrics, width);
+    if (line) return [line];
+  }
+  /* 站名连 1 列都放不下：整段去掉，指标仍从宽到窄挑第一种放得下的 */
+  for (const metrics of [wide, compact, tight]) {
+    if (measure(metrics) <= width) return [metrics];
+  }
+  /* 比最紧的排法还窄：只截短紧凑金额的最紧排法，保证 measure(line) <= width */
+  return [truncateToWidth(tight, width)];
 }
 
 /* ── 币种 ── */
