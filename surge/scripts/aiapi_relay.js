@@ -24,6 +24,9 @@ const CCH_ROW_WIDTH = intArg(ARGS.cch_row_width, 38, 20, 60);
 const CCH_QUOTA_CACHE_SECONDS = intArg(ARGS.cch_quota_interval, 300, 60, 3600);
 /* 供应商限额（5 小时/日/周/月用量）与上游余额是两回事，默认只展示余额 */
 const CCH_SHOW_LIMITS = boolArg(ARGS.cch_show_limits, false);
+/* 用户拓扑是一个 provider 一个上游账户；CCHP 的 balance.accounts 按真实账户分行，
+   同一账户读数不一致时会被拆成两条、totals 相加双计，默认只刷一把代表 key、只显示单账户金额 */
+const CCHP_SINGLE_ACCOUNT = boolArg(ARGS.aiapi_cchp_single_account, true);
 
 function intArg(value, fallback, min, max) {
   const text = String(value === undefined || value === null ? "" : value).trim();
@@ -868,12 +871,24 @@ function cchpKeyPriority(keys) {
   return best;
 }
 
-/* 实时刷新用全部 active key：同一上游账户常挂多把 key，只刷一把会让另一把停在旧值，
+/* 关闭单账户模式时实时刷新用全部 active key：同一上游账户常挂多把 key，只刷一把会让另一把停在旧值，
    CCHP 据此把同一账户拆成两条并重复计入总额 */
 function cchpKeyIds(keys) {
   const list = Array.isArray(keys) ? keys : [];
   return list.filter((key) => String(key.status || "").toLowerCase() === "active"
     && String(key.id || "").trim()).map((key) => String(key.id));
+}
+
+/* 单账户模式的代表 key：active keyIds 去重后按字符串升序取第一；
+   换 provider 开新账户的拓扑下，同一 provider 的其余 key 属于同一账户的重复读数 */
+function cchpRepresentativeKey(keyIds) {
+  const unique = new Set();
+  for (const id of Array.isArray(keyIds) ? keyIds : []) {
+    const text = String(id || "").trim();
+    if (text) unique.add(text);
+  }
+  const sorted = Array.from(unique).sort();
+  return sorted.length ? sorted[0] : "";
 }
 
 /* 旧版本写的 priority 缓存只有单个 keyId：当作未命中重查一次，实时刷新才拿得到全部 key */
@@ -1043,14 +1058,16 @@ async function fetchCchpUsage(site, headers) {
   return { summary: results[0], health: results[1] };
 }
 
-/* 余额实时化：每把 active key 各触发一次上游复查（?refresh=true）。
+/* 余额实时化：关闭单账户模式时按 provider 的每把 active key 各触发一次上游复查（?refresh=true）。
    providers 由调用方附上 keyIds（来自 fetchCchpPriorities 的 key 列表）。
    同一上游账户常挂多把 key，只刷一把会让另一把停在旧值，CCHP 据此把同一账户拆成两条并
    重复计入总额，所以每把 key 都要刷，同一账户的读数才会一致。
    上游复查成功后服务端聚合（列表里的 total_usd / checked_at）会同步更新，调用方需再取一次列表。
    余额接口有频率限制：一次刷新对每把 active key 只发一次、失败不重试；Clouder 不刷新
    （它的余额由 CCH 站点提供），Mi 已在列表阶段排除。全部失败只降级，不抛错。
-   total 是可刷新 key 数 + 没有 key 的可见 provider 数，ok 是成功刷新的 key 数，ok < total 即刷新不全。 */
+   total 是刷新目标数 + 没有 key 的可见 provider 数，ok 是成功刷新的目标数，ok < total 即刷新不全。
+   CCHP_SINGLE_ACCOUNT 打开时一个 provider 只刷代表 key，total/ok 改为按 provider 计：
+   其余 key 是主动跳过，不算部分刷新失败。 */
 async function refreshCchpBalances(site, orgId, providers, headers) {
   /* Clouder 行由 CCH 提供，不算刷新目标；没有 keyIds 的 provider 无法刷新，但按 provider 计入 total，
      由调用方按 ok < total 提示，而不是静默沿用旧值 */
@@ -1059,6 +1076,13 @@ async function refreshCchpBalances(site, orgId, providers, headers) {
   const targets = [];
   for (const provider of visible) {
     const keyIds = Array.isArray(provider.keyIds) ? provider.keyIds : [];
+    if (CCHP_SINGLE_ACCOUNT) {
+      /* 每个可见 provider 固定 1 个目标：有代表 key 才发请求，没有也计未完成 */
+      total += 1;
+      const keyId = cchpRepresentativeKey(keyIds);
+      if (keyId) targets.push({ id: provider.id, keyId });
+      continue;
+    }
     if (!keyIds.length) {
       total += 1;
       continue;
@@ -1149,9 +1173,32 @@ async function fetchCchpSite(site, headers) {
   }
   /* 余额与优先级之后再取今日用量：失败或超预算只丢这块，不影响余额行 */
   const usage = await fetchCchpUsage(site, headers);
+  /* 单账户视图只投影展示返回值，缓存里仍是原始快照；开关来回切换互不影响 */
+  let singleAccountUnavailable = false;
+  const displayProviders = current.map((provider) => {
+    let balance = provider.balance;
+    /* Clouder 的余额行由 CCH 站点提供，投影会误判不可用；保持原样 */
+    if (CCHP_SINGLE_ACCOUNT && !cchpIsClouder(provider.name)) {
+      const view = cchpSingleAccountView(
+        provider.balance,
+        cchpRepresentativeKey(keyIdsById.get(String(provider.id)) || [])
+      );
+      balance = view.balance;
+      if (view.unavailable) singleAccountUnavailable = true;
+    }
+    return {
+      id: provider.id,
+      name: provider.name,
+      host: provider.host,
+      priority: priorityById.has(provider.id) ? priorityById.get(provider.id) : null,
+      balance,
+    };
+  });
   return {
     kind: "cchp",
     stale: snapshot.stale,
+    /* 单账户模式有 provider 找不到唯一账户：不显示金额，由调用方提示 */
+    singleAccountUnavailable: Boolean(singleAccountUnavailable),
     /* 余额没刷新全：显示的是服务端缓存（聚合列表）里的值 */
     balanceStale: Boolean(balanceStale),
     /* 只有一部分 provider 刷新成功：提示部分未刷新，而不是整块未刷新 */
@@ -1166,19 +1213,47 @@ async function fetchCchpSite(site, headers) {
     summary: usage.summary,
     health: usage.health,
     /* 保留 id/name/host/priority：id 用于关联健康数据，其余供 cchSitePriorities 排序 */
-    providers: current.map((provider) => ({
-      id: provider.id,
-      name: provider.name,
-      host: provider.host,
-      priority: priorityById.has(provider.id) ? priorityById.get(provider.id) : null,
-      balance: provider.balance,
-    })),
+    providers: displayProviders,
   };
 }
 
 /* 品牌取名称第一段：Clouder-Astra → Clouder */
 function cchpIsClouder(name) {
   return providerBrand(name).toLowerCase() === "clouder";
+}
+
+/* 单账户展示投影：按代表 key 找 account，找不到再退回唯一的 account；
+   多账户且无匹配即不可用，禁止回退 totals/total_usd 聚合值（那会把同一账户的重复读数相加）。
+   只用于展示返回值，不写回 cchp_balance_* 缓存。 */
+function cchpSingleAccountView(balance, representativeKey) {
+  const source = balance && typeof balance === "object" ? balance : {};
+  const accounts = Array.isArray(source.accounts) ? source.accounts : [];
+  let account = null;
+  if (representativeKey) {
+    const matched = accounts.filter((item) => Array.isArray(item && item.key_ids)
+      && item.key_ids.some((id) => String(id) === representativeKey));
+    if (matched.length === 1) account = matched[0];
+  }
+  if (!account && accounts.length === 1) account = accounts[0];
+  if (!account) {
+    return {
+      balance: { status: source.status, totals: [], total_usd: null, unlimited: false },
+      unavailable: true,
+    };
+  }
+  const amount = numeric(account.amount);
+  const unit = String(account.unit || "USD").trim().toUpperCase() || "USD";
+  return {
+    balance: {
+      status: source.status,
+      totals: [{ unit, amount }],
+      total_usd: unit === "USD" ? amount : null,
+      unlimited: account.unlimited === true,
+      checked_at: account.checked_at,
+      oldest_checked_at: account.checked_at,
+    },
+    unavailable: false,
+  };
 }
 
 /* totals 可能同时给多个币种，也可能同币种多条：各自按原单位拼接，不做汇率换算 */
@@ -1462,6 +1537,8 @@ function cchBalanceLines(results, wrap) {
   } else if (cchpItems.some((item) => item.data.balanceStale && !item.data.balancePartial && !item.data.balanceSuppressStale)) {
     notices.push("⚠️ 余额未刷新，来自服务端缓存");
   }
+  /* 单账户模式找不到唯一 account：该 provider 不显示金额，与余额刷新提示并列只出现一次 */
+  if (cchpItems.some((item) => item.data.singleAccountUnavailable)) notices.push("⚠️ 单账户余额不可用");
   if (cchpItems.some((item) => cchpOld(item.data))) notices.push("⚠️ 部分余额较旧");
   if (cchpTimedOut) notices.push("⚠️ 部分请求超时");
   else if (cchpItems.some((item) => item.data.priorityMissing)) notices.push("⚠️ 部分排序信息缺失");
