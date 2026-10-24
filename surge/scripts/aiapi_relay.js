@@ -867,17 +867,17 @@ function cchpKeyPriority(keys) {
   return best;
 }
 
-/* 实时刷新用第一把 active key；没有 active key 的上游账户没有可复查的 key */
-function cchpKeyId(keys) {
+/* 实时刷新用全部 active key：同一上游账户常挂多把 key，只刷一把会让另一把停在旧值，
+   CCHP 据此把同一账户拆成两条并重复计入总额 */
+function cchpKeyIds(keys) {
   const list = Array.isArray(keys) ? keys : [];
-  const active = list.find((key) => String(key.status || "").toLowerCase() === "active"
-    && String(key.id || "").trim());
-  return active ? String(active.id) : null;
+  return list.filter((key) => String(key.status || "").toLowerCase() === "active"
+    && String(key.id || "").trim()).map((key) => String(key.id));
 }
 
-/* 旧版本写的 priority 缓存没有 keyId：当作未命中重查一次，实时刷新才拿得到 key */
+/* 旧版本写的 priority 缓存只有单个 keyId：当作未命中重查一次，实时刷新才拿得到全部 key */
 function cchpPrioritiesComplete(items) {
-  return items.every((item) => item && Object.prototype.hasOwnProperty.call(item, "keyId"));
+  return items.every((item) => item && Array.isArray(item.keyIds));
 }
 
 /* provider 可能不少，逐个查 key 时限制同时进行的请求数 */
@@ -904,8 +904,8 @@ function cchpStalePriorities(site, orgId) {
     if (!item || item.id === undefined) continue;
     const priority = numeric(item.priority);
     if (priority === null) continue;
-    const keyId = typeof item.keyId === "string" && item.keyId ? item.keyId : null;
-    map.set(String(item.id), { priority, keyId });
+    /* 旧缓存的单个 keyId 不用于刷新：只刷一把正是要修的缺陷，宁可当作没有 key */
+    map.set(String(item.id), { priority, keyIds: Array.isArray(item.keyIds) ? item.keyIds : [] });
   }
   return map;
 }
@@ -925,7 +925,7 @@ async function fetchCchpPriorities(site, orgId, providers, headers) {
       timedOut = true;
       failed = true;
       failedIds.add(String(provider.id));
-      return { id: provider.id, priority: null, keyId: null };
+      return { id: provider.id, priority: null, keyIds: [] };
     }
     try {
       const response = await request(
@@ -935,14 +935,14 @@ async function fetchCchpPriorities(site, orgId, providers, headers) {
       );
       if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
       const keys = parseBody(response).keys;
-      /* keyId 供实时刷新复用，避免为此再查一次 key 列表 */
-      return { id: provider.id, priority: cchpKeyPriority(keys), keyId: cchpKeyId(keys) };
+      /* keyIds 供实时刷新复用，避免为此再查一次 key 列表 */
+      return { id: provider.id, priority: cchpKeyPriority(keys), keyIds: cchpKeyIds(keys) };
     } catch (error) {
       if (error && error.code === "cchp_timeout") timedOut = true;
       /* 单把 key 查不到只丢排序元数据，余额行照常显示 */
       failed = true;
       failedIds.add(String(provider.id));
-      return { id: provider.id, priority: null, keyId: null };
+      return { id: provider.id, priority: null, keyIds: [] };
     }
   });
   if (!failed) {
@@ -956,9 +956,9 @@ async function fetchCchpPriorities(site, orgId, providers, headers) {
     /* 成功返回空 keys 的 provider 不属于失败集合，不回填旧值 */
     if (!failedIds.has(String(item.id))) return item;
     const old = stale.get(String(item.id));
-    if (old === undefined) return { id: item.id, priority: null, keyId: item.keyId };
+    if (old === undefined) return { id: item.id, priority: null, keyIds: item.keyIds };
     fellBack = true;
-    return { id: item.id, priority: old.priority, keyId: item.keyId || old.keyId };
+    return { id: item.id, priority: old.priority, keyIds: item.keyIds.length ? item.keyIds : old.keyIds };
   });
   return { items: merged, missing: merged.some((item) => numeric(item.priority) === null), timedOut, fellBack };
 }
@@ -1028,40 +1028,51 @@ async function fetchCchpUsage(site, headers) {
   return { summary: results[0], health: results[1] };
 }
 
-/* 余额实时化：每个 provider 用第一把 active key 触发一次上游复查（?refresh=true）。
-   providers 由调用方附上 keyId（来自 fetchCchpPriorities 的 key 列表）。
+/* 余额实时化：每把 active key 各触发一次上游复查（?refresh=true）。
+   providers 由调用方附上 keyIds（来自 fetchCchpPriorities 的 key 列表）。
+   同一上游账户常挂多把 key，只刷一把会让另一把停在旧值，CCHP 据此把同一账户拆成两条并
+   重复计入总额，所以每把 key 都要刷，同一账户的读数才会一致。
    上游复查成功后服务端聚合（列表里的 total_usd / checked_at）会同步更新，调用方需再取一次列表。
-   余额接口有频率限制：一次刷新对每个 provider 只发一次、失败不重试；Clouder 不刷新
+   余额接口有频率限制：一次刷新对每把 active key 只发一次、失败不重试；Clouder 不刷新
    （它的余额由 CCH 站点提供），Mi 已在列表阶段排除。全部失败只降级，不抛错。
-   total 是参与刷新的目标数（非 Clouder，含缺 keyId 无法刷新的），ok < total 即刷新不全。 */
+   total 是可刷新 key 数 + 没有 key 的可见 provider 数，ok 是成功刷新的 key 数，ok < total 即刷新不全。 */
 async function refreshCchpBalances(site, orgId, providers, headers) {
-  /* Clouder 行由 CCH 提供，不算刷新目标；没有 keyId 的 provider 无法刷新，但计入 total，
+  /* Clouder 行由 CCH 提供，不算刷新目标；没有 keyIds 的 provider 无法刷新，但按 provider 计入 total，
      由调用方按 ok < total 提示，而不是静默沿用旧值 */
   const visible = providers.filter((provider) => !cchpIsClouder(provider.name));
-  const total = visible.length;
-  const targets = visible.filter((provider) => provider.keyId);
-  /* 没有可刷新的目标（如只有 Clouder 或都缺 keyId）：不必提示超时 */
+  let total = 0;
+  const targets = [];
+  for (const provider of visible) {
+    const keyIds = Array.isArray(provider.keyIds) ? provider.keyIds : [];
+    if (!keyIds.length) {
+      total += 1;
+      continue;
+    }
+    total += keyIds.length;
+    for (const keyId of keyIds) targets.push({ id: provider.id, keyId });
+  }
+  /* 没有可刷新的目标（如只有 Clouder 或都缺 keyIds）：不必提示超时 */
   if (!targets.length) return { ok: 0, total, timedOut: false };
   /* 进入刷新阶段前先看预算：已被 keys 吃完就跳过，沿用首次列表值 */
   if (cchpBudgetSpent()) return { ok: 0, total, timedOut: true };
   let ok = 0;
   let timedOut = false;
-  await mapLimit(targets, CCHP_KEY_CONCURRENCY, async (provider) => {
-    /* 刷新阶段每个请求派发前同样检查预算，剩下的 provider 留给下一轮 */
+  await mapLimit(targets, CCHP_KEY_CONCURRENCY, async (target) => {
+    /* 刷新阶段每个请求派发前同样检查预算，剩下的 key 留给下一轮 */
     if (cchpBudgetSpent()) {
       timedOut = true;
       return;
     }
     try {
-      const url = `${site.base}/api/account/orgs/${orgId}/providers/${encodeURIComponent(provider.id)}`
-        + `/keys/${encodeURIComponent(provider.keyId)}/balance?refresh=true`;
+      const url = `${site.base}/api/account/orgs/${orgId}/providers/${encodeURIComponent(target.id)}`
+        + `/keys/${encodeURIComponent(target.keyId)}/balance?refresh=true`;
       const response = await request("get", url, headers);
       if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
       /* 只关心是否成功；上游返回的明细不进面板，也不落缓存 */
       const body = parseBody(response);
       if (body && body.error) throw new Error("上游查询失败");
       ok += 1;
-    } catch (_) { /* 单把 key 失败不影响其它 provider；由调用方按 ok < total 标记降级 */ }
+    } catch (_) { /* 单把 key 失败不影响其它 key；由调用方按 ok < total 标记降级 */ }
   });
   return { ok, total, timedOut: timedOut || cchpBudgetSpent() };
 }
@@ -1074,9 +1085,11 @@ async function fetchCchpSite(site, headers) {
   const providers = snapshot.providers || [];
   const priorities = await fetchCchpPriorities(site, orgId, providers, headers);
   const priorityById = new Map(priorities.items.map((item) => [item.id, item.priority]));
-  const keyById = new Map(priorities.items.map((item) => [String(item.id), item.keyId]));
-  /* 余额实时：先按 key 触发上游复查，再取一次聚合列表。
-     列表本身失败回退旧快照时不再刷新；刷新不全（部分失败/缺 keyId/被预算跳过）沿用首次列表值并标 balanceStale */
+  const keyIdsById = new Map(
+    priorities.items.map((item) => [String(item.id), Array.isArray(item.keyIds) ? item.keyIds : []])
+  );
+  /* 余额实时：先逐把 key 触发上游复查，再取一次聚合列表。
+     列表本身失败回退旧快照时不再刷新；刷新不全（部分失败/缺 keyIds/被预算跳过）沿用首次列表值并标 balanceStale */
   let current = providers;
   let balanceStale = false;
   let balancePartial = false;
@@ -1087,7 +1100,8 @@ async function fetchCchpSite(site, headers) {
     const refresh = await refreshCchpBalances(
       site,
       orgId,
-      providers.map((provider) => ({ id: provider.id, name: provider.name, keyId: keyById.get(String(provider.id)) || null })),
+      providers.map((provider) => ({ id: provider.id, name: provider.name,
+        keyIds: keyIdsById.get(String(provider.id)) || [] })),
       headers
     );
     if (refresh.timedOut) balanceTimedOut = true;
