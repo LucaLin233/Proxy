@@ -1412,6 +1412,37 @@ function cchpHealthParts(data, provider) {
   return parts;
 }
 
+/* 域名比对键：小写，去协议、用户信息、路径、查询、片段、端口，再剥掉开头的 www. / api.；
+   CCHP provider 的 website_url 与 CommandCode 站点地址写法不同，统一到这里再比 */
+function cchHostKey(value) {
+  let text = String(value === undefined || value === null ? "" : value).trim().toLowerCase();
+  if (!text) return "";
+  text = text.replace(/^[a-z][a-z0-9+.-]*:\/\//, "");
+  text = text.replace(/[?#].*$/, "").replace(/\/.*$/, "");
+  const at = text.lastIndexOf("@");
+  if (at >= 0) text = text.slice(at + 1);
+  const ipv6 = /^\[([^\]]+)\](?::\d+)?$/.exec(text);
+  if (ipv6) text = ipv6[1];
+  else text = text.replace(/:\d+$/, "");
+  return text.replace(/^(?:www\.|api\.)+/, "");
+}
+
+/* 限额行第 1 行的成功率/TTFT：按域名把本站对到 CCHP 的 provider，再取同一套健康数值。
+   找不到 CCHP 结果、provider 或健康数据都返回空数组（只显示站名，不影响余额行） */
+function cchpSiteHealthParts(site, results) {
+  if (!site) return [];
+  const key = cchHostKey(site.base);
+  if (!key) return [];
+  for (const item of Array.isArray(results) ? results : []) {
+    if (!item || !item.data || item.data.kind !== "cchp") continue;
+    for (const provider of Array.isArray(item.data.providers) ? item.data.providers : []) {
+      if (!provider || cchHostKey(provider.host) !== key) continue;
+      return cchpHealthParts(item.data, provider);
+    }
+  }
+  return [];
+}
+
 /* 供应商行必须一行内显示：超宽时依次省掉「余额」二字、舍弃 TTFT，最后只留余额 */
 function cchpRowParts(label, text, amountText, healthParts) {
   const full = healthParts;
@@ -1613,14 +1644,16 @@ function cchBalanceLines(results, wrap) {
     }
     /* 余额查不到的供应商按限额占一行；amount 留空只用于展示，不参与排序 */
     if (item.data.kind === "limits") {
-      const parts = cchLimitRowParts(item.data, item.site.name, CCH_ROW_WIDTH);
-      /* 上游 200 但一个可用字段都没有：返回空数组，不占行（由图标提示异常） */
-      if (!parts.length) continue;
+      /* 第 2 行只放限额指标：没有可展示字段就整行不占位（由图标提示异常） */
+      const metrics = cchLimitMetricsText(item.data, CCH_ROW_WIDTH);
+      if (!metrics) continue;
+      /* 第 1 行 = 站名 + CCHP 健康数据（按域名匹配不到就只显示站名） */
       rows.push({
         amount: null,
         priority: cchSitePriority(item.site, priorities),
         name: item.site.name,
-        parts,
+        parts: fitRowWidth([item.site.name].concat(cchpSiteHealthParts(item.site, results)), CCH_ROW_WIDTH),
+        extra: [metrics],
       });
       continue;
     }
@@ -1644,12 +1677,17 @@ function cchBalanceLines(results, wrap) {
   rows.sort(compareRows);
 
   if (rows.length) {
-    /* 站名与金额固定同一行；金额放不下时自动落到下一行 */
+    /* 站名与金额固定同一行；金额放不下时自动落到下一行。
+       限额行（kind=limits）有两行：row.extra 是只含指标的追加行 */
     for (const row of rows.slice(0, CCH_ADMIN_MAX)) {
       if (wrap) {
         for (const line of layoutRows(row.parts, CCH_ROW_WIDTH)) lines.push(line);
+        if (row.extra && row.extra.length) {
+          for (const line of layoutRows(row.extra, CCH_ROW_WIDTH)) lines.push(line);
+        }
       } else {
         lines.push(row.parts.join(" · "));
+        if (row.extra && row.extra.length) lines.push(row.extra.join(" · "));
       }
     }
     if (rows.length > CCH_ADMIN_MAX) lines.push(`另有 ${rows.length - CCH_ADMIN_MAX} 个上游`);
@@ -2165,6 +2203,25 @@ function cchLimitRowParts(data, label, budget) {
   }
   /* 比最紧的排法还窄：只截短空格分隔的最紧排法，保证 measure(line) <= width */
   return [truncateToWidth(variants[2], width)];
+}
+
+/* 只输出指标、不含站名（两行显示的第 2 行）：同一套四种排法从宽到窄取第一种放得下的，
+   都放不下时截短最紧排法；一个可展示字段都没有时返回空串，调用方整行不占位 */
+function cchLimitMetricsText(data, budget) {
+  const width = Math.max(20, Number(budget) || 0);
+  const fields = cchLimitFields(data);
+  const wide = cchLimitMetrics(fields, true, " · ");
+  if (!wide) return "";
+  const variants = [
+    wide,
+    cchLimitMetrics(fields, false, " · "),
+    cchLimitMetrics(fields, false, " "),
+    cchLimitMetrics(fields, false, ""),
+  ];
+  for (const metrics of variants) {
+    if (measure(metrics) <= width) return metrics;
+  }
+  return truncateToWidth(variants[2], width);
 }
 
 /* ── 币种 ── */
