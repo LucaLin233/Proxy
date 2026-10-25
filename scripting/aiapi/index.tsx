@@ -247,7 +247,7 @@ function SiteFields({
           const text = value.trim()
           onChange({ priority: text === "" ? null : Number(text.replace(/[^0-9.-]/g, "")) })
         }}
-        prompt="可选，数字越小越靠前"
+        prompt="可选，仅同一档位内生效"
       />
       <Toggle value={site.enabled} onChanged={(value: boolean) => onChange({ enabled: value })}>
         <Text>启用</Text>
