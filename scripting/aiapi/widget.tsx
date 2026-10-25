@@ -40,7 +40,7 @@ function total(rows: PanelRow[]): number {
 
 /* 单行制：容量按高度算，标题 + 合计 + 底部留白之外全部给列表 */
 function capacity(): number {
-  return Math.max(2, Math.floor((boxHeight() - 74) / 19))
+  return Math.max(2, Math.floor((boxHeight() - 40) / 17))
 }
 
 function shortDetail(detail: string): string {
@@ -56,7 +56,7 @@ function Row({ row }: { row: PanelRow }) {
       <Text font={12} fontWeight="semibold" foregroundStyle={INK}>{row.name}</Text>
       {note ? <Text font={9} foregroundStyle={MUTED}>{note}</Text> : null}
       <Spacer />
-      {row.amount ? <Text font={13} fontWeight="semibold" foregroundStyle={INK}>{row.amount}</Text> : null}
+      {row.amount ? <Text font={12} fontWeight="semibold" foregroundStyle={INK}>{row.amount}</Text> : null}
     </HStack>
   )
 }
@@ -66,7 +66,6 @@ function WidgetView({ data, message }: { data: PanelData | null; message: string
   const limit = capacity()
   const shown = rows.slice(0, limit)
   const hidden = rows.length - shown.length
-  const sum = total(rows)
 
   return (
     <VStack alignment="leading" spacing={0} padding={{ top: 11, bottom: 11, leading: 14, trailing: 14 }}>
@@ -75,10 +74,7 @@ function WidgetView({ data, message }: { data: PanelData | null; message: string
         <Spacer />
         {data ? <Text font={9} foregroundStyle={MUTED}>{formatClock(data.updatedAt)}</Text> : null}
       </HStack>
-      {data ? (
-        <Text font={24} fontWeight="bold" foregroundStyle={BLUE as any}>{`$${sum.toFixed(2)}`}</Text>
-      ) : null}
-      {data ? <Text font={9} foregroundStyle={MUTED}>{`${rows.length} 个上游 · 合计`}</Text> : null}
+      {data && data.usage.length ? <Text font={9} foregroundStyle={MUTED}>{data.usage[0]}</Text> : null}
       {message ? <Text font={10} foregroundStyle={MUTED}>{message}</Text> : null}
       {shown.map((row) => <Row key={`${row.name}-${row.seq}`} row={row} />)}
       {hidden > 0 ? <Text font={9} foregroundStyle={MUTED}>{`+${hidden} 个上游未显示`}</Text> : null}
