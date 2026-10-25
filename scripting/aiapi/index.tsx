@@ -38,7 +38,7 @@ function SettingsView({
         <VStack alignment="leading" spacing={12} navigationTitle="站点配置">
           <Text font={12}>
             与 Surge 模块 cch_endpoints 同一写法：名称@地址=凭据:模式[:优先级]，多个站点用 | 分隔。
-            支持 cchp / admin / user。
+            支持 cchp / admin / user / login / cookie / cmdcode 六种模式。
           </Text>
           <TextField
             title="cch_endpoints"
@@ -92,7 +92,7 @@ function PanelView({
           {data
             ? data.rows.map((row) => (
               <VStack key={`${row.name}-${row.seq}`} alignment="leading" spacing={2}>
-                <Text font={16} fontWeight="semibold">{`${row.name}  ${row.amount}`}</Text>
+                <Text font={16} fontWeight="semibold">{row.amount ? `${row.name}  ${row.amount}` : row.name}</Text>
                 {row.detail ? <Text font={12}>{row.detail}</Text> : null}
               </VStack>
             ))

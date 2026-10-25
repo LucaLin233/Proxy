@@ -6,7 +6,7 @@
   },
   "description": "CCH / CCHP balances, today's usage and provider health, sorted by priority; includes a home screen widget.",
   "localizedDescriptions": {
-    "zh": "CCH / CCHP 站点余额、今日用量与供应商健康，按优先级排序；含桌面小组件",
+    "zh": "CCH / CCHP / CommandCode 站点余额、今日用量与供应商健康，按优先级排序；含桌面小组件",
     "en": "CCH / CCHP balances, today's usage and provider health with a home screen widget"
   },
   "version": "1.0.0",

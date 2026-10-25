@@ -6,7 +6,7 @@ declare const Storage: any
 
 /* ── 基础工具 ── */
 
-type SiteMode = "cchp" | "admin" | "user" | "other"
+type SiteMode = "cchp" | "admin" | "user" | "login" | "cookie" | "cmdcode"
 
 type Site = {
   name: string
@@ -129,7 +129,7 @@ function parseSites(input: string): Site[] {
     if (colon > 0) {
       const suffix = right.slice(colon + 1).replace(/[\s\[\]]/g, "").toLowerCase()
       if (MODES.indexOf(suffix) >= 0) {
-        mode = suffix === "cchp" ? "cchp" : suffix === "admin" ? "admin" : suffix === "user" ? "user" : "other"
+        mode = suffix as SiteMode
         right = right.slice(0, colon).trim()
       }
     }
@@ -660,12 +660,9 @@ async function fetchCchAdmin(site: Site): Promise<SiteResult> {
 
 /* ── CCH user：账户余额 ── */
 
-async function fetchCchUser(site: Site): Promise<SiteResult> {
-  const headers: Record<string, string> = site.mode === "user"
-    ? { "X-API-Key": site.credential }
-    : { Authorization: `Bearer ${site.credential}` }
+async function fetchQuotaWith(site: Site, headers: Record<string, string>, label: string): Promise<SiteResult> {
   const response = await httpJson("GET", `${site.base}/api/v1/me/quota`, headers)
-  ensure(response, site.mode === "user" ? "Key" : "会话")
+  ensure(response, label)
   const quota = unwrap(response.body)
 
   const keyLimit = numeric(quota.keyLimitTotalUsd)
@@ -687,13 +684,172 @@ async function fetchCchUser(site: Site): Promise<SiteResult> {
   return { site, error: null, rows, usage: "", notices: total ? [] : ["⚠️ 未设置总额度"] }
 }
 
+function fetchCchUser(site: Site): Promise<SiteResult> {
+  return fetchQuotaWith(site, { "X-API-Key": site.credential }, "Key")
+}
+
+/* cookie 模式：直接把会话 auth-token 当凭据 */
+function fetchCchCookie(site: Site): Promise<SiteResult> {
+  return fetchQuotaWith(site, { Accept: "application/json", Cookie: `auth-token=${site.credential}` }, "会话")
+}
+
+/* login 模式：用 API Key 换会话 Cookie，缓存到 Storage，过期或被拒时重新登录一次 */
+function sessionKey(base: string): string {
+  return `cch_session_${base}`
+}
+
+function readSession(base: string): string {
+  try {
+    if (typeof Storage === "undefined" || !Storage) return ""
+    const raw = Storage.get(sessionKey(base))
+    if (!raw) return ""
+    const cache = typeof raw === "string" ? JSON.parse(raw) : raw
+    if (!cache || typeof cache.token !== "string") return ""
+    return Number(cache.expiresAt || 0) > Date.now() ? cache.token : ""
+  } catch (_) {
+    return ""
+  }
+}
+
+function writeSession(base: string, token: string, maxAge: number | null) {
+  try {
+    if (typeof Storage === "undefined" || !Storage) return
+    const ttl = typeof maxAge === "number" && maxAge > 0 ? maxAge : 6 * 24 * 3600
+    Storage.set(sessionKey(base), JSON.stringify({ version: 1, token, expiresAt: Date.now() + ttl * 1000 }))
+  } catch (_) {}
+}
+
+async function loginWithKey(base: string, credential: string): Promise<{ token: string; maxAge: number | null }> {
+  let response: Response
+  try {
+    response = await fetch(`${base}/api/auth/login`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ key: credential }),
+      timeout: 12,
+    })
+  } catch (error: any) {
+    const message = String((error && error.message) || error)
+    throw new Error(/abort|timeout/i.test(message) ? "登录超时" : message)
+  }
+  if (response.status === 401) throw new Error("Key 无效或已过期")
+  if (response.status === 429) throw new Error("登录过于频繁，稍后重试")
+  if (response.status !== 200) throw new Error(`登录失败（HTTP ${response.status}）`)
+  const raw = response.headers.get("set-cookie") || ""
+  const match = /auth-token=([^;,\s]+)/.exec(raw)
+  if (!match) throw new Error("登录成功但未取到会话 Cookie")
+  const ttl = /max-age=(\d+)/i.exec(raw)
+  return { token: match[1], maxAge: ttl ? Number(ttl[1]) : null }
+}
+
+async function fetchCchLogin(site: Site): Promise<SiteResult> {
+  const cached = readSession(site.base)
+  if (cached) {
+    try {
+      return await fetchQuotaWith(site, { Accept: "application/json", Cookie: `auth-token=${cached}` }, "会话")
+    } catch (_) {}
+  }
+  const session = await loginWithKey(site.base, site.credential)
+  writeSession(site.base, session.token, session.maxAge)
+  return fetchQuotaWith(site, { Accept: "application/json", Cookie: `auth-token=${session.token}` }, "会话")
+}
+
+/* ── CommandCode：5H / 周 / 月剩余额度 ── */
+
+const CMDCODE_MONTH_CAP = 70
+const CMDCODE_WINDOWS: [string, string, string[]][] = [
+  ["fiveHour", "5H", ["fiveHour", "five_hour", "five_hours", "5h"]],
+  ["weekly", "W", ["weekly", "week", "sevenDay", "7d"]],
+]
+
+function pickNumber(source: any, keys: string[]): number | null {
+  if (!source || typeof source !== "object") return null
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) continue
+    const value = source[key]
+    return typeof value === "number" && Number.isFinite(value) ? value : null
+  }
+  return null
+}
+
+function pickWindow(source: any, aliases: string[]): any {
+  if (!source || typeof source !== "object") return null
+  for (const alias of aliases) {
+    if (Object.prototype.hasOwnProperty.call(source, alias)) {
+      const value = source[alias]
+      return value && typeof value === "object" ? value : null
+    }
+  }
+  return null
+}
+
+function cmdcodePercent(ratio: number): string {
+  return `${(ratio * 100).toFixed(2)}%`
+}
+
+async function fetchCmdcode(site: Site): Promise<SiteResult> {
+  const headers = { Authorization: `Bearer ${site.credential}` }
+  const who = await httpJson("GET", `${site.base}/alpha/whoami?limits=1`, headers)
+  ensure(who, "CommandCode")
+  const orgId = String((unwrap(who.body).org && unwrap(who.body).org.id) || "")
+  const creditsResponse = await httpJson(
+    "GET",
+    `${site.base}/alpha/billing/credits${orgId ? `?orgId=${encodeURIComponent(orgId)}` : ""}`,
+    headers
+  )
+  ensure(creditsResponse, "CommandCode")
+  const body = unwrap(creditsResponse.body)
+  const credits = body && body.credits && typeof body.credits === "object" ? body.credits : (body || {})
+  const limits = (credits.windowLimits || credits.window_limits
+    || (body && (body.windowLimits || body.window_limits)) || {}) as any
+  const flag = typeof limits.limited === "boolean" ? limits.limited
+    : typeof credits.limited === "boolean" ? credits.limited : null
+  const unlimited = flag === false
+
+  const parts: string[] = []
+  for (const [key, label, aliases] of CMDCODE_WINDOWS) {
+    if (unlimited) {
+      parts.push(`${label} 不限`)
+      continue
+    }
+    const window = pickWindow(limits, aliases)
+    if (!window) continue
+    const used = pickNumber(window, ["used", "current", "spent"])
+    const cap = pickNumber(window, ["cap", "limit", "max", "total"])
+    if (used === null || cap === null || cap <= 0) continue
+    parts.push(`${label} ${cmdcodePercent(Math.min(1, Math.max(0, (cap - used) / cap)))}`)
+  }
+  if (!unlimited) {
+    const monthly = pickNumber(credits, ["monthlyCredits"])
+    if (monthly !== null) {
+      parts.push(`M ${cmdcodePercent(Math.min(1, Math.max(0, monthly / CMDCODE_MONTH_CAP)))}`)
+    } else {
+      const purchased = pickNumber(credits, ["purchasedCredits"])
+      const free = pickNumber(credits, ["freeCredits"])
+      const remaining = (purchased === null ? 0 : purchased) + (free === null ? 0 : free)
+      if (purchased !== null || free !== null) parts.push(`M $${remaining.toFixed(1)}`)
+    }
+  }
+  if (!parts.length) throw new Error("credits 里没有可展示的额度")
+
+  return {
+    site,
+    error: null,
+    rows: [{ name: site.name, amount: "", detail: parts.join(" · "), priority: site.priority, seq: 0 }],
+    usage: "",
+    notices: [],
+  }
+}
+
 /* ── 站点分发与合并 ── */
 
 async function fetchSite(site: Site): Promise<SiteResult> {
   if (site.mode === "cchp") return fetchCchp(site)
   if (site.mode === "admin") return fetchCchAdmin(site)
-  if (site.mode === "user") return fetchCchUser(site)
-  throw new Error(`暂不支持 ${site.mode} 模式（当前支持 cchp / admin / user）`)
+  if (site.mode === "cmdcode") return fetchCmdcode(site)
+  if (site.mode === "login") return fetchCchLogin(site)
+  if (site.mode === "cookie") return fetchCchCookie(site)
+  return fetchCchUser(site)
 }
 
 function compareRows(left: PanelRow, right: PanelRow): number {
