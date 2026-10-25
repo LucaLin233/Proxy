@@ -108,6 +108,10 @@ const STORE_CACHE = "relay.panel.v1"
 
 const DEFAULT_OPTIONS: Options = { monthCap: 70, maxRows: 10 }
 
+/* 固定展示顺序：写死在这里，不依赖接口优先级，顺序永远不会因为抓取失败而跳动。
+   按名称前缀匹配（Kcne-Astra → Kcne）；不在表里的行排到最后。 */
+const ROW_ORDER = ["commandcode", "clouder", "kcne", "sd", "air"]
+
 const MODES: SiteMode[] = ["cchp", "admin", "user", "login", "cookie", "cmdcode"]
 
 export const MODE_LABELS: [SiteMode, string][] = [
@@ -1110,11 +1114,17 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
   const previous = priorities
     || readSlot<CchpPriority[]>(prioSlot, 30 * 24 * 3600 * 1000)
     || legacyPriorities(site.base, orgId)
-  let priorityMissing = false
-  if (!priorities || !priorities.every((item) => Array.isArray(item.keyIds))) {
+  /* 新版面板已没有 /providers/{id}/keys（404）：记下来，24 小时内不再逐 provider 重试 */
+  const noKeysSlot = `relay.cchp.nokeys.${hash(site.base + "|" + orgId)}`
+  const noKeys = readSlot<number>(noKeysSlot, 24 * 3600 * 1000)
+  if (!priorities && !noKeys) {
     let failed = false
+    let endpointMissing = false
     const failedIds = new Set<string>()
     const items = await mapLimit(providers, 5, async (provider) => {
+      if (endpointMissing) {
+        return { id: provider.id, priority: null, keyIds: [] as string[] }
+      }
       if (budgetLeft(budget) < 1500) {
         timedOut = true
         failed = true
@@ -1129,6 +1139,12 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
           undefined,
           slice(10000)
         )
+        if (result.status === 404) {
+          endpointMissing = true
+          failed = true
+          failedIds.add(provider.id)
+          return { id: provider.id, priority: null, keyIds: [] as string[] }
+        }
         if (result.status !== 200) throw new Error(`HTTP ${result.status}`)
         const keys = result.body ? result.body.keys : null
         return { id: provider.id, priority: keyPriority(keys), keyIds: activeKeyIds(keys) }
@@ -1138,7 +1154,10 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
         return { id: provider.id, priority: null, keyIds: [] as string[] }
       }
     })
-    if (!failed) {
+    if (endpointMissing) {
+      priorities = []
+      writeSlot(noKeysSlot, Date.now())
+    } else if (!failed) {
       priorities = items
       writeSlot(prioSlot, items)
     } else {
@@ -1156,7 +1175,6 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
         }
       })
     }
-    priorityMissing = (priorities || []).some((item) => item.priority === null)
   }
 
   const prioById = new Map<string, CchpPriority>()
@@ -1271,7 +1289,6 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
 
   if (singleAccountUnavailable) notices.push("⚠️ 单账户余额不可用")
   if (timedOut) notices.push("⚠️ 部分请求超时")
-  else if (priorityMissing) notices.push("⚠️ 部分排序信息缺失")
 
   return { rows, usage, notices, error: null, hints }
 }
@@ -1288,15 +1305,33 @@ async function fetchSite(site: Site, options: Options): Promise<Outcome> {
   return fetchCchQuota(site, { Accept: "application/json", "X-API-Key": site.credential }, "Key", 15000)
 }
 
+/* 名称在固定顺序里的档位；不在表里返回表长（排最后） */
+function orderRank(name: string, site: string): number {
+  for (const value of [name, site]) {
+    const text = String(value || "").trim().toLowerCase()
+    if (!text) continue
+    for (const token of ROW_ORDER) {
+      if (text === token) return ROW_ORDER.indexOf(token)
+      /* Kcne-Astra、SD · 备用 这类同品牌的子项归到同一档 */
+      if (text.startsWith(token) && /^[-_\s·]/.test(text.slice(token.length))) return ROW_ORDER.indexOf(token)
+    }
+  }
+  return ROW_ORDER.length
+}
+
 function compareRows(left: Row, right: Row): number {
-  /* 取数失败的站点排到最后，不按优先级插进来 */
+  /* 取数失败的站点排到最后，不按任何顺序插进来 */
   if (left.failed !== right.failed) return left.failed ? 1 : -1
-  const a = left.priority === null ? Number.POSITIVE_INFINITY : left.priority
-  const b = right.priority === null ? Number.POSITIVE_INFINITY : right.priority
-  if (a !== b) return a - b
-  const leftName = left.name.toLowerCase()
-  const rightName = right.name.toLowerCase()
-  if (leftName !== rightName) return leftName < rightName ? -1 : 1
+  /* 先按写死的展示顺序 */
+  const rankA = orderRank(left.name, left.site)
+  const rankB = orderRank(right.name, right.site)
+  if (rankA !== rankB) return rankA - rankB
+  /* 同一档（或都未列出）时再用优先级、采集顺序兜底 */
+  const a = left.priority
+  const b = right.priority
+  if (a !== null && b !== null && a !== b) return a - b
+  if (a === null && b !== null) return 1
+  if (a !== null && b === null) return -1
   return left.seq - right.seq
 }
 
@@ -1338,7 +1373,8 @@ export async function loadPanel(sites: Site[], options: Options, maxAgeMs = 0): 
   if (maxAgeMs > 0) {
     const cached = readSlot<PanelData>(STORE_CACHE, maxAgeMs)
     if (cached && Array.isArray(cached.rows)) {
-      return { ...cached, rows: cached.rows.map(normalizeRow), fromCache: true }
+      /* 缓存里的行也过一次固定顺序，改完顺序不用等下一次取数 */
+      return { ...cached, rows: cached.rows.map(normalizeRow).sort(compareRows), fromCache: true }
     }
   }
 
