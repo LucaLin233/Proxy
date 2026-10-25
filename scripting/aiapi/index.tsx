@@ -3,11 +3,13 @@ import {
   Button,
   Form,
   HStack,
+  List,
   NavigationStack,
   Picker,
   Script,
   Section,
   SecureField,
+  Spacer,
   Text,
   TextField,
   VStack,
@@ -16,7 +18,9 @@ import {
   useState,
 } from "scripting"
 import { compose, fetchSite, readSites, sitesToConfig, toMessage, writeSites } from "./aiapi.core"
-import type { PanelRow, Site, SiteMode, SiteResult } from "./aiapi.core"
+import type { Site, SiteMode, SiteResult } from "./aiapi.core"
+
+const MUTED = { light: "#6b6b6b", dark: "#a0a0a0" }
 
 const MODE_LABELS: [SiteMode, string][] = [
   ["cchp", "CCHP 管理令牌"],
@@ -40,15 +44,6 @@ function formatClock(value: number): string {
 
 /* ── 面板 ── */
 
-function Row({ row }: { row: PanelRow }) {
-  return (
-    <VStack alignment="leading" spacing={2}>
-      <Text font={16} fontWeight="semibold">{row.amount ? `${row.name}  ${row.amount}` : row.name}</Text>
-      {row.detail ? <Text font={12}>{row.detail}</Text> : null}
-    </VStack>
-  )
-}
-
 function PanelView({
   sites,
   results,
@@ -67,23 +62,61 @@ function PanelView({
   onClose: () => void
 }) {
   const data = results.length ? compose(results, startedAt) : null
+  const subtitle = pending > 0
+    ? `正在获取…（还剩 ${pending} 个站点）`
+    : data
+      ? `更新于 ${formatClock(data.updatedAt)} · ${(data.elapsedMs / 1000).toFixed(1)}s`
+      : ""
 
   return (
     <NavigationStack>
-      <VStack alignment="leading" spacing={10} navigationTitle="API 中转站概览">
-        <HStack spacing={12}>
-          <Button title="刷新" action={onRefresh} />
-          <Button title="设置" action={onSettings} />
-          <Button title="关闭" action={onClose} />
-        </HStack>
-        {pending > 0 ? <Text font={12}>{`正在获取…（还剩 ${pending} 个站点）`}</Text> : null}
-        {pending === 0 && data ? <Text font={12}>{`更新于 ${formatClock(data.updatedAt)} · ${(data.elapsedMs / 1000).toFixed(1)}s`}</Text> : null}
-        {pending === 0 && data && data.rows.length === 0 ? <Text font={14}>未获取到余额</Text> : null}
-        {data ? data.rows.map((row) => <Row key={`${row.name}-${row.seq}`} row={row} />) : null}
-        {data ? data.usage.map((line) => <Text key={line} font={12}>{line}</Text>) : null}
-        {data ? data.notices.map((line) => <Text key={line} font={12}>{line}</Text>) : null}
-        {sites.length === 0 ? <Text font={14}>还没有站点，点「设置」添加。</Text> : null}
-      </VStack>
+      <List
+        navigationTitle="API 中转站概览"
+        navigationBarTitleDisplayMode="inline"
+        toolbar={{
+          cancellationAction: <Button title="关闭" action={onClose} />,
+          confirmationAction: <Button title="刷新" action={onRefresh} />,
+        }}
+      >
+        {sites.length === 0 ? (
+          <Section>
+            <Text>还没有站点，先去设置里添加。</Text>
+            <Button title="打开设置" action={onSettings} />
+          </Section>
+        ) : null}
+
+        <Section header={<Text>{subtitle}</Text>}>
+          {data
+            ? data.rows.map((row) => (
+              <HStack key={`${row.name}-${row.seq}`} spacing={8}>
+                <VStack alignment="leading" spacing={2}>
+                  <Text font={16} fontWeight="semibold">{row.name}</Text>
+                  {row.detail ? <Text font={12} foregroundStyle={MUTED}>{row.detail}</Text> : null}
+                </VStack>
+                <Spacer />
+                {row.amount ? <Text font={16} fontWeight="medium">{row.amount}</Text> : null}
+              </HStack>
+            ))
+            : null}
+          {pending === 0 && data && data.rows.length === 0 ? <Text foregroundStyle={MUTED}>未获取到余额</Text> : null}
+        </Section>
+
+        {data && data.usage.length ? (
+          <Section header={<Text>今日用量</Text>}>
+            {data.usage.map((line) => <Text key={line} font={13}>{line}</Text>)}
+          </Section>
+        ) : null}
+
+        {data && data.notices.length ? (
+          <Section header={<Text>提示</Text>}>
+            {data.notices.map((line) => <Text key={line} font={12} foregroundStyle={MUTED}>{line}</Text>)}
+          </Section>
+        ) : null}
+
+        <Section>
+          <Button title="站点设置" action={onSettings} />
+        </Section>
+      </List>
     </NavigationStack>
   )
 }
