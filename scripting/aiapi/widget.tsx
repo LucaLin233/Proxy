@@ -1,6 +1,6 @@
 // AI 中转站 · 桌面小组件（数据层与 index.tsx 共用 aiapi.core.ts）
 import { HStack, Spacer, Text, VStack, Widget } from "scripting"
-import { INITIAL_CONFIG, formatClock, loadPanel, readStored, toMessage } from "./aiapi.core"
+import { formatClock, loadPanelSites, readSites, toMessage } from "./aiapi.core"
 import type { PanelData, PanelRow } from "./aiapi.core"
 
 /* 3.2.x 的 family 是 small/medium/large，老文档写过 systemSmall，两种都兼容 */
@@ -37,13 +37,13 @@ function WidgetView({ data, message }: { data: PanelData | null; message: string
 }
 
 async function run() {
-  const config = readStored() || INITIAL_CONFIG
-  if (!config) {
-    Widget.present(<WidgetView data={null} message="未配置：先在主脚本里填 cch_endpoints" />)
+  const sites = readSites()
+  if (!sites.length) {
+    Widget.present(<WidgetView data={null} message="未配置：先在主脚本里添加站点" />)
     return
   }
   try {
-    const data = await loadPanel(config)
+    const data = await loadPanelSites(sites)
     Widget.present(<WidgetView data={data} message="" />)
   } catch (error) {
     Widget.present(<WidgetView data={null} message={`❌ ${toMessage(error)}`} />)

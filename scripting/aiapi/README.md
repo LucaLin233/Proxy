@@ -32,7 +32,7 @@ AI 中转站/
 
 | 项目 | 模块 | 本脚本 |
 |---|---|---|
-| 模式 | user / cookie / admin / login / cchp / cmdcode | 全部六种都已移植 |
+| 模式 | user / cookie / admin / login / cchp / cmdcode | 全部六种，设置里用 Picker 选择 |
 | Clouder / Mi | 分别由 CCH 站点提供 / 隐藏 | 相同 |
 | 今日用量、健康 | 有 | 有 |
 | 日报推送 | 有 | 无（脚本里查看） |

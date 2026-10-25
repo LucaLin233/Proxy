@@ -149,6 +149,34 @@ function parseSites(input: string): Site[] {
 
 type HttpResult = { status: number; body: any; timedOut: boolean }
 
+const HAS_TIMERS = typeof setTimeout === "function"
+
+function raceTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  if (!HAS_TIMERS) return promise
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      reject(new Error(`${label} 超过 ${Math.round(ms / 1000)} 秒未返回`))
+    }, ms)
+    promise.then(
+      (value) => {
+        if (settled) return
+        settled = true
+        ;(clearTimeout as any)(timer)
+        resolve(value)
+      },
+      (error) => {
+        if (settled) return
+        settled = true
+        ;(clearTimeout as any)(timer)
+        reject(error)
+      }
+    )
+  })
+}
+
 async function httpJson(
   method: "GET" | "POST",
   url: string,
@@ -156,16 +184,27 @@ async function httpJson(
   body?: any,
   timeout = 12
 ): Promise<HttpResult> {
-  const init: any = { method, headers: { ...headers }, timeout }
+  const init: any = { method, headers: { ...headers }, timeout: Math.max(1, Math.round(timeout)) }
   if (body !== undefined) {
     init.body = JSON.stringify(body)
     init.headers["Content-Type"] = "application/json"
   }
   try {
-    const response = await fetch(url, init)
+    let target: any = url
+    let options: any = init
+    if (typeof Request !== "undefined" && Request) {
+      try {
+        target = new Request(url, init)
+        options = undefined
+      } catch (_) {
+        target = url
+        options = init
+      }
+    }
+    const response = await raceTimeout(fetch(target, options), timeout * 1000 + 3000, "请求")
     let parsed: any = null
     try {
-      parsed = await response.json()
+      parsed = await raceTimeout(response.json(), 8000, "读取响应")
     } catch (_) {
       parsed = null
     }
@@ -899,37 +938,93 @@ function compose(results: SiteResult[], startedAt: number): PanelData {
 /* ── 配置读写：Keychain → Storage，谁是全局就用谁 ── */
 
 const CFG_KEY = "endpoints"
+const SITES_KEY = "sites_v1"
 
-function readStored(): string {
+function readRaw(key: string): any {
   try {
     if (typeof Keychain !== "undefined" && Keychain) {
-      const value = Keychain.get(CFG_KEY)
-      if (value) return String(value)
+      const value = Keychain.get(key)
+      if (value) return value
     }
   } catch (_) {}
   try {
     if (typeof Storage !== "undefined" && Storage) {
-      const value = Storage.get(CFG_KEY)
-      if (value) return String(value)
+      const value = Storage.get(key)
+      if (value) return value
     }
   } catch (_) {}
-  return ""
+  return null
 }
 
-function writeStored(value: string): boolean {
+function writeRaw(key: string, value: any): boolean {
   try {
     if (typeof Keychain !== "undefined" && Keychain) {
-      Keychain.set(CFG_KEY, value)
+      Keychain.set(key, value)
       return true
     }
   } catch (_) {}
   try {
     if (typeof Storage !== "undefined" && Storage) {
-      Storage.set(CFG_KEY, value)
+      Storage.set(key, value)
       return true
     }
   } catch (_) {}
   return false
+}
+
+function readStored(): string {
+  const value = readRaw(CFG_KEY)
+  return value === null || value === undefined ? "" : String(value)
+}
+
+function writeStored(value: string): boolean {
+  return writeRaw(CFG_KEY, value)
+}
+
+/* ── 结构化站点：JSON 存 sites_v1，同时写回文本形式兼容旧读取 ── */
+
+function sitesToConfig(sites: Site[]): string {
+  return sites
+    .map((site) => {
+      const suffix = site.priority === null ? site.mode : `${site.mode}:${site.priority}`
+      return `${site.name}@${site.base}=${site.credential}:${suffix}`
+    })
+    .join(" | ")
+}
+
+function normalizeSite(raw: any): Site | null {
+  if (!raw || typeof raw !== "object") return null
+  const base = typeof raw.base === "string" ? raw.base.trim().replace(/\/+$/, "") : ""
+  if (!base) return null
+  const mode = MODES.indexOf(raw.mode) >= 0 ? (raw.mode as SiteMode) : "cchp"
+  const priority = typeof raw.priority === "number" && isFinite(raw.priority) ? raw.priority : null
+  return {
+    name: typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : base.replace(/^https?:\/\//, ""),
+    base,
+    credential: typeof raw.credential === "string" ? raw.credential : "",
+    mode,
+    priority,
+  }
+}
+
+function readSites(): Site[] {
+  try {
+    const raw = readRaw(SITES_KEY)
+    if (raw) {
+      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw
+      if (Array.isArray(parsed)) {
+        const sites = parsed.map(normalizeSite).filter((site): site is Site => !!site)
+        if (sites.length) return sites
+      }
+    }
+  } catch (_) {}
+  return parseSites(readStored())
+}
+
+function writeSites(sites: Site[]): boolean {
+  const stored = writeRaw(SITES_KEY, JSON.stringify(sites))
+  writeStored(sitesToConfig(sites))
+  return stored
 }
 
 function hasStore(): boolean {
@@ -945,10 +1040,9 @@ function toMessage(error: any): string {
   return String(error.message || error)
 }
 
-async function loadPanel(config: string): Promise<PanelData> {
+async function loadPanelSites(sites: Site[]): Promise<PanelData> {
   const started = Date.now()
-  const sites = parseSites(config)
-  if (!sites.length) throw new Error("配置无法解析：应为「名称@地址=凭据:模式」，多个站点用 | 分隔")
+  if (!sites.length) throw new Error("还没有配置站点")
   const results = await Promise.all(sites.map((site) => fetchSite(site).then(
     (value) => value,
     (error) => ({
@@ -965,6 +1059,8 @@ async function loadPanel(config: string): Promise<PanelData> {
 
 export {
   CFG_KEY,
+  loadPanelSites,
+  SITES_KEY,
   INITIAL_CONFIG,
   compose,
   fetchSite,
@@ -972,8 +1068,11 @@ export {
   hasStore,
   loadPanel,
   parseSites,
+  readSites,
   readStored,
+  sitesToConfig,
   toMessage,
+  writeSites,
   writeStored,
 }
 export type { PanelData, PanelRow, Site, SiteResult }
