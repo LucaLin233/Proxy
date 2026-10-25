@@ -3,17 +3,39 @@ import { HStack, Link, Script, Spacer, Text, VStack, Widget } from "scripting"
 import { formatClock, loadPanelSites, readSites, toMessage } from "./aiapi.core"
 import type { PanelData, PanelRow } from "./aiapi.core"
 
-const MUTED: any = { light: "#6b6b6b", dark: "#a0a0a0" }
+const INK: any = { light: "#1c1c1e", dark: "#f2f2f7" }
+const MUTED: any = { light: "#8a8a8e", dark: "#9a9a9e" }
 
-/* 3.2.x 的 family 是 small/medium/large，老文档写过 systemSmall，两种都兼容 */
-function rowLimit(): number {
-  let family = "medium"
+function family(): string {
   try {
-    family = String((Widget as any).family || "medium").toLowerCase()
+    return String((Widget as any).family || "medium").toLowerCase()
   } catch (_) {}
-  if (family.indexOf("small") >= 0) return 3
-  if (family.indexOf("large") >= 0) return 8
-  return 5
+  return "medium"
+}
+
+function boxHeight(): number {
+  try {
+    const size: any = (Widget as any).displaySize
+    if (size && Number(size.height) > 60) return Number(size.height)
+  } catch (_) {}
+  const name = family()
+  if (name.indexOf("small") >= 0) return 170
+  if (name.indexOf("large") >= 0) return 380
+  return 170
+}
+
+/* 按实际高度算能放几行：带明细的行按 1.7 行计 */
+function fit(rows: PanelRow[]): { shown: PanelRow[]; hidden: number } {
+  const budget = Math.max(2.4, (boxHeight() - 46) / 20)
+  const shown: PanelRow[] = []
+  let used = 0
+  for (const row of rows) {
+    const cost = row.detail ? 1.7 : 1
+    if (used + cost > budget) break
+    shown.push(row)
+    used += cost
+  }
+  return { shown, hidden: rows.length - shown.length }
 }
 
 function openURL(): string {
@@ -28,39 +50,29 @@ function openURL(): string {
 
 function Row({ row }: { row: PanelRow }) {
   return (
-    <HStack spacing={6}>
+    <HStack alignment="firstTextBaseline" spacing={6}>
       <VStack alignment="leading" spacing={0}>
-        <Text font={12} fontWeight="semibold">{row.name}</Text>
+        <Text font={12} fontWeight="semibold" foregroundStyle={INK}>{row.name}</Text>
         {row.detail ? <Text font={9} foregroundStyle={MUTED}>{row.detail}</Text> : null}
       </VStack>
       <Spacer />
-      {row.amount ? <Text font={12} fontWeight="medium">{row.amount}</Text> : null}
-    </HStack>
-  )
-}
-
-function Header({ data }: { data: PanelData | null }) {
-  return (
-    <HStack spacing={4}>
-      <Text font={13} fontWeight="bold">API 中转站</Text>
-      <Spacer />
-      {data ? <Text font={9} foregroundStyle={MUTED}>{formatClock(data.updatedAt)}</Text> : null}
+      {row.amount ? <Text font={12} fontWeight="semibold" foregroundStyle={INK}>{row.amount}</Text> : null}
     </HStack>
   )
 }
 
 function WidgetView({ data, message }: { data: PanelData | null; message: string }) {
-  const limit = rowLimit()
-  const rows = data ? data.rows.slice(0, limit) : []
-  const hidden = data && data.rows.length > limit ? data.rows.length - limit : 0
-
+  const packed = data ? fit(data.rows) : { shown: [], hidden: 0 }
   return (
-    <VStack alignment="leading" spacing={5} padding={12}>
-      <Header data={data} />
+    <VStack alignment="leading" spacing={4} padding={{ top: 10, bottom: 10, leading: 14, trailing: 14 }}>
+      <HStack alignment="center" spacing={4}>
+        <Text font={11} fontWeight="bold" foregroundStyle={INK}>API 中转站</Text>
+        <Spacer />
+        {data ? <Text font={9} foregroundStyle={MUTED}>{formatClock(data.updatedAt)}</Text> : null}
+      </HStack>
       {message ? <Text font={10} foregroundStyle={MUTED}>{message}</Text> : null}
-      {rows.map((row) => <Row key={`${row.name}-${row.seq}`} row={row} />)}
-      {hidden > 0 ? <Text font={9} foregroundStyle={MUTED}>{`另有 ${hidden} 项`}</Text> : null}
-      {data && data.usage.length ? <Text font={9} foregroundStyle={MUTED}>{data.usage[0]}</Text> : null}
+      {packed.shown.map((row) => <Row key={`${row.name}-${row.seq}`} row={row} />)}
+      {packed.hidden > 0 ? <Text font={9} foregroundStyle={MUTED}>{`另有 ${packed.hidden} 项`}</Text> : null}
     </VStack>
   )
 }
