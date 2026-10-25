@@ -33,10 +33,10 @@ function amountTone(row: Row): any {
   return INK
 }
 
+/* 余额进度条按「还剩多少额度」上色，和限额条保持一致 */
 function barTone(row: Row): string[] {
-  const value = row.amount
-  if (value !== null && value < 10) return ["#FF7C6E", RED]
-  return ["#67E39A", GREEN]
+  if (row.ratio === null) return ["#67E39A", GREEN]
+  return ratioTone(row.ratio)
 }
 
 function displayHeight(family: string): number {
@@ -67,54 +67,93 @@ function Badge({ size }: { size: number }) {
   )
 }
 
-function Pill({ label, text, tint, small }: {
+/* 限额胶囊：标签 + 迷你进度条 + 百分比；没有比例（不限 / 只给金额）时不画条 */
+function LimitPill({ label, ratio, text, small, large, barWidth }: {
   label: string
+  ratio: number | null
   text: string
-  tint: any
   small: boolean
+  large: boolean
+  barWidth: number
 }) {
+  const tones = ratio === null ? null : ratioTone(ratio)
+  const tint: any = tones ? tones[1] : GREY
+  /* 浅色背景上同色系文字对比度不够，浅色模式用压深的同色 */
+  const ink: any = ratio === null
+    ? MUTED
+    : {
+        light: ratio <= 0.1 ? "#C4170C" : ratio <= 0.3 ? "#9A5B00" : "#137A3A",
+        dark: tones ? tones[1] : GREY,
+      }
+  const value = ratio === null ? text : percent(ratio, 0)
+
   return (
     <HStack
-      spacing={2.5}
+      spacing={small ? 1.5 : 2.5}
       alignment="center"
-      padding={{ horizontal: small ? 3.5 : 4.5, vertical: small ? 1 : 1.5 }}
-      background={{ light: { color: tint, opacity: 0.11 }, dark: { color: tint, opacity: 0.22 } }}
+      padding={{ horizontal: small ? 3.5 : large ? 6 : 4, vertical: small ? 1 : large ? 2.5 : 1.5 }}
+      background={{ light: { color: tint, opacity: 0.10 }, dark: { color: tint, opacity: 0.20 } }}
       clipShape={{ type: "capsule", style: "continuous" }}
+      fixedSize={{ horizontal: true, vertical: false }}
     >
-      <Text font={small ? 6 : 7} fontWeight="semibold" foregroundStyle={MUTED}>{label}</Text>
-      <Text font={small ? 8 : 8.5} fontWeight="bold" monospacedDigit foregroundStyle={tint}>{text}</Text>
+      <Text font={small ? 6 : large ? 8 : 7} fontWeight="semibold" foregroundStyle={MUTED} lineLimit={1}>{label}</Text>
+      {barWidth > 0 && tones
+        ? <Bar ratio={ratio as number} width={barWidth} height={small ? 3 : large ? 3.5 : 3} tone={tones} />
+        : null}
+      <Text
+        font={small ? 7.5 : large ? 9.5 : 8.5}
+        fontWeight="bold"
+        monospacedDigit
+        foregroundStyle={ink}
+        lineLimit={1}
+      >
+        {value}
+      </Text>
     </HStack>
   )
 }
 
-function Limits({ limits, small }: { limits: RowLimit[]; small: boolean }) {
+function Limits({ limits, small, large, barWidth }: {
+  limits: RowLimit[]
+  small: boolean
+  large: boolean
+  barWidth: number
+}) {
   return (
     <HStack spacing={small ? 3 : 4} alignment="center">
       {limits.map((item) => (
-        <Pill
+        <LimitPill
           key={item.label}
           label={item.label}
+          ratio={item.ratio}
           text={item.text}
-          tint={item.ratio === null ? GREY : ratioTone(item.ratio)[1]}
           small={small}
+          large={large}
+          barWidth={barWidth}
         />
       ))}
     </HStack>
   )
 }
 
-function Bar({ ratio, width, tone }: { ratio: number; width: number; tone: any[] }) {
-  const filled = Math.max(3, Math.round(width * Math.max(0, Math.min(1, ratio))))
+function Bar({ ratio, width, height = 3.5, tone }: {
+  ratio: number
+  width: number
+  height?: number
+  tone: any[]
+}) {
+  const span = Math.max(0, Math.min(1, ratio))
+  const filled = Math.max(height + 2, Math.round(width * span))
   return (
-    <ZStack alignment="leading" frame={{ width, height: 3.5 }}>
+    <ZStack alignment="leading" frame={{ width, height }}>
       <Rectangle
         fill={{ light: { color: "#0A0A14", opacity: 0.08 }, dark: { color: "#FFFFFF", opacity: 0.18 } }}
-        frame={{ width, height: 3.5 }}
+        frame={{ width, height }}
         clipShape={{ type: "capsule", style: "continuous" }}
       />
       <Rectangle
         fill={gradient("linear", { colors: tone, startPoint: "leading", endPoint: "trailing" })}
-        frame={{ width: filled, height: 3.5 }}
+        frame={{ width: filled, height }}
         clipShape={{ type: "capsule", style: "continuous" }}
       />
     </ZStack>
@@ -153,8 +192,8 @@ function RowView({ row, small, large, dense }: {
   const barWidth = small ? 42 : large ? 66 : 56
   const inline = row.metrics.join(" · ")
 
-  /* 紧凑模式单行；小/中号限额行也单行，大号才有空间排成两行 */
-  if (dense || (row.kind === "limit" && !large)) {
+  /* 紧凑模式单行；其余尺寸限额行也排成两行，给小进度条留出宽度 */
+  if (dense) {
     return (
       <HStack spacing={4} alignment="center" frame={{ maxWidth: 9999 }}>
         <Text font={nameSize} fontWeight="semibold" foregroundStyle={INK} lineLimit={1}>{row.name}</Text>
@@ -162,7 +201,12 @@ function RowView({ row, small, large, dense }: {
           ? <Text font={small ? 7.5 : 8} foregroundStyle={MUTED} lineLimit={1}>{inline}</Text>
           : null}
         <Spacer />
-        {row.limits.length ? <Limits limits={row.limits} small={small} /> : null}
+        {row.failed
+          ? <Text font={8} fontWeight="semibold" foregroundStyle={RED} lineLimit={1}>取数失败</Text>
+          : null}
+        {row.limits.length
+          ? <Limits limits={row.limits} small={small} large={large} barWidth={12} />
+          : null}
         {row.amountText
           ? <Text
               font={amountSize}
@@ -186,7 +230,7 @@ function RowView({ row, small, large, dense }: {
   const hasBar = row.ratio !== null && row.kind !== "limit"
 
   return (
-    <VStack alignment="leading" spacing={large ? 3 : 2} frame={{ maxWidth: 9999 }}>
+    <VStack alignment="leading" spacing={small ? 1 : large ? 3 : 2} frame={{ maxWidth: 9999 }}>
       <HStack spacing={5} alignment="firstTextBaseline" frame={{ maxWidth: 9999 }}>
         <Text font={nameSize} fontWeight="semibold" foregroundStyle={INK} lineLimit={1}>{row.name}</Text>
         <Spacer />
@@ -203,18 +247,23 @@ function RowView({ row, small, large, dense }: {
             </Text>
           : null}
       </HStack>
-      {showHealth || extra || row.limits.length || hasBar ? (
+      {row.failed || showHealth || extra || row.limits.length || hasBar ? (
         <HStack spacing={5} alignment="center" frame={{ maxWidth: 9999 }}>
-          {showHealth
-            ? <Health row={row} small={small} />
-            : extra
-              ? <Text font={metaSize} foregroundStyle={MUTED} lineLimit={1}>{extra}</Text>
-              : hasBar
-                ? <Text font={metaSize} foregroundStyle={MUTED} lineLimit={1}>
-                    {`剩余 ${percent(row.ratio as number, 0)}`}
-                  </Text>
-                : null}
-          {row.limits.length ? <Limits limits={row.limits} small={small} /> : null}
+          {row.failed
+            ? <Text font={metaSize} fontWeight="medium" foregroundStyle={RED} lineLimit={1}>取数失败</Text>
+            : showHealth
+              ? <Health row={row} small={small} />
+              : extra
+                ? <Text font={metaSize} foregroundStyle={MUTED} lineLimit={1}>{extra}</Text>
+                : hasBar
+                  ? <Text font={metaSize} foregroundStyle={MUTED} lineLimit={1}>
+                      {`剩余 ${percent(row.ratio as number, 0)}`}
+                    </Text>
+                  : null}
+          {row.limits.length && !small
+            ? <Text font={large ? 8 : 7.5} fontWeight="medium" foregroundStyle={MUTED} lineLimit={1}>剩余</Text>
+            : null}
+          {row.limits.length ? <Limits limits={row.limits} small={small} large={large} barWidth={small ? 0 : large ? 28 : 18} /> : null}
           <Spacer />
           {hasBar ? <Bar ratio={row.ratio as number} width={barWidth} tone={barTone(row)} /> : null}
         </HStack>
@@ -237,10 +286,13 @@ export function PanelWidget({
   data,
   widgetSizeHint,
   message,
+  heightOverride,
 }: {
   data: PanelData | null
   widgetSizeHint: string
   message?: string
+  /* 预览用：强制指定小组件高度，不依赖 Widget.displaySize */
+  heightOverride?: number
 }) {
   const hint = String(widgetSizeHint === undefined || widgetSizeHint === null ? "" : widgetSizeHint).toLowerCase()
   const small = hint.indexOf("small") >= 0
@@ -249,7 +301,8 @@ export function PanelWidget({
 
   /* 两行放得下就用两行；放不下时压成一行，优先把服务商列全 */
   const pad = small ? 11 : large ? 15 : 12
-  const available = displayHeight(hint) - (small ? 46 : large ? 62 : 56)
+  const boxHeight = heightOverride && heightOverride > 80 ? heightOverride : displayHeight(hint)
+  const available = boxHeight - (small ? 46 : large ? 62 : 56)
   const detailCap = Math.max(1, Math.min(large ? 10 : 4, Math.floor(available / (small ? 25 : large ? 30 : 27))))
   const denseCap = Math.max(1, Math.min(large ? 14 : 7, Math.floor(available / (small ? 17 : large ? 20 : 16))))
   const dense = !small && rows.length > detailCap

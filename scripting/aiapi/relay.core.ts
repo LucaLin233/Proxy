@@ -56,6 +56,8 @@ export type Row = {
   priority: number | null
   seq: number
   kind: "balance" | "limit"
+  /* 站点取数失败：只占一行提示，没有金额与指标 */
+  failed: boolean
 }
 
 export type Usage = {
@@ -451,6 +453,7 @@ function mkRow(input: {
   limits?: RowLimit[]
   priority?: number | null
   kind?: "balance" | "limit"
+  failed?: boolean
 }): Row {
   return {
     key: input.key,
@@ -468,6 +471,7 @@ function mkRow(input: {
     priority: input.priority === undefined ? null : input.priority,
     seq: 0,
     kind: input.kind || "balance",
+    failed: input.failed === true,
   }
 }
 
@@ -1250,6 +1254,8 @@ async function fetchSite(site: Site, options: Options): Promise<Outcome> {
 }
 
 function compareRows(left: Row, right: Row): number {
+  /* 取数失败的站点排到最后，不按优先级插进来 */
+  if (left.failed !== right.failed) return left.failed ? 1 : -1
   const a = left.priority === null ? Number.POSITIVE_INFINITY : left.priority
   const b = right.priority === null ? Number.POSITIVE_INFINITY : right.priority
   if (a !== b) return a - b
@@ -1279,6 +1285,7 @@ function normalizeRow(row: Row): Row {
     health: typeof row.health === "number" ? row.health : null,
     ttftMs: typeof row.ttftMs === "number" ? row.ttftMs : null,
     limits: Array.isArray(row.limits) ? row.limits : [],
+    failed: row.failed === true,
   }
 }
 
@@ -1312,6 +1319,15 @@ export async function loadPanel(sites: Site[], options: Options, maxAgeMs = 0): 
   for (const item of results) {
     if (!item.outcome) {
       errors.push({ site: item.site.name, message: item.failure })
+      siteById.set(item.site.id, item.site)
+      /* 失败的站点保留一行，避免整行消失、列表跳动 */
+      rows.push(mkRow({
+        key: `${item.site.id}:failed`,
+        name: item.site.name,
+        site: "",
+        priority: item.site.priority,
+        failed: true,
+      }))
       continue
     }
     siteById.set(item.site.id, item.site)

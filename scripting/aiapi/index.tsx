@@ -7,6 +7,7 @@ import {
   Navigation,
   NavigationStack,
   Picker,
+  Rectangle,
   Script,
   Section,
   SecureField,
@@ -16,6 +17,7 @@ import {
   Toggle,
   VStack,
   Widget,
+  ZStack,
   useEffect,
   useState,
 } from "scripting"
@@ -24,13 +26,14 @@ import {
   formatClock,
   loadPanel,
   parseEndpoints,
+  percent,
   readOptions,
   readSites,
   sitesToEndpoints,
   writeOptions,
   writeSites,
 } from "./relay.core"
-import type { Options, PanelData, Site, SiteMode } from "./relay.core"
+import type { Options, PanelData, RowLimit, Site, SiteMode } from "./relay.core"
 
 const MUTED: any = { light: "#6B6B70", dark: "#9A9AA0" }
 const RED = "#FF453A"
@@ -53,6 +56,63 @@ function newSite(): Site {
     priority: null,
     enabled: true,
   }
+}
+
+const LIMIT_BAR = 46
+
+function ratioInk(ratio: number | null): any {
+  if (ratio === null) return MUTED
+  if (ratio <= 0.1) return { light: "#C4170C", dark: "#FF6961" }
+  if (ratio <= 0.3) return { light: "#9A5B00", dark: "#FFD60A" }
+  return { light: "#137A3A", dark: "#32D74B" }
+}
+
+function ratioFill(ratio: number): any {
+  if (ratio <= 0.1) return "#FF453A"
+  if (ratio <= 0.3) return "#FF9F0A"
+  return "#30D158"
+}
+
+function LimitBar({ ratio }: { ratio: number | null }) {
+  if (ratio === null) return null
+  const filled = Math.max(4, Math.round(LIMIT_BAR * Math.max(0, Math.min(1, ratio))))
+  return (
+    <ZStack alignment="leading" frame={{ width: LIMIT_BAR, height: 4 }}>
+      <Rectangle
+        fill={{ light: { color: "#000000", opacity: 0.10 }, dark: { color: "#FFFFFF", opacity: 0.18 } }}
+        frame={{ width: LIMIT_BAR, height: 4 }}
+        clipShape={{ type: "capsule", style: "continuous" }}
+      />
+      <Rectangle
+        fill={ratioFill(ratio)}
+        frame={{ width: filled, height: 4 }}
+        clipShape={{ type: "capsule", style: "continuous" }}
+      />
+    </ZStack>
+  )
+}
+
+/* App 内面板的限额行：标签 + 小进度条 + 百分比 */
+function LimitStrip({ limits }: { limits: RowLimit[] }) {
+  return (
+    <HStack spacing={14} alignment="center">
+      {limits.map((item) => (
+        <HStack key={item.label} spacing={5} alignment="center">
+          <Text font={11} fontWeight="medium" foregroundStyle={MUTED} lineLimit={1}>{item.label}</Text>
+          <LimitBar ratio={item.ratio} />
+          <Text
+            font={12}
+            fontWeight="semibold"
+            monospacedDigit
+            foregroundStyle={ratioInk(item.ratio)}
+            lineLimit={1}
+          >
+            {item.ratio === null ? item.text : percent(item.ratio, 0)}
+          </Text>
+        </HStack>
+      ))}
+    </HStack>
+  )
 }
 
 /* ── 面板 ── */
@@ -90,21 +150,32 @@ function PanelScreen({
 
         <Section header={<Text>{loading ? "正在取数…" : data ? `${data.rows.length} 个服务商 · 更新于 ${formatClock(data.updatedAt)}${data.fromCache ? " · 缓存" : ""}` : "服务商"}</Text>}>
           {data && data.rows.length
-            ? data.rows.slice(0, maxRows).map((row) => (
-              <VStack key={row.key} alignment="leading" spacing={3}>
-                <HStack alignment="firstTextBaseline" spacing={6}>
-                  <Text font={16} fontWeight="semibold" lineLimit={1}>{row.name}</Text>
-                  <Text font={11} foregroundStyle={MUTED} lineLimit={1}>{row.site}</Text>
-                  <Spacer />
-                  {row.amountText
-                    ? <Text font={16} fontWeight="medium" monospacedDigit>{row.amountText}</Text>
-                    : null}
-                </HStack>
-                {row.metrics.length
-                  ? <Text font={12} foregroundStyle={MUTED}>{row.metrics.join(" · ")}</Text>
-                  : null}
-              </VStack>
-            ))
+            ? data.rows.slice(0, maxRows).map((row) => {
+              const reason = row.failed
+                ? (data.errors.find((item) => item.site === row.name) || { message: "" }).message
+                : ""
+              return (
+                <VStack key={row.key} alignment="leading" spacing={4}>
+                  <HStack alignment="firstTextBaseline" spacing={6}>
+                    <Text font={16} fontWeight="semibold" lineLimit={1}>{row.name}</Text>
+                    {row.site
+                      ? <Text font={11} foregroundStyle={MUTED} lineLimit={1}>{row.site}</Text>
+                      : null}
+                    <Spacer />
+                    {row.amountText
+                      ? <Text font={16} fontWeight="medium" monospacedDigit>{row.amountText}</Text>
+                      : null}
+                  </HStack>
+                  {row.failed
+                    ? <Text font={12} foregroundStyle={RED}>{reason ? `取数失败：${reason}` : "取数失败"}</Text>
+                    : row.limits.length
+                      ? <LimitStrip limits={row.limits} />
+                      : row.metrics.length
+                        ? <Text font={12} foregroundStyle={MUTED}>{row.metrics.join(" · ")}</Text>
+                        : null}
+                </VStack>
+              )
+            })
             : <Text foregroundStyle={MUTED}>{loading ? "取数中…" : "未获取到余额"}</Text>}
         </Section>
 
