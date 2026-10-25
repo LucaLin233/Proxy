@@ -1,45 +1,69 @@
-# AI 中转站概览 · Scripting App（含小组件）
+# 中转站看板 · Scripting（含桌面小组件）
 
-把 Surge `aiapi` 模块面板的内容搬进 Scripting：余额、今日用量、供应商健康；同一份数据也上桌面小组件。
+把 Surge 模块 `surge/scripts/aiapi_relay.js` 的面板搬进 Scripting：
+**逐个服务商**显示余额、健康度（成功率）与响应时间（首字 P50）；CommandCode 站点显示 5H / W / M 三个限额。
+不做合计余额，也没有日报推送。
 
-## 项目结构
+## 文件
 
 ```
-AI 中转站/
-├── script.json        # 项目清单（name / icon / color / version）
-├── index.tsx          # 主页面：设置页 + 面板
-├── aiapi.core.ts      # 数据层：CCHP / CCH admin / CCH user 取数、排序、提示
-└── widget.tsx         # 桌面小组件
+中转站看板/
+├── script.json     # 项目清单
+├── index.tsx       # App 内页面：服务商列表 + 站点设置 + 从 Surge 导入
+├── relay.core.ts   # 数据层：CCH / CCHP / CommandCode 取数、排序、缓存
+├── views.tsx       # 小组件视图（与 widget.tsx 共用）
+└── widget.tsx      # 桌面小组件入口
 ```
 
-三个 `.ts/.tsx` 都在同一项目里，`index.tsx` 与 `widget.tsx` 通过 `./aiapi.core` 共用数据层（官方技能确认支持跨文件导入）。
+## 配置
 
-## 安装
+打开脚本 → 右上角或底部进入「站点设置」：
 
-1. Scripting → 新建**脚本项目**（名字随意，本项目清单里叫「AI 中转站」）。
-2. 新建 `script.json`、`index.tsx`、`aiapi.core.ts`、`widget.tsx` 四个文件，分别粘贴同目录文件内容。
-3. 运行 `index.tsx`：没有配置时先显示**设置页**，把 Surge 模块的 `cch_endpoints` 粘贴进输入框，保存即开始取数。
-4. 加桌面小组件：长按桌面 → 加 Scripting 小组件 → 编辑小组件 → 选本项目。中号显示 5 行，小号 3 行，大号 9 行。
+- **从 Surge 导入**：把模块参数里的 `cch_endpoints` 整段粘进去，点「解析并替换上方站点」，保存即可。
+  格式与 Surge 完全一致：`名称@地址=凭据[:模式][:优先级] | …`（模式省略即 `user`）。
+- **手动添加**：每个站点填名称、地址、模式、凭据；`cchp` 填管理令牌，`admin` 填管理员密钥，
+  `user` 填 API Key，`login` 填 API Key（自动换会话 Cookie），`cookie` 填 `auth-token`，`cmdcode` 填 CommandCode Key。
+- 每行可以单独停用；留空凭据的站点不会保存。
 
-## 关键 API（按官方技能 `scripting-app-development` 核对）
+## 数据来源与展示
 
-- `Storage` 是**运行时全局**（`Storage.get/set`），不是模块导出；`Keychain` 在 3.2.1 不一定存在。
-  代码里先看 `Keychain` 再用 `Storage`，两者都没有时设置页会提示「配置可能无法保存」。
-- 小组件：`Widget.present(<View />)` 之后执行上下文立即销毁，所有取数必须在 present 之前完成；不能用 hooks 维持状态。
-- 面板每次刷新成功后会调 `Widget.reloadAll()`，桌面随之更新。
+| 模式 | 取数 | 展示 |
+|---|---|---|
+| `cchp` | 组织树 → provider 列表 → 每个 provider 的 key 优先级 → 代表 key 触发上游复查 → 重取列表；另有今日用量与 provider 健康（24h） | 余额 + 成功率 + 首字延迟 |
+| `admin` | `/api/v1/providers` + `/api/v1/provider-vendors` + `balances:batch`，按厂商归并取最低余额 | 厂商余额（Clouder / Miapi 不在此列） |
+| `user` / `cookie` / `login` | `/api/v1/me/quota` 取 Key 或账户总额度 | 剩余额度 |
+| `cmdcode` | `/alpha/whoami?limits=1` → `/alpha/billing/credits` | `5H` / `W` / `M` 三个剩余百分比 |
+
+排序沿用原脚本：key 优先级（数值越小越前）→ 名称；站点自己没写优先级时，用 CCHP / CCH admin 查到的域名或名称优先级补位。
+金额低于 $10 时标红，其余保持正常文字色（不按剩余比例变色）。
+
+## 小组件
+
+- **小号**：最多 4 个服务商，每条两行（名称+金额，下面是健康度/延迟）。
+- **中号**：服务商 ≤3 时每条两行；超过后自动压成一行，约能列 5–6 个。
+- **大号**：最多 9 个服务商，每条两行，行距自动拉开铺满整个组件。
+
+排版细节：
+
+- 背景是浅蓝渐变，右上/左下各有一团柔光；顶部有渐变图标徽章与渐变分隔线。
+- 余额行第二行：`24h ● 成功率 · 首字延迟`，右侧是剩余额度进度条；没有健康数据的站点（如 Clouder）不显示圆点，改为「剩余 8%」。
+- 金额低于 $10 才标红（进度条同步），Clouder 这类高余额不会再变红。
+- CommandCode 的 `5H / W / M` 显示为三个胶囊标签，颜色随剩余比例变化。
+- 行高按可用高度均分并垂直居中，不会全部挤在顶部；隐藏数量会写成「4/5 个服务商」。
+- 深色模式跟随系统：背景、文字、胶囊全部用动态样式，自动切换（暗蓝渐变 + 霓虹色胶囊）。
+
+小组件每 15 分钟请求一次新时间线；同一份数据 90 秒内复用缓存，App 里点「刷新」会绕过缓存。
+头部时间后面出现「缓存」表示本次用的是缓存数据。
 
 ## 与 Surge 模块的差异
 
-| 项目 | 模块 | 本脚本 |
-|---|---|---|
-| 模式 | user / cookie / admin / login / cchp / cmdcode | 全部六种，设置里用 Picker 选择 |
-| Clouder / Mi | 分别由 CCH 站点提供 / 隐藏 | 相同 |
-| 今日用量、健康 | 有 | 有 |
-| 日报推送 | 有 | 无（脚本里查看） |
-| cmdcode 月度上限 | 模块参数 `cch_cmdcode_month_cap`，默认 70 | 同默认 70，未做参数化 |
-| 配置 | 模块参数 | 应用内设置页（存 Storage/Keychain） |
+- 不显示合计余额（按需求去掉）。
+- 没有 23:50 的日报通知。
+- CCH 管理站的「供应商限额」不再单独成段展示；只有 CommandCode 显示三个限额。
+- 时间预算：CCHP 一轮最多约 24 秒（原脚本 27 秒），超时就沿用服务端聚合值并给出提示。
 
-## 已验证 / 未验证
+## 注意
 
-- 已验证：`index.tsx`、`widget.tsx` 均可编译（esbuild，多文件解析通过）；数据层对真实 CCHP 跑通（Kcne $21.24 / SD $16.00 / Air $2.46，今日 1265 次、首字 3.7 s，约 5 s）；Node 桩环境验证「无配置 → 设置页」「有配置 → 面板」「小组件未配置提示」三条路径不崩。
-- 未验证：App 内真机渲染、`admin` / `user` 模式（无凭据）、小组件在各 family 下的实际排版。
+- 凭据存在 Scripting 的 Storage（本脚本私有域），会话 Cookie 也只存在本机。
+- `login` 模式会缓存 `auth-token`；被拒时自动用 Key 重登一次。
+- 小组件在桌面渲染时没有交互，点开可回到 App 页面手动刷新。
