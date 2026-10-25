@@ -754,10 +754,31 @@ function cchGroupInfo(providers, vendors) {
   return info;
 }
 
-/* 排序：CCH 优先级升序（数值越小越优先）；同级按显示名（大小写不敏感）升序，
-   名字也相同时按插入序号。金额只用于展示，不参与排序——余额变化不会让行序跳动；
-   没有优先级的排最后 */
+/* 固定展示顺序：与 Scripting 版（scripting/aiapi/relay.core.ts 的 ROW_ORDER）保持一致。
+   按名称前缀归类（Kcne-Astra → Kcne）；不在表里的行排最后。 */
+const PANEL_ROW_ORDER = ["commandcode", "clouder", "kcne", "sd", "air"];
+
+/* 名称在固定顺序里的档位；不在表里返回表长（排最后） */
+function rowOrderRank(name) {
+  const text = String(name || "").trim().toLowerCase();
+  if (!text) return PANEL_ROW_ORDER.length;
+  for (let index = 0; index < PANEL_ROW_ORDER.length; index += 1) {
+    const token = PANEL_ROW_ORDER[index];
+    if (text === token) return index;
+    /* Kcne-Astra、SD 备用 这类同品牌的子项归到同一档 */
+    if (text.startsWith(token) && /^[-_\s·]/.test(text.slice(token.length))) return index;
+  }
+  return PANEL_ROW_ORDER.length;
+}
+
+/* 排序：先按写死的展示顺序（CommandCode → Clouder → Kcne → SD → Air），
+   同档再按 CCH 优先级升序（数值越小越优先）、显示名（大小写不敏感）、插入序号。
+   金额只用于展示，不参与排序——余额变化不会让行序跳动；没有优先级的排最后 */
 function compareRows(a, b) {
+  const leftRank = rowOrderRank(a.name);
+  const rightRank = rowOrderRank(b.name);
+  if (leftRank !== rightRank) return leftRank - rightRank;
+
   const leftPriority = a.priority === null || a.priority === undefined ? Infinity : a.priority;
   const rightPriority = b.priority === null || b.priority === undefined ? Infinity : b.priority;
   if (leftPriority !== rightPriority) return leftPriority - rightPriority;

@@ -109,6 +109,7 @@ const STORE_CACHE = "relay.panel.v1"
 const DEFAULT_OPTIONS: Options = { monthCap: 70, maxRows: 10 }
 
 /* 固定展示顺序：写死在这里，不依赖接口优先级，顺序永远不会因为抓取失败而跳动。
+   与 Surge 模块 surge/scripts/aiapi_relay.js 的 PANEL_ROW_ORDER 保持一致。
    按名称前缀匹配（Kcne-Astra → Kcne）；不在表里的行排到最后。 */
 const ROW_ORDER = ["commandcode", "clouder", "kcne", "sd", "air"]
 
@@ -1326,12 +1327,15 @@ function compareRows(left: Row, right: Row): number {
   const rankA = orderRank(left.name, left.site)
   const rankB = orderRank(right.name, right.site)
   if (rankA !== rankB) return rankA - rankB
-  /* 同一档（或都未列出）时再用优先级、采集顺序兜底 */
+  /* 同一档（或都未列出）时依次用站点优先级、名称、采集顺序兜底 */
   const a = left.priority
   const b = right.priority
   if (a !== null && b !== null && a !== b) return a - b
   if (a === null && b !== null) return 1
   if (a !== null && b === null) return -1
+  const leftName = String(left.name || "").toLowerCase()
+  const rightName = String(right.name || "").toLowerCase()
+  if (leftName !== rightName) return leftName < rightName ? -1 : 1
   return left.seq - right.seq
 }
 
