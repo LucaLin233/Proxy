@@ -6,7 +6,6 @@ import type { PanelData, PanelRow } from "./aiapi.core"
 const INK: any = { light: "#101014", dark: "#f5f5f7" }
 const MUTED: any = { light: "#8a8a8e", dark: "#9a9a9e" }
 const GREEN = "#30d158"
-const AMBER = "#ff9f0a"
 const BLUE = "#0a84ff"
 
 function family(): string {
@@ -27,33 +26,35 @@ function boxHeight(): number {
   return 170
 }
 
-/* 按实际高度分配行数：带明细的行按 1.55 行计，留出底部余量 */
-function fit(rows: PanelRow[]): { shown: PanelRow[]; hidden: number } {
-  const budget = Math.max(2.2, (boxHeight() - 42) / 20)
-  const shown: PanelRow[] = []
-  let used = 0
-  for (const row of rows) {
-    const cost = row.detail ? 1.55 : 1
-    if (used + cost > budget) break
-    shown.push(row)
-    used += cost
-  }
-  return { shown, hidden: rows.length - shown.length }
+function money(row: PanelRow): number {
+  if (!row.amount) return 0
+  const hit = /([0-9]+(?:\.[0-9]+)?)/.exec(row.amount)
+  return hit ? Number(hit[1]) : 0
 }
 
-function dotColor(row: PanelRow): string {
-  if (row.amount) return GREEN
-  return BLUE
+function total(rows: PanelRow[]): number {
+  let sum = 0
+  for (const row of rows) sum += money(row)
+  return sum
+}
+
+/* 单行制：容量按高度算，标题 + 合计 + 底部留白之外全部给列表 */
+function capacity(): number {
+  return Math.max(2, Math.floor((boxHeight() - 74) / 19))
+}
+
+function shortDetail(detail: string): string {
+  const first = detail.split(" · ")[0]
+  return first && first.length <= 14 ? first : ""
 }
 
 function Row({ row }: { row: PanelRow }) {
+  const note = shortDetail(row.detail || "")
   return (
-    <HStack alignment="center" spacing={7}>
-      <Text font={7} foregroundStyle={dotColor(row) as any}>●</Text>
-      <VStack alignment="leading" spacing={0}>
-        <Text font={12} fontWeight="semibold" foregroundStyle={INK}>{row.name}</Text>
-        {row.detail ? <Text font={9} foregroundStyle={MUTED}>{row.detail}</Text> : null}
-      </VStack>
+    <HStack alignment="center" spacing={6}>
+      <Text font={8} foregroundStyle={(row.amount ? GREEN : BLUE) as any}>●</Text>
+      <Text font={12} fontWeight="semibold" foregroundStyle={INK}>{row.name}</Text>
+      {note ? <Text font={9} foregroundStyle={MUTED}>{note}</Text> : null}
       <Spacer />
       {row.amount ? <Text font={13} fontWeight="semibold" foregroundStyle={INK}>{row.amount}</Text> : null}
     </HStack>
@@ -61,17 +62,26 @@ function Row({ row }: { row: PanelRow }) {
 }
 
 function WidgetView({ data, message }: { data: PanelData | null; message: string }) {
-  const packed = data ? fit(data.rows) : { shown: [], hidden: 0 }
+  const rows = data ? data.rows : []
+  const limit = capacity()
+  const shown = rows.slice(0, limit)
+  const hidden = rows.length - shown.length
+  const sum = total(rows)
+
   return (
-    <VStack alignment="leading" spacing={5} padding={{ top: 11, bottom: 11, leading: 14, trailing: 14 }}>
-      <HStack alignment="center" spacing={5}>
+    <VStack alignment="leading" spacing={0} padding={{ top: 11, bottom: 11, leading: 14, trailing: 14 }}>
+      <HStack alignment="center" spacing={4}>
         <Text font={11} fontWeight="bold" foregroundStyle={INK}>API 中转站</Text>
         <Spacer />
         {data ? <Text font={9} foregroundStyle={MUTED}>{formatClock(data.updatedAt)}</Text> : null}
       </HStack>
+      {data ? (
+        <Text font={24} fontWeight="bold" foregroundStyle={BLUE as any}>{`$${sum.toFixed(2)}`}</Text>
+      ) : null}
+      {data ? <Text font={9} foregroundStyle={MUTED}>{`${rows.length} 个上游 · 合计`}</Text> : null}
       {message ? <Text font={10} foregroundStyle={MUTED}>{message}</Text> : null}
-      {packed.shown.map((row) => <Row key={`${row.name}-${row.seq}`} row={row} />)}
-      {packed.hidden > 0 ? <Text font={9} foregroundStyle={MUTED}>{`+${packed.hidden} 个上游未显示`}</Text> : null}
+      {shown.map((row) => <Row key={`${row.name}-${row.seq}`} row={row} />)}
+      {hidden > 0 ? <Text font={9} foregroundStyle={MUTED}>{`+${hidden} 个上游未显示`}</Text> : null}
     </VStack>
   )
 }
