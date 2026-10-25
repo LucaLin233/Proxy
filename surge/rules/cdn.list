@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-10-24T14:00:17Z
-# Total:   6788
+# Updated: 2026-10-25T14:00:18Z
+# Total:   6790
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -2250,6 +2250,7 @@ DOMAIN-SUFFIX,image.discovery.indazn.com
 DOMAIN-SUFFIX,image.dooo.ng
 DOMAIN-SUFFIX,image.email.microsoftemail.com
 DOMAIN-SUFFIX,image.freepik.com
+DOMAIN-SUFFIX,image.gameapps.hk
 DOMAIN-SUFFIX,image.goat.com
 DOMAIN-SUFFIX,image.gyutto.com
 DOMAIN-SUFFIX,image.gyutto.jp
@@ -4158,6 +4159,7 @@ DOMAIN-SUFFIX,static.touhoudb.com
 DOMAIN-SUFFIX,static.tp-link.com
 DOMAIN-SUFFIX,static.tradingview.com
 DOMAIN-SUFFIX,static.tronscan.org
+DOMAIN-SUFFIX,static.truemed.com
 DOMAIN-SUFFIX,static.tryprofound.com
 DOMAIN-SUFFIX,static.tumblr.com
 DOMAIN-SUFFIX,static.tvtropes.org
