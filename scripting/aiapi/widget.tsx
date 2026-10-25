@@ -44,8 +44,7 @@ function capacity(): number {
 }
 
 function shortDetail(detail: string): string {
-  const first = detail.split(" · ")[0]
-  return first && first.length <= 14 ? first : ""
+  return detail || ""
 }
 
 function Row({ row }: { row: PanelRow }) {
@@ -54,9 +53,10 @@ function Row({ row }: { row: PanelRow }) {
     <HStack alignment="center" spacing={6}>
       <Text font={8} foregroundStyle={(row.amount ? GREEN : BLUE) as any}>●</Text>
       <Text font={12} fontWeight="semibold" foregroundStyle={INK}>{row.name}</Text>
-      {note ? <Text font={9} foregroundStyle={MUTED}>{note}</Text> : null}
+      {note && row.amount ? <Text font={9} foregroundStyle={MUTED}>{note}</Text> : null}
       <Spacer />
-      {row.amount ? <Text font={12} fontWeight="semibold" foregroundStyle={INK}>{row.amount}</Text> : null}
+      {row.amount ? <Text font={13} fontWeight="semibold" foregroundStyle={INK}>{row.amount}</Text> : null}
+      {!row.amount && note ? <Text font={10} foregroundStyle={MUTED}>{note}</Text> : null}
     </HStack>
   )
 }
@@ -68,13 +68,13 @@ function WidgetView({ data, message }: { data: PanelData | null; message: string
   const hidden = rows.length - shown.length
 
   return (
-    <VStack alignment="leading" spacing={0} padding={{ top: 11, bottom: 11, leading: 14, trailing: 14 }}>
+    <VStack alignment="leading" spacing={7} padding={{ top: 12, bottom: 12, leading: 14, trailing: 14 }}>
       <HStack alignment="center" spacing={4}>
         <Text font={11} fontWeight="bold" foregroundStyle={INK}>API 中转站</Text>
         <Spacer />
         {data ? <Text font={9} foregroundStyle={MUTED}>{formatClock(data.updatedAt)}</Text> : null}
       </HStack>
-      {data && data.usage.length ? <Text font={9} foregroundStyle={MUTED}>{data.usage[0]}</Text> : null}
+      {data && data.usage.length ? <Text font={12} foregroundStyle={INK}>{data.usage[0]}</Text> : null}
       {message ? <Text font={10} foregroundStyle={MUTED}>{message}</Text> : null}
       {shown.map((row) => <Row key={`${row.name}-${row.seq}`} row={row} />)}
       {hidden > 0 ? <Text font={9} foregroundStyle={MUTED}>{`+${hidden} 个上游未显示`}</Text> : null}
