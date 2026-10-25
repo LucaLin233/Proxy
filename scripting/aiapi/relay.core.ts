@@ -1278,6 +1278,13 @@ export function emptyPanel(): PanelData {
   }
 }
 
+/* 小组件点「刷新」时清掉面板缓存，下一次时间线会重新取数 */
+export function clearPanelCache(): void {
+  try {
+    Storage.remove(STORE_CACHE)
+  } catch (_) {}
+}
+
 /* 旧版本缓存里没有 health / ttftMs / limits，读回来时补全 */
 function normalizeRow(row: Row): Row {
   return {

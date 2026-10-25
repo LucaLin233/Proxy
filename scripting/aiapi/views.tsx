@@ -1,9 +1,10 @@
 // 中转站看板 · 小组件视图（widget.tsx 与预览共用）
 // 每个服务商：名称、余额、近 24h 成功率与首字延迟；CommandCode 显示 5H / W / M 三个限额。
 // 行与行之间用弹性间距铺满整个小组件，行数少时也不会全部挤在顶部。
-import { HStack, Image, Rectangle, Spacer, Text, VStack, Widget, ZStack, gradient } from "scripting"
+import { Button, HStack, Image, Rectangle, Spacer, Text, VStack, Widget, ZStack, gradient } from "scripting"
 import { formatClock, percent } from "./relay.core"
 import type { PanelData, Row, RowLimit } from "./relay.core"
+import { RelayRefreshIntent } from "./app_intents"
 
 const INK: any = { light: "#0B0B0F", dark: "#F5F5F7" }
 const SOFT: any = { light: "#3F3F46", dark: "#D5D5DC" }
@@ -409,7 +410,7 @@ export function PanelWidget({
                 {formatClock(data.updatedAt)}
               </Text>
             : null}
-          {data && data.fromCache
+          {data && data.fromCache && !small
             ? <Text
                 font={6.5}
                 fontWeight="semibold"
@@ -421,6 +422,16 @@ export function PanelWidget({
                 缓存
               </Text>
             : null}
+          <Button intent={RelayRefreshIntent()} buttonStyle="plain">
+            <Image
+              systemName="arrow.clockwise"
+              font={small ? 8 : large ? 10.5 : 9.5}
+              foregroundStyle={ICON}
+              frame={{ width: small ? 18 : large ? 22 : 20, height: small ? 18 : large ? 22 : 20 }}
+              background={{ light: { color: "#0A84FF", opacity: 0.10 }, dark: { color: "#7FB6FF", opacity: 0.16 } }}
+              clipShape={{ type: "capsule", style: "continuous" }}
+            />
+          </Button>
         </HStack>
 
         <Rectangle
