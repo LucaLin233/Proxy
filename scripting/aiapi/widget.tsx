@@ -1,10 +1,13 @@
 // AI 中转站 · 桌面小组件（数据层与 index.tsx 共用 aiapi.core.ts）
-import { HStack, Link, Script, Spacer, Text, VStack, Widget } from "scripting"
+import { HStack, Image, Link, Script, Spacer, Text, VStack, Widget } from "scripting"
 import { formatClock, loadPanelSites, readSites, toMessage } from "./aiapi.core"
 import type { PanelData, PanelRow } from "./aiapi.core"
 
-const INK: any = { light: "#1c1c1e", dark: "#f2f2f7" }
+const INK: any = { light: "#101014", dark: "#f5f5f7" }
 const MUTED: any = { light: "#8a8a8e", dark: "#9a9a9e" }
+const GREEN = "#30d158"
+const AMBER = "#ff9f0a"
+const BLUE = "#0a84ff"
 
 function family(): string {
   try {
@@ -24,18 +27,23 @@ function boxHeight(): number {
   return 170
 }
 
-/* 按实际高度算能放几行：带明细的行按 1.7 行计 */
+/* 按实际高度分配行数：带明细的行按 1.55 行计，留出底部余量 */
 function fit(rows: PanelRow[]): { shown: PanelRow[]; hidden: number } {
-  const budget = Math.max(2.4, (boxHeight() - 46) / 20)
+  const budget = Math.max(2.2, (boxHeight() - 42) / 20)
   const shown: PanelRow[] = []
   let used = 0
   for (const row of rows) {
-    const cost = row.detail ? 1.7 : 1
+    const cost = row.detail ? 1.55 : 1
     if (used + cost > budget) break
     shown.push(row)
     used += cost
   }
   return { shown, hidden: rows.length - shown.length }
+}
+
+function dotColor(row: PanelRow): string {
+  if (row.amount) return GREEN
+  return BLUE
 }
 
 function openURL(): string {
@@ -50,13 +58,14 @@ function openURL(): string {
 
 function Row({ row }: { row: PanelRow }) {
   return (
-    <HStack alignment="firstTextBaseline" spacing={6}>
+    <HStack alignment="center" spacing={7}>
+      <Image systemName="circle.fill" width={6} height={6} foregroundStyle={dotColor(row)} />
       <VStack alignment="leading" spacing={0}>
         <Text font={12} fontWeight="semibold" foregroundStyle={INK}>{row.name}</Text>
         {row.detail ? <Text font={9} foregroundStyle={MUTED}>{row.detail}</Text> : null}
       </VStack>
       <Spacer />
-      {row.amount ? <Text font={12} fontWeight="semibold" foregroundStyle={INK}>{row.amount}</Text> : null}
+      {row.amount ? <Text font={13} fontWeight="semibold" foregroundStyle={INK}>{row.amount}</Text> : null}
     </HStack>
   )
 }
@@ -64,15 +73,16 @@ function Row({ row }: { row: PanelRow }) {
 function WidgetView({ data, message }: { data: PanelData | null; message: string }) {
   const packed = data ? fit(data.rows) : { shown: [], hidden: 0 }
   return (
-    <VStack alignment="leading" spacing={4} padding={{ top: 10, bottom: 10, leading: 14, trailing: 14 }}>
-      <HStack alignment="center" spacing={4}>
+    <VStack alignment="leading" spacing={5} padding={{ top: 11, bottom: 11, leading: 14, trailing: 14 }}>
+      <HStack alignment="center" spacing={5}>
+        <Image systemName="chart.bar.fill" width={10} height={10} foregroundStyle={BLUE} />
         <Text font={11} fontWeight="bold" foregroundStyle={INK}>API 中转站</Text>
         <Spacer />
         {data ? <Text font={9} foregroundStyle={MUTED}>{formatClock(data.updatedAt)}</Text> : null}
       </HStack>
       {message ? <Text font={10} foregroundStyle={MUTED}>{message}</Text> : null}
       {packed.shown.map((row) => <Row key={`${row.name}-${row.seq}`} row={row} />)}
-      {packed.hidden > 0 ? <Text font={9} foregroundStyle={MUTED}>{`另有 ${packed.hidden} 项`}</Text> : null}
+      {packed.hidden > 0 ? <Text font={9} foregroundStyle={MUTED}>{`+${packed.hidden} 个上游未显示`}</Text> : null}
     </VStack>
   )
 }
