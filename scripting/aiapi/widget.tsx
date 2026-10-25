@@ -1,5 +1,5 @@
 // AI 中转站 · 桌面小组件（数据层与 index.tsx 共用 aiapi.core.ts）
-import { HStack, Image, Link, Script, Spacer, Text, VStack, Widget } from "scripting"
+import { HStack, Spacer, Text, VStack, Widget } from "scripting"
 import { formatClock, loadPanelSites, readSites, toMessage } from "./aiapi.core"
 import type { PanelData, PanelRow } from "./aiapi.core"
 
@@ -46,20 +46,10 @@ function dotColor(row: PanelRow): string {
   return BLUE
 }
 
-function openURL(): string {
-  try {
-    const api: any = Script as any
-    if (api && typeof api.createOpenURLScheme === "function") {
-      return api.createOpenURLScheme(api.name || "aiapi")
-    }
-  } catch (_) {}
-  return ""
-}
-
 function Row({ row }: { row: PanelRow }) {
   return (
     <HStack alignment="center" spacing={7}>
-      <Image systemName="circle.fill" width={6} height={6} foregroundStyle={dotColor(row)} />
+      <Text font={7} foregroundStyle={dotColor(row) as any}>●</Text>
       <VStack alignment="leading" spacing={0}>
         <Text font={12} fontWeight="semibold" foregroundStyle={INK}>{row.name}</Text>
         {row.detail ? <Text font={9} foregroundStyle={MUTED}>{row.detail}</Text> : null}
@@ -75,7 +65,6 @@ function WidgetView({ data, message }: { data: PanelData | null; message: string
   return (
     <VStack alignment="leading" spacing={5} padding={{ top: 11, bottom: 11, leading: 14, trailing: 14 }}>
       <HStack alignment="center" spacing={5}>
-        <Image systemName="chart.bar.fill" width={10} height={10} foregroundStyle={BLUE} />
         <Text font={11} fontWeight="bold" foregroundStyle={INK}>API 中转站</Text>
         <Spacer />
         {data ? <Text font={9} foregroundStyle={MUTED}>{formatClock(data.updatedAt)}</Text> : null}
@@ -87,30 +76,17 @@ function WidgetView({ data, message }: { data: PanelData | null; message: string
   )
 }
 
-function present(content: any) {
-  const url = openURL()
-  if (!url) {
-    Widget.present(content)
-    return
-  }
-  try {
-    Widget.present(<Link url={url}>{content}</Link>)
-  } catch (_) {
-    Widget.present(content)
-  }
-}
-
 async function run() {
   const sites = readSites()
   if (!sites.length) {
-    present(<WidgetView data={null} message="未配置：点开添加站点" />)
+    Widget.present(<WidgetView data={null} message="未配置：点开添加站点" />)
     return
   }
   try {
     const data = await loadPanelSites(sites)
-    present(<WidgetView data={data} message="" />)
+    Widget.present(<WidgetView data={data} message="" />)
   } catch (error) {
-    present(<WidgetView data={null} message={`❌ ${toMessage(error)}`} />)
+    Widget.present(<WidgetView data={null} message={`❌ ${toMessage(error)}`} />)
   }
 }
 
