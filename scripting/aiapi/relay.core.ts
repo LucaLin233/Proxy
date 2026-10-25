@@ -893,6 +893,13 @@ function isClouder(name: string): boolean {
   return brandOf(name).toLowerCase() === "clouder"
 }
 
+/* 旧版本（v1）的优先级缓存：升级后接口又挂时，用它把顺序先接上 */
+function legacyPriorities(base: string, orgId: string): CchpPriority[] | null {
+  const items = readSlot<CchpPriority[]>(`relay.cchp.prio.${hash(base + "|" + orgId)}`, 30 * 24 * 3600 * 1000)
+  if (!items || !items.some((item) => item.priority !== null)) return null
+  return items
+}
+
 function isUnsupported(status: any): boolean {
   return String(status === undefined || status === null ? "" : status).trim().toLowerCase() === "unsupported"
 }
@@ -1089,19 +1096,29 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
     if (!cached) throw error
     rawProviders = cached
     stale = true
-    notices.push("⚠️ 余额来自缓存")
+    notices.push(`⚠️ 余额来自缓存（${messageOf(error)}）`)
   }
 
   let providers: CchpProvider[] = rawProviders.filter((item) => !cchpHidden(item)).map(cchpProvider)
 
-  /* key 优先级：active key 的最小值，同时留下 active keyId 供实时刷新 */
-  const prioSlot = `relay.cchp.prio.${hash(site.base + "|" + orgId)}`
-  let priorities = readSlot<CchpPriority[]>(prioSlot, 10 * 60 * 1000)
+  /* key 优先级：active key 的最小值，同时留下 active keyId 供实时刷新。
+     新鲜缓存 1 小时；某些 provider 取不到时用旧值兜底，避免排序突然跳变 */
+  const prioSlot = `relay.cchp.prio.v2.${hash(site.base + "|" + orgId)}`
+  let priorities = readSlot<CchpPriority[]>(prioSlot, 3600 * 1000)
+  /* 全空说明上轮把失败结果写进去了，当作未命中重查 */
+  if (priorities && priorities.every((item) => item.priority === null)) priorities = null
+  const previous = priorities
+    || readSlot<CchpPriority[]>(prioSlot, 30 * 24 * 3600 * 1000)
+    || legacyPriorities(site.base, orgId)
   let priorityMissing = false
   if (!priorities || !priorities.every((item) => Array.isArray(item.keyIds))) {
+    let failed = false
+    const failedIds = new Set<string>()
     const items = await mapLimit(providers, 5, async (provider) => {
       if (budgetLeft(budget) < 1500) {
         timedOut = true
+        failed = true
+        failedIds.add(provider.id)
         return { id: provider.id, priority: null, keyIds: [] as string[] }
       }
       try {
@@ -1116,12 +1133,30 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
         const keys = result.body ? result.body.keys : null
         return { id: provider.id, priority: keyPriority(keys), keyIds: activeKeyIds(keys) }
       } catch (_) {
+        failed = true
+        failedIds.add(provider.id)
         return { id: provider.id, priority: null, keyIds: [] as string[] }
       }
     })
-    priorities = items
-    priorityMissing = items.some((item) => item.priority === null)
-    if (!timedOut) writeSlot(prioSlot, items)
+    if (!failed) {
+      priorities = items
+      writeSlot(prioSlot, items)
+    } else {
+      /* 只给真正失败/被预算跳过的 provider 回填旧优先级；成功返回空 keys 的保持 null。
+         不把这一轮写回缓存，免得把缺失固化一个周期 */
+      const old = new Map((previous || []).map((item) => [item.id, item]))
+      priorities = items.map((item) => {
+        if (item.priority !== null || !failedIds.has(item.id)) return item
+        const fallback = old.get(item.id)
+        if (!fallback || fallback.priority === null) return item
+        return {
+          id: item.id,
+          priority: fallback.priority,
+          keyIds: item.keyIds.length ? item.keyIds : fallback.keyIds,
+        }
+      })
+    }
+    priorityMissing = (priorities || []).some((item) => item.priority === null)
   }
 
   const prioById = new Map<string, CchpPriority>()
@@ -1378,8 +1413,22 @@ export async function loadPanel(sites: Site[], options: Options, maxAgeMs = 0): 
     if (namePriority.has(name)) row.priority = namePriority.get(name) as number
   }
 
+  /* 某次取数没拿到优先级（超时/接口失败）时，沿用上次已知值，避免顺序前后跳 */
+  const rowPrioSlot = "relay.rowprio.v1"
+  const knownPriority = readSlot<Record<string, number>>(rowPrioSlot, 30 * 24 * 3600 * 1000) || {}
+  for (const row of rows) {
+    const saved = knownPriority[row.key]
+    if (row.priority === null && typeof saved === "number") row.priority = saved
+  }
+
   rows.forEach((row, index) => { row.seq = index })
   rows.sort(compareRows)
+
+  const nextPriority: Record<string, number> = {}
+  for (const row of rows) {
+    if (row.priority !== null) nextPriority[row.key] = row.priority
+  }
+  writeSlot(rowPrioSlot, nextPriority)
 
   const data: PanelData = {
     rows,

@@ -405,6 +405,12 @@ export function PanelWidget({
                 <Text font={7} fontWeight="semibold" foregroundStyle={RED}>{data.errors.length}</Text>
               </HStack>
             : null}
+          {data && data.errors.length === 0 && data.notices.length > 0
+            ? <HStack spacing={2} alignment="center">
+                <Image systemName="exclamationmark.triangle.fill" font={7} foregroundStyle={AMBER} />
+                <Text font={7} fontWeight="semibold" foregroundStyle={AMBER}>{data.notices.length}</Text>
+              </HStack>
+            : null}
           {data
             ? <Text font={small ? 7.5 : large ? 9.5 : 8.5} monospacedDigit foregroundStyle={MUTED}>
                 {formatClock(data.updatedAt)}
