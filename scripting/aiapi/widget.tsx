@@ -3,7 +3,7 @@ import { HStack, Link, Script, Spacer, Text, VStack, Widget } from "scripting"
 import { formatClock, loadPanelSites, readSites, toMessage } from "./aiapi.core"
 import type { PanelData, PanelRow } from "./aiapi.core"
 
-const MUTED = { light: "#6b6b6b", dark: "#a0a0a0" }
+const MUTED: any = { light: "#6b6b6b", dark: "#a0a0a0" }
 
 /* 3.2.x 的 family 是 small/medium/large，老文档写过 systemSmall，两种都兼容 */
 function rowLimit(): number {

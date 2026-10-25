@@ -20,7 +20,7 @@ import {
 import { compose, fetchSite, readSites, sitesToConfig, toMessage, writeSites } from "./aiapi.core"
 import type { Site, SiteMode, SiteResult } from "./aiapi.core"
 
-const MUTED = { light: "#6b6b6b", dark: "#a0a0a0" }
+const MUTED: any = { light: "#6b6b6b", dark: "#a0a0a0" }
 
 const MODE_LABELS: [SiteMode, string][] = [
   ["cchp", "CCHP 管理令牌"],
