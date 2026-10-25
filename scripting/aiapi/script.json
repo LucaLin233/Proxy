@@ -1,0 +1,17 @@
+{
+  "name": "aiapi",
+  "localizedNames": {
+    "zh": "AI 中转站",
+    "en": "AI Relay"
+  },
+  "description": "CCH / CCHP balances, today's usage and provider health, sorted by priority; includes a home screen widget.",
+  "localizedDescriptions": {
+    "zh": "CCH / CCHP 站点余额、今日用量与供应商健康，按优先级排序；含桌面小组件",
+    "en": "CCH / CCHP balances, today's usage and provider health with a home screen widget"
+  },
+  "version": "1.0.0",
+  "icon": "dollarsign.circle",
+  "color": "rgba(10, 132, 255, 1)",
+  "entry": "index.tsx",
+  "runInApp": true
+}
