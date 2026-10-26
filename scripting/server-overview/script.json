@@ -1,0 +1,41 @@
+{
+  "name" : "服务器监控",
+  "icon" : "server.rack",
+  "color" : "rgba(255, 138, 0, 1)",
+  "version" : "1.0.0",
+  "runInApp" : true,
+  "entry" : "index.tsx",
+  "description" : "AWS Lightsail traffic and Peekabo usage / expiry, with a home screen widget.",
+  "author" : null,
+  "iconImage" : null,
+  "permissions" : null,
+  "remoteResource" : null,
+  "intentInputTypes" : [
+
+  ],
+  "contributors" : [
+
+  ],
+  "localizedNames" : {
+    "es" : "",
+    "en" : "Server Monitor",
+    "fr" : "",
+    "it" : "",
+    "ru" : "",
+    "pt" : "",
+    "zh" : "服务器监控",
+    "de" : "",
+    "ja" : ""
+  },
+  "localizedDescriptions" : {
+    "es" : "",
+    "en" : "Lightsail monthly traffic per region and Peekabo usage / expiry, with a home screen widget.",
+    "fr" : "",
+    "it" : "",
+    "ru" : "",
+    "pt" : "",
+    "zh" : "按「区域 + 套餐」显示 Lightsail 当月流量与占比，另附 Peekabo 流量与到期；支持桌面小组件",
+    "de" : "",
+    "ja" : ""
+  }
+}
