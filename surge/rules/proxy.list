@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-10-26T14:00:02Z
-# Total:   20230
+# Updated: 2026-10-27T14:00:01Z
+# Total:   20220
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -16510,16 +16510,6 @@ DOMAIN-SUFFIX,tesla.services
 DOMAIN-SUFFIX,teslaenergy.services
 DOMAIN-SUFFIX,teslamotors.com
 DOMAIN-SUFFIX,teslazta.net
-DOMAIN-SUFFIX,test-ipv6.belwue.net
-DOMAIN-SUFFIX,test-ipv6.com
-DOMAIN-SUFFIX,test-ipv6.epic.network
-DOMAIN-SUFFIX,test-ipv6.fratec.net
-DOMAIN-SUFFIX,test-ipv6.freerangecloud.com
-DOMAIN-SUFFIX,test-ipv6.iu13.net
-DOMAIN-SUFFIX,test-ipv6.ke.liquidtelecom.net
-DOMAIN-SUFFIX,test-ipv6.noroutetohost.net
-DOMAIN-SUFFIX,test-ipv6.roedu.net
-DOMAIN-SUFFIX,test-ipv6.sin.vr.org
 DOMAIN-SUFFIX,testonfox.com
 DOMAIN-SUFFIX,tew.org
 DOMAIN-SUFFIX,tex-talk.net
