@@ -108,10 +108,10 @@ const STORE_CACHE = "relay.panel.v1"
 
 const DEFAULT_OPTIONS: Options = { monthCap: 70, maxRows: 10 }
 
-/* 固定展示顺序：写死在这里，不依赖接口优先级，顺序永远不会因为抓取失败而跳动。
+/* 兜底展示顺序：有 CCHP 优先级（priority）时按优先级排，只有优先级相同或缺失才用这张表。
    与 Surge 模块 surge/scripts/aiapi_relay.js 的 PANEL_ROW_ORDER 保持一致。
    按名称前缀匹配（Kcne-Astra → Kcne）；不在表里的行排到最后。 */
-const ROW_ORDER = ["commandcode", "clouder", "kcne", "sd", "air"]
+const ROW_ORDER = ["commandcode", "clouder", "kcne", "air"]
 
 const MODES: SiteMode[] = ["cchp", "admin", "user", "login", "cookie", "cmdcode"]
 
@@ -482,6 +482,59 @@ function mkRow(input: {
 
 /* ── CCH：账户额度（user / cookie / login） ── */
 
+type CchHealth = { successRate: number; ttftMs: number | null; requests: number }
+
+/* CCH 没有 provider-health，但有 /me/usage-logs/full：取最近 24h 的一页日志，
+   自己算成功率与首字 P50；接口不存在或没请求时静默返回 null。 */
+async function fetchCchUsageHealth(
+  site: Site,
+  headers: Record<string, string>,
+  timeoutMs: number
+): Promise<CchHealth | null> {
+  try {
+    const since = Date.now() - 24 * 3600 * 1000
+    const result = await request(
+      "GET",
+      `${site.base}/api/v1/me/usage-logs/full?limit=50&startTime=${since}`,
+      headers,
+      undefined,
+      Math.min(8000, Math.max(2500, timeoutMs))
+    )
+    if (result.status !== 200) return null
+    const logs = result.body && Array.isArray(result.body.logs) ? result.body.logs : []
+    const usable = logs.filter((log: any) => {
+      if (!log || typeof log.statusCode !== "number") return false
+      /* 服务端一般会按 startTime 过滤，这里再兜一层，避免把更早的日志算进 24h */
+      const at = typeof log.createdAt === "string" ? Date.parse(log.createdAt) : NaN
+      return !isFinite(at) || at >= since
+    })
+    if (!usable.length) return null
+
+    let ok = 0
+    const ttfts: number[] = []
+    for (const log of usable) {
+      if (log.statusCode < 400) ok += 1
+      const value = numeric(log.ttfbMs)
+      if (value !== null && value > 0) ttfts.push(value)
+    }
+    ttfts.sort((a, b) => a - b)
+    return {
+      successRate: ok / usable.length,
+      ttftMs: ttfts.length ? ttfts[Math.floor(ttfts.length / 2)] : null,
+      requests: usable.length,
+    }
+  } catch (_) {
+    return null
+  }
+}
+
+function healthMetrics(health: CchHealth | null): string[] {
+  if (!health) return []
+  const parts = [percent(health.successRate, 1)]
+  if (health.ttftMs !== null) parts.push(`${(health.ttftMs / 1000).toFixed(1)}s`)
+  return parts
+}
+
 async function fetchCchQuota(
   site: Site,
   headers: Record<string, string>,
@@ -491,6 +544,7 @@ async function fetchCchQuota(
   const result = await request("GET", `${site.base}/api/v1/me/quota`, headers, undefined, timeoutMs)
   checkStatus(result, label)
   const quota = unwrap(result.body)
+  const health = await fetchCchUsageHealth(site, headers, timeoutMs)
 
   const keyLimit = numeric(quota.keyLimitTotalUsd)
   const userLimit = numeric(quota.userLimitTotalUsd)
@@ -508,7 +562,9 @@ async function fetchCchQuota(
         name: site.name,
         site: site.name,
         amountText: "未设置",
-        metrics: ["额度未设置"],
+        metrics: ["额度未设置"].concat(healthMetrics(health)),
+        health: health ? health.successRate : null,
+        ttftMs: health ? health.ttftMs : null,
         priority: site.priority,
       })],
       usage: null,
@@ -525,8 +581,10 @@ async function fetchCchQuota(
       site: site.name,
       amount: remaining,
       amountText: money(remaining),
-      metrics: [],
-      ratio: total.limit > 0 ? remaining / total.limit : null,
+      /* 额度站不画「剩余」进度条：有日志就给健康度，没有就只显示余额 */
+      metrics: healthMetrics(health),
+      health: health ? health.successRate : null,
+      ttftMs: health ? health.ttftMs : null,
       priority: site.priority,
     })],
     usage: null,
@@ -923,6 +981,21 @@ function activeKeyIds(keys: any): string[] {
     .map((item) => String(item.id))
 }
 
+/* 新版面板已去掉 /providers/{id}/keys（404），但 provider.balance.keys 同样带 key_id。
+   用它兜底选代表 key，否则多账户时没有代表 key，整行会被判为「单账户余额不可用」而消失。 */
+function balanceKeyIds(balance: any): string[] {
+  const keys = balance && Array.isArray(balance.keys) ? balance.keys : []
+  const ids: string[] = []
+  for (const key of keys) {
+    const id = String(key && key.key_id || "").trim()
+    if (!id) continue
+    const status = String(key && key.status || "").toLowerCase()
+    if (status === "error" || status === "invalid" || status === "disabled") continue
+    if (ids.indexOf(id) < 0) ids.push(id)
+  }
+  return ids
+}
+
 function keyPriority(keys: any): number | null {
   const list = Array.isArray(keys) ? keys : []
   const active = list.filter((item) => String(item && item.status || "").toLowerCase() === "active")
@@ -1063,6 +1136,60 @@ async function fetchCchpHealth(
   return map
 }
 
+/* 新版面板：一次取全组织的 key（旧 /providers/{id}/keys 已 404）。
+   有 nextCursor 时续页；partial / preparing 视为本轮失败，不写缓存。 */
+async function fetchProviderKeys(
+  site: Site,
+  orgId: string,
+  headers: Record<string, string>,
+  budget: Budget
+): Promise<{ ok: boolean; keys: any[] }> {
+  const keys: any[] = []
+  let cursor = ""
+  for (let page = 0; page < 10; page += 1) {
+    if (budgetLeft(budget) < 1500) return { ok: false, keys: [] }
+    const query = `?limit=100${cursor ? `&after=${encodeURIComponent(cursor)}` : ""}`
+    try {
+      const result = await request(
+        "GET",
+        `${site.base}/api/account/orgs/${encodeURIComponent(orgId)}/providers/keys/page${query}`,
+        headers,
+        undefined,
+        Math.min(10000, Math.max(3000, budgetLeft(budget)))
+      )
+      if (result.status !== 200) return { ok: false, keys: [] }
+      const body = result.body || {}
+      if (body.partial === true || body.preparing === true) return { ok: false, keys: [] }
+      const list: any[] | null = Array.isArray(body.keys) ? body.keys : null
+      if (!list) return { ok: false, keys: [] }
+      for (const key of list) keys.push(key)
+      const next = String(body.nextCursor || "").trim()
+      if (!next) return { ok: true, keys }
+      if (next === cursor) return { ok: false, keys: [] }
+      cursor = next
+    } catch (_) {
+      return { ok: false, keys: [] }
+    }
+  }
+  return { ok: false, keys: [] }
+}
+
+/* 按 provider_id 归组：没有 key 的 provider 也要占位（null 优先级），否则排序会漏项 */
+function prioritiesFromKeys(keys: any[], providers: CchpProvider[]): CchpPriority[] {
+  const byProvider = new Map<string, any[]>()
+  for (const key of keys) {
+    const id = String(key && key.provider_id || "").trim()
+    if (!id) continue
+    const bucket = byProvider.get(id)
+    if (bucket) bucket.push(key)
+    else byProvider.set(id, [key])
+  }
+  return providers.map((provider) => {
+    const items = byProvider.get(provider.id) || []
+    return { id: provider.id, priority: keyPriority(items), keyIds: activeKeyIds(items) }
+  })
+}
+
 async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<Outcome> {
   const headers: Record<string, string> = { Accept: "application/json", Authorization: `Bearer ${site.credential}` }
   const slice = (max = 15000) => Math.min(max, Math.max(3000, budgetLeft(budget)))
@@ -1106,87 +1233,55 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
 
   let providers: CchpProvider[] = rawProviders.filter((item) => !cchpHidden(item)).map(cchpProvider)
 
-  /* key 优先级：active key 的最小值，同时留下 active keyId 供实时刷新。
-     新鲜缓存 1 小时；某些 provider 取不到时用旧值兜底，避免排序突然跳变 */
-  const prioSlot = `relay.cchp.prio.v2.${hash(site.base + "|" + orgId)}`
-  let priorities = readSlot<CchpPriority[]>(prioSlot, 3600 * 1000)
+  /* key 优先级：新版面板一次返回整个组织的 key（旧 /providers/{id}/keys 已 404）。
+     active key 的最小 priority 作为 provider 优先级，同时留下 keyId 供实时刷新；
+     新鲜缓存 24 小时，取数失败才回退旧缓存 */
+  const prioKey = hash(site.base + "|" + orgId)
+  const prioSlot = `relay.cchp.prio.v3.${prioKey}`
+  let priorities = readSlot<CchpPriority[]>(prioSlot, 24 * 3600 * 1000)
   /* 全空说明上轮把失败结果写进去了，当作未命中重查 */
   if (priorities && priorities.every((item) => item.priority === null)) priorities = null
   const previous = priorities
     || readSlot<CchpPriority[]>(prioSlot, 30 * 24 * 3600 * 1000)
+    || readSlot<CchpPriority[]>(`relay.cchp.prio.v2.${prioKey}`, 30 * 24 * 3600 * 1000)
     || legacyPriorities(site.base, orgId)
-  /* 新版面板已没有 /providers/{id}/keys（404）：记下来，24 小时内不再逐 provider 重试 */
-  const noKeysSlot = `relay.cchp.nokeys.${hash(site.base + "|" + orgId)}`
-  const noKeys = readSlot<number>(noKeysSlot, 24 * 3600 * 1000)
-  if (!priorities && !noKeys) {
-    let failed = false
-    let endpointMissing = false
-    const failedIds = new Set<string>()
-    const items = await mapLimit(providers, 5, async (provider) => {
-      if (endpointMissing) {
-        return { id: provider.id, priority: null, keyIds: [] as string[] }
-      }
-      if (budgetLeft(budget) < 1500) {
-        timedOut = true
-        failed = true
-        failedIds.add(provider.id)
-        return { id: provider.id, priority: null, keyIds: [] as string[] }
-      }
-      try {
-        const result = await request(
-          "GET",
-          `${site.base}/api/account/orgs/${encodeURIComponent(orgId)}/providers/${encodeURIComponent(provider.id)}/keys`,
-          headers,
-          undefined,
-          slice(10000)
-        )
-        if (result.status === 404) {
-          endpointMissing = true
-          failed = true
-          failedIds.add(provider.id)
-          return { id: provider.id, priority: null, keyIds: [] as string[] }
-        }
-        if (result.status !== 200) throw new Error(`HTTP ${result.status}`)
-        const keys = result.body ? result.body.keys : null
-        return { id: provider.id, priority: keyPriority(keys), keyIds: activeKeyIds(keys) }
-      } catch (_) {
-        failed = true
-        failedIds.add(provider.id)
-        return { id: provider.id, priority: null, keyIds: [] as string[] }
-      }
-    })
-    if (endpointMissing) {
-      priorities = []
-      writeSlot(noKeysSlot, Date.now())
-    } else if (!failed) {
-      priorities = items
-      writeSlot(prioSlot, items)
+
+  if (!priorities) {
+    if (budgetLeft(budget) < 1500) {
+      timedOut = true
+      priorities = previous
     } else {
-      /* 只给真正失败/被预算跳过的 provider 回填旧优先级；成功返回空 keys 的保持 null。
-         不把这一轮写回缓存，免得把缺失固化一个周期 */
-      const old = new Map((previous || []).map((item) => [item.id, item]))
-      priorities = items.map((item) => {
-        if (item.priority !== null || !failedIds.has(item.id)) return item
-        const fallback = old.get(item.id)
-        if (!fallback || fallback.priority === null) return item
-        return {
-          id: item.id,
-          priority: fallback.priority,
-          keyIds: item.keyIds.length ? item.keyIds : fallback.keyIds,
-        }
-      })
+      const page = await fetchProviderKeys(site, orgId, headers, budget)
+      if (page.ok) {
+        const items = prioritiesFromKeys(page.keys, providers)
+        priorities = items
+        /* 全空不写缓存：下一轮还要重查 */
+        if (items.some((item) => item.priority !== null)) writeSlot(prioSlot, items)
+      } else {
+        /* 非 200 / 超时 / partial：本轮不写缓存，按新→旧顺序兜底 */
+        priorities = previous
+      }
     }
   }
 
   const prioById = new Map<string, CchpPriority>()
   for (const item of priorities || []) prioById.set(item.id, item)
 
+  /* 代表 key：优先用 /keys 缓存里的 active keyIds；该接口 404 后缓存为空，
+     改用 balance.keys 里的 key_id，保证多账户 provider 仍能选中一个账户 */
+  const repKeyById = new Map<string, string>()
+  for (const provider of providers) {
+    const item = prioById.get(provider.id)
+    const ids = item && item.keyIds.length ? item.keyIds : balanceKeyIds(provider.balance)
+    const keyId = representativeKey(ids)
+    if (keyId) repKeyById.set(provider.id, keyId)
+  }
+
   /* 余额实时化：每个可见 provider 只刷代表 key，刷完重取一次聚合列表 */
   const targets: { id: string; keyId: string }[] = []
   for (const provider of providers) {
     if (isClouder(provider.name)) continue
-    const item = prioById.get(provider.id)
-    const keyId = representativeKey(item ? item.keyIds : [])
+    const keyId = repKeyById.get(provider.id) || ""
     if (keyId) targets.push({ id: provider.id, keyId })
   }
 
@@ -1245,18 +1340,19 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
   let singleAccountUnavailable = false
 
   for (const provider of providers) {
-    if (isClouder(provider.name)) continue
     const item = prioById.get(provider.id)
     const priority = item ? item.priority : null
+    /* Clouder 的余额由 CCH 站点提供，这里不画行，但仍要把优先级喂给那个站点的行 */
     if (priority !== null) {
       hints.push({ host: provider.host, names: [provider.name, brandOf(provider.name)], priority })
     }
+    if (isClouder(provider.name)) continue
 
     const balance = provider.balance || {}
     if (String(balance.status || "").toLowerCase() !== "ok") continue
     if (isUnsupported(balance.status)) continue
 
-    const view = singleAccountView(balance, representativeKey(item ? item.keyIds : []))
+    const view = singleAccountView(balance, repKeyById.get(provider.id) || "")
     if (view.unavailable) singleAccountUnavailable = true
     const source = view.value
     const unlimited = source.unlimited === true
@@ -1306,14 +1402,14 @@ async function fetchSite(site: Site, options: Options): Promise<Outcome> {
   return fetchCchQuota(site, { Accept: "application/json", "X-API-Key": site.credential }, "Key", 15000)
 }
 
-/* 名称在固定顺序里的档位；不在表里返回表长（排最后） */
+/* 兜底顺序里的档位；不在表里返回表长（排最后） */
 function orderRank(name: string, site: string): number {
   for (const value of [name, site]) {
     const text = String(value || "").trim().toLowerCase()
     if (!text) continue
     for (const token of ROW_ORDER) {
       if (text === token) return ROW_ORDER.indexOf(token)
-      /* Kcne-Astra、SD · 备用 这类同品牌的子项归到同一档 */
+      /* Kcne-Astra 这类同品牌的子项归到同一档 */
       if (text.startsWith(token) && /^[-_\s·]/.test(text.slice(token.length))) return ROW_ORDER.indexOf(token)
     }
   }
@@ -1323,16 +1419,16 @@ function orderRank(name: string, site: string): number {
 function compareRows(left: Row, right: Row): number {
   /* 取数失败的站点排到最后，不按任何顺序插进来 */
   if (left.failed !== right.failed) return left.failed ? 1 : -1
-  /* 先按写死的展示顺序 */
-  const rankA = orderRank(left.name, left.site)
-  const rankB = orderRank(right.name, right.site)
-  if (rankA !== rankB) return rankA - rankB
-  /* 同一档（或都未列出）时依次用站点优先级、名称、采集顺序兜底 */
+  /* 第一键：CCHP 优先级升序；没有优先级的排在有值的后面 */
   const a = left.priority
   const b = right.priority
   if (a !== null && b !== null && a !== b) return a - b
   if (a === null && b !== null) return 1
   if (a !== null && b === null) return -1
+  /* 优先级相同或都缺失时，才用写死的顺序兜底 */
+  const rankA = orderRank(left.name, left.site)
+  const rankB = orderRank(right.name, right.site)
+  if (rankA !== rankB) return rankA - rankB
   const leftName = String(left.name || "").toLowerCase()
   const rightName = String(right.name || "").toLowerCase()
   if (leftName !== rightName) return leftName < rightName ? -1 : 1
@@ -1377,7 +1473,7 @@ export async function loadPanel(sites: Site[], options: Options, maxAgeMs = 0): 
   if (maxAgeMs > 0) {
     const cached = readSlot<PanelData>(STORE_CACHE, maxAgeMs)
     if (cached && Array.isArray(cached.rows)) {
-      /* 缓存里的行也过一次固定顺序，改完顺序不用等下一次取数 */
+      /* 缓存里的行也重新排一次，改完排序不用等下一次取数 */
       return { ...cached, rows: cached.rows.map(normalizeRow).sort(compareRows), fromCache: true }
     }
   }

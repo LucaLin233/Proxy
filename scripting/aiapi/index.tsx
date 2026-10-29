@@ -1,42 +1,31 @@
-// 中转站看板 · App 内页面（数据层在 relay.core.ts）
+// 中转站看板 · App 内设置页（数据层在 relay.core.ts）
 import {
   Button,
   Form,
-  HStack,
-  List,
   Navigation,
   NavigationStack,
   Picker,
-  Rectangle,
   Script,
   Section,
   SecureField,
-  Spacer,
   Text,
   TextField,
   Toggle,
-  VStack,
   Widget,
-  ZStack,
-  useEffect,
   useState,
 } from "scripting"
 import {
   MODE_LABELS,
-  formatClock,
-  loadPanel,
   parseEndpoints,
-  percent,
   readOptions,
   readSites,
   sitesToEndpoints,
   writeOptions,
   writeSites,
 } from "./relay.core"
-import type { Options, PanelData, RowLimit, Site, SiteMode } from "./relay.core"
+import type { Options, Site, SiteMode } from "./relay.core"
 
 const MUTED: any = { light: "#6B6B70", dark: "#9A9AA0" }
-const RED = "#FF453A"
 
 declare const Clipboard: any
 
@@ -56,157 +45,6 @@ function newSite(): Site {
     priority: null,
     enabled: true,
   }
-}
-
-const LIMIT_BAR = 46
-
-function ratioInk(ratio: number | null): any {
-  if (ratio === null) return MUTED
-  if (ratio <= 0.1) return { light: "#C4170C", dark: "#FF6961" }
-  if (ratio <= 0.3) return { light: "#9A5B00", dark: "#FFD60A" }
-  return { light: "#137A3A", dark: "#32D74B" }
-}
-
-function ratioFill(ratio: number): any {
-  if (ratio <= 0.1) return "#FF453A"
-  if (ratio <= 0.3) return "#FF9F0A"
-  return "#30D158"
-}
-
-function LimitBar({ ratio }: { ratio: number | null }) {
-  if (ratio === null) return null
-  const filled = Math.max(4, Math.round(LIMIT_BAR * Math.max(0, Math.min(1, ratio))))
-  return (
-    <ZStack alignment="leading" frame={{ width: LIMIT_BAR, height: 4 }}>
-      <Rectangle
-        fill={{ light: { color: "#000000", opacity: 0.10 }, dark: { color: "#FFFFFF", opacity: 0.18 } }}
-        frame={{ width: LIMIT_BAR, height: 4 }}
-        clipShape={{ type: "capsule", style: "continuous" }}
-      />
-      <Rectangle
-        fill={ratioFill(ratio)}
-        frame={{ width: filled, height: 4 }}
-        clipShape={{ type: "capsule", style: "continuous" }}
-      />
-    </ZStack>
-  )
-}
-
-/* App 内面板的限额行：标签 + 小进度条 + 百分比 */
-function LimitStrip({ limits }: { limits: RowLimit[] }) {
-  return (
-    <HStack spacing={14} alignment="center">
-      {limits.map((item) => (
-        <HStack key={item.label} spacing={5} alignment="center">
-          <Text font={11} fontWeight="medium" foregroundStyle={MUTED} lineLimit={1}>{item.label}</Text>
-          <LimitBar ratio={item.ratio} />
-          <Text
-            font={12}
-            fontWeight="semibold"
-            monospacedDigit
-            foregroundStyle={ratioInk(item.ratio)}
-            lineLimit={1}
-          >
-            {item.ratio === null ? item.text : percent(item.ratio, 0)}
-          </Text>
-        </HStack>
-      ))}
-    </HStack>
-  )
-}
-
-/* ── 面板 ── */
-
-function PanelScreen({
-  data,
-  loading,
-  error,
-  maxRows,
-  onRefresh,
-  onSettings,
-}: {
-  data: PanelData | null
-  loading: boolean
-  error: string
-  maxRows: number
-  onRefresh: () => void
-  onSettings: () => void
-}) {
-  return (
-    <NavigationStack>
-      <List
-        navigationTitle="中转站看板"
-        navigationBarTitleDisplayMode="inline"
-        toolbar={{
-          cancellationAction: <Button title="关闭" action={() => Script.exit()} />,
-          confirmationAction: <Button title="刷新" action={onRefresh} />,
-        }}
-      >
-        {error ? (
-          <Section header={<Text>错误</Text>}>
-            <Text foregroundStyle={RED}>{error}</Text>
-          </Section>
-        ) : null}
-
-        <Section header={<Text>{loading ? "正在取数…" : data ? `${data.rows.length} 个服务商 · 更新于 ${formatClock(data.updatedAt)}${data.fromCache ? " · 缓存" : ""}` : "服务商"}</Text>}>
-          {data && data.rows.length
-            ? data.rows.slice(0, maxRows).map((row) => {
-              const reason = row.failed
-                ? (data.errors.find((item) => item.site === row.name) || { message: "" }).message
-                : ""
-              return (
-                <VStack key={row.key} alignment="leading" spacing={4}>
-                  <HStack alignment="firstTextBaseline" spacing={6}>
-                    <Text font={16} fontWeight="semibold" lineLimit={1}>{row.name}</Text>
-                    {row.site
-                      ? <Text font={11} foregroundStyle={MUTED} lineLimit={1}>{row.site}</Text>
-                      : null}
-                    <Spacer />
-                    {row.amountText
-                      ? <Text font={16} fontWeight="medium" monospacedDigit>{row.amountText}</Text>
-                      : null}
-                  </HStack>
-                  {row.failed
-                    ? <Text font={12} foregroundStyle={RED}>{reason ? `取数失败：${reason}` : "取数失败"}</Text>
-                    : row.limits.length
-                      ? <LimitStrip limits={row.limits} />
-                      : row.metrics.length
-                        ? <Text font={12} foregroundStyle={MUTED}>{row.metrics.join(" · ")}</Text>
-                        : null}
-                </VStack>
-              )
-            })
-            : <Text foregroundStyle={MUTED}>{loading ? "取数中…" : "未获取到余额"}</Text>}
-        </Section>
-
-        {data && data.usage.length ? (
-          <Section header={<Text>今日用量</Text>}>
-            {data.usage.map((item) => {
-              const parts = [`今日 ${Math.round(item.requests)} 次`]
-              if (item.successRate !== null) parts.push(`${(item.successRate * 100).toFixed(1)}%`)
-              if (item.ttftMs !== null) parts.push(`首字 ${(item.ttftMs / 1000).toFixed(1)}s`)
-              return <Text key={item.site} font={14}>{`${item.site} · ${parts.join(" · ")}`}</Text>
-            })}
-          </Section>
-        ) : null}
-
-        {data && (data.errors.length || data.notices.length) ? (
-          <Section header={<Text>提示</Text>}>
-            {data.errors.map((item) => (
-              <Text key={`e-${item.site}`} font={12} foregroundStyle={RED}>{`❌ ${item.site}：${item.message}`}</Text>
-            ))}
-            {data.notices.map((note) => (
-              <Text key={note} font={12} foregroundStyle={MUTED}>{note}</Text>
-            ))}
-          </Section>
-        ) : null}
-
-        <Section>
-          <Button title="站点设置" action={onSettings} />
-        </Section>
-      </List>
-    </NavigationStack>
-  )
 }
 
 /* ── 设置 ── */
@@ -290,7 +128,7 @@ function SettingsScreen({
   return (
     <NavigationStack>
       <Form
-        navigationTitle="站点设置"
+        navigationTitle="中转站设置"
         toolbar={{
           cancellationAction: <Button title="取消" action={onCancel} />,
           confirmationAction: (
@@ -345,15 +183,6 @@ function SettingsScreen({
             }}
             prompt="CommandCode 套餐价，默认 70"
           />
-          <TextField
-            title="列表行数"
-            value={String(opts.maxRows)}
-            onChanged={(value: string) => {
-              const parsed = Number(value.replace(/[^0-9]/g, ""))
-              setOpts({ ...opts, maxRows: Number.isFinite(parsed) && parsed >= 3 ? parsed : 10 })
-            }}
-            prompt="App 内最多显示多少行"
-          />
         </Section>
 
         <Section header={<Text>导出</Text>}>
@@ -369,6 +198,12 @@ function SettingsScreen({
             }}
           />
         </Section>
+
+        <Section header={<Text>说明</Text>}>
+          <Text font={12} foregroundStyle={MUTED}>
+            这里只保存参数，不取数；余额、成功率与首字延迟都在桌面小组件里查看。保存后会自动刷新小组件并关闭此页。
+          </Text>
+        </Section>
       </Form>
     </NavigationStack>
   )
@@ -377,64 +212,24 @@ function SettingsScreen({
 /* ── 入口 ── */
 
 function App() {
-  const [sites, setSites] = useState<Site[]>(readSites())
+  const [sites] = useState<Site[]>(readSites())
   const [options] = useState<Options>(readOptions())
-  const [data, setData] = useState<PanelData | null>(null)
-  const [loading, setLoading] = useState<boolean>(false)
-  const [error, setError] = useState<string>("")
-  const [screen, setScreen] = useState<string>(sites.length ? "panel" : "settings")
-  const [nonce, setNonce] = useState<number>(0)
 
-  useEffect(() => {
-    if (!sites.length) {
-      setData(null)
-      setLoading(false)
-      return
-    }
-    let alive = true
-    setLoading(true)
-    setError("")
-    loadPanel(sites, options, 0)
-      .then((value) => {
-        if (!alive) return
-        setData(value)
-        setLoading(false)
-        try { Widget.reloadAll() } catch (_) {}
-      })
-      .catch((reason) => {
-        if (!alive) return
-        setError(messageOf(reason))
-        setLoading(false)
-      })
-    return () => { alive = false }
-  }, [sites, options, nonce])
-
-  if (screen === "settings") {
-    return (
-      <SettingsScreen
-        sites={sites}
-        options={options}
-        onCancel={() => setScreen("panel")}
-        onSave={(nextSites, nextOptions) => {
-          writeSites(nextSites)
-          writeOptions(nextOptions)
-          setSites(nextSites)
-          setScreen("panel")
-          setNonce(nonce + 1)
-          try { Widget.reloadAll() } catch (_) {}
-        }}
-      />
-    )
+  const finish = () => {
+    try { Script.exit() } catch (_) {}
   }
 
   return (
-    <PanelScreen
-      data={data}
-      loading={loading}
-      error={error}
-      maxRows={options.maxRows}
-      onRefresh={() => setNonce(nonce + 1)}
-      onSettings={() => setScreen("settings")}
+    <SettingsScreen
+      sites={sites}
+      options={options}
+      onCancel={finish}
+      onSave={(nextSites, nextOptions) => {
+        writeSites(nextSites)
+        writeOptions(nextOptions)
+        try { Widget.reloadAll() } catch (_) {}
+        finish()
+      }}
     />
   )
 }
