@@ -754,7 +754,8 @@ function cchGroupInfo(providers, vendors) {
   return info;
 }
 
-/* 固定展示顺序：与 Scripting 版（scripting/aiapi/relay.core.ts 的 ROW_ORDER）保持一致。
+/* 兜底展示顺序：只在行拿不到 CCH 优先级时使用（CCH user 站点、独立站点且未写 `:优先级`）。
+   名称与 Scripting 版（scripting/aiapi/relay.core.ts 的 ROW_ORDER）一致，便于两边兜底结果相同。
    按名称前缀归类（Kcne-Astra → Kcne）；不在表里的行排最后。 */
 const PANEL_ROW_ORDER = ["commandcode", "clouder", "kcne", "sd", "air"];
 
@@ -771,17 +772,24 @@ function rowOrderRank(name) {
   return PANEL_ROW_ORDER.length;
 }
 
-/* 排序：先按写死的展示顺序（CommandCode → Clouder → Kcne → SD → Air），
-   同档再按 CCH 优先级升序（数值越小越优先）、显示名（大小写不敏感）、插入序号。
-   金额只用于展示，不参与排序——余额变化不会让行序跳动；没有优先级的排最后 */
+/* 排序：先按 CCH 优先级升序（数值越小越优先）；没有优先级的行（CCH user 站点、独立站点
+   且未写 `:优先级`）一律排在有优先级的行之后，其间按写死的展示顺序兜底
+   （CommandCode → Clouder → Kcne → SD → Air）；再按显示名（大小写不敏感）、插入序号。
+   金额只用于展示，不参与排序——余额变化不会让行序跳动 */
 function compareRows(a, b) {
-  const leftRank = rowOrderRank(a.name);
-  const rightRank = rowOrderRank(b.name);
-  if (leftRank !== rightRank) return leftRank - rightRank;
-
-  const leftPriority = a.priority === null || a.priority === undefined ? Infinity : a.priority;
-  const rightPriority = b.priority === null || b.priority === undefined ? Infinity : b.priority;
-  if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+  const leftPriority = numeric(a.priority);
+  const rightPriority = numeric(b.priority);
+  if (leftPriority !== null && rightPriority !== null) {
+    if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+  } else if (leftPriority !== rightPriority) {
+    /* 只有一边有优先级：有优先级的排前面 */
+    return leftPriority === null ? 1 : -1;
+  } else {
+    /* 两边都没有优先级：PANEL_ROW_ORDER 兜底 */
+    const leftRank = rowOrderRank(a.name);
+    const rightRank = rowOrderRank(b.name);
+    if (leftRank !== rightRank) return leftRank - rightRank;
+  }
 
   const leftName = String(a.name || "").toLowerCase();
   const rightName = String(b.name || "").toLowerCase();
@@ -855,11 +863,17 @@ function cchUpstreamRows(providers, balances, vendors) {
 
 /* ── CCHP：按 key 优先级排序的站点余额（Clouder 仍由 CCH 站点提供） ── */
 
-/* CCHP 的 key 列表按 provider 逐个查，最多 5 个请求在途 */
+/* 刷新余额时逐把 key 复查，最多 5 个请求在途 */
 const CCHP_KEY_CONCURRENCY = 5;
 
-/* 模块 timeout=30 秒，而 CCHP 要串行跑 org-tree → providers → keys、keys 还要分批，
-   每把 key 各刷一次后请求数按 key 放大，只限制派发仍可能在多轮在途请求上等满 30 秒
+/* 优先级只是排序与刷新目标的元数据：取一次缓存 24 小时，面板每次刷新不再为它请求 */
+const CCHP_PRIORITY_CACHE_SECONDS = 24 * 3600;
+/* keys/page 的单页上限；页数上限防止服务端游标不前进时卡在循环里 */
+const CCHP_KEY_PAGE_LIMIT = 100;
+const CCHP_KEY_PAGE_MAX = 10;
+
+/* 模块 timeout=30 秒，而 CCHP 要串行跑 org-tree → providers → keys 分页，刷新阶段再逐把 key 复查、
+   请求数按 key 放大，只限制派发仍可能在多轮在途请求上等满 30 秒
    （11 把 key × 12 秒、并发 5 约 36 秒）。$httpClient 没有超时参数、已发出的请求无法取消，
    所以 27 秒总预算同时限制派发与等待：到点停止等待并降级，晚到的响应丢弃。 */
 const CCHP_BUDGET_MS = 27000;
@@ -885,14 +899,16 @@ function cchpCacheKey(kind, base, orgId) {
   return `cchp_${kind}_${hashString(`${base}|${orgId}`)}`;
 }
 
-/* allowStale=true 时忽略时效，用于请求失败后回退旧值 */
-function readCchpCache(kind, base, orgId, allowStale) {
+/* allowStale=true 时忽略时效，用于请求失败后回退旧值；
+   ttlSeconds 缺省沿用 cch_quota_interval（优先级缓存传 24 小时） */
+function readCchpCache(kind, base, orgId, allowStale, ttlSeconds) {
   try {
     const raw = $persistentStore.read(cchpCacheKey(kind, base, orgId));
     if (!raw) return null;
     const cache = JSON.parse(raw);
     if (!cache || cache.version !== 1 || !Array.isArray(cache.items)) return null;
-    const fresh = Date.now() - Number(cache.updatedAt || 0) < CCH_QUOTA_CACHE_SECONDS * 1000;
+    const ttl = Number(ttlSeconds) > 0 ? Number(ttlSeconds) : CCH_QUOTA_CACHE_SECONDS;
+    const fresh = Date.now() - Number(cache.updatedAt || 0) < ttl * 1000;
     if (!fresh && !allowStale) return null;
     return { items: cache.items, fresh };
   } catch (_) { return null; }
@@ -1063,57 +1079,92 @@ function cchpStalePriorities(site, orgId) {
   return map;
 }
 
+/* CCHP 1.0.12 起 /providers/{id}/keys 已移除（404）：改为一次分页接口取全量 key 再按 provider 分组。
+   分页字段是 nextCursor（请求侧 after）；partial/preparing 表示服务端还没备齐，按「取数不完整」处理。 */
+async function fetchCchpKeyPages(site, orgId, headers) {
+  const keys = [];
+  let cursor = "";
+  for (let page = 0; page < CCHP_KEY_PAGE_MAX; page += 1) {
+    if (cchpBudgetSpent()) throw cchpTimeoutError();
+    const query = `limit=${CCHP_KEY_PAGE_LIMIT}${cursor ? `&after=${encodeURIComponent(cursor)}` : ""}`;
+    const response = await cchpRequest(
+      "get",
+      `${site.base}/api/account/orgs/${orgId}/providers/keys/page?${query}`,
+      headers
+    );
+    if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
+    const body = parseBody(response);
+    const list = body.keys;
+    /* 200 但结构不对（网关错误页、字段改名）不能当成没有 key，否则会把优先级刷成 null */
+    if (!Array.isArray(list)) throw new Error("返回缺少 keys");
+    for (const key of list) keys.push(key);
+    if (body.partial === true || body.preparing === true) return { keys, complete: false };
+    const next = String(body.nextCursor || "").trim();
+    if (!next) return { keys, complete: true };
+    cursor = next;
+  }
+  /* 页数用满还有游标：按不完整处理，避免游标不前进时死循环 */
+  return { keys, complete: false };
+}
+
+/* 按 provider_id 分组，套用既有的 active 规则：priority 取 active key 最小值（无 active 取全部），
+   keyIds 是全部 active key（单账户模式的代表 key 由 cchpRepresentativeKey 从这里挑） */
+function cchpPriorityItems(providers, keys) {
+  const groups = new Map();
+  for (const key of Array.isArray(keys) ? keys : []) {
+    const id = String((key && key.provider_id) || "").trim();
+    if (!id) continue;
+    const list = groups.get(id);
+    if (list) list.push(key);
+    else groups.set(id, [key]);
+  }
+  return providers.map((provider) => {
+    const list = groups.get(String(provider.id)) || [];
+    return { id: provider.id, priority: cchpKeyPriority(list), keyIds: cchpKeyIds(list) };
+  });
+}
+
+/* 优先级与 keyIds 缓存 24 小时：有效期内不发请求。
+   取数失败或服务端返回 partial/preparing 时沿用旧缓存（即便已过期），
+   旧缓存也没有才回退固定行序（priority 全为 null，由 compareRows 用 PANEL_ROW_ORDER 兜底）。 */
 async function fetchCchpPriorities(site, orgId, providers, headers) {
-  const cached = readCchpCache("priority", site.base, orgId, false);
+  const cached = readCchpCache("priority", site.base, orgId, false, CCHP_PRIORITY_CACHE_SECONDS);
   if (cached && cchpPrioritiesComplete(cached.items)) {
-    return { items: cached.items, missing: false, timedOut: false };
+    return { items: cached.items, missing: false, timedOut: false, fellBack: false };
   }
-  let failed = false;
   let timedOut = false;
-  /* 只有真正失败或被预算跳过的 provider 才回填旧值；成功返回空 keys 的保持 null */
-  const failedIds = new Set();
-  const items = await mapLimit(providers, CCHP_KEY_CONCURRENCY, async (provider) => {
-    /* 预算耗尽就不再派发后续 key 请求，已发出的等它自己回来 */
-    if (cchpBudgetSpent()) {
-      timedOut = true;
-      failed = true;
-      failedIds.add(String(provider.id));
-      return { id: provider.id, priority: null, keyIds: [] };
-    }
-    try {
-      const response = await cchpRequest(
-        "get",
-        `${site.base}/api/account/orgs/${orgId}/providers/${encodeURIComponent(provider.id)}/keys`,
-        headers
-      );
-      if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
-      const keys = parseBody(response).keys;
-      /* keyIds 供实时刷新复用，避免为此再查一次 key 列表 */
-      return { id: provider.id, priority: cchpKeyPriority(keys), keyIds: cchpKeyIds(keys) };
-    } catch (error) {
-      if (error && error.code === "cchp_timeout") timedOut = true;
-      /* 单把 key 查不到只丢排序元数据，余额行照常显示 */
-      failed = true;
-      failedIds.add(String(provider.id));
-      return { id: provider.id, priority: null, keyIds: [] };
-    }
-  });
-  if (!failed) {
-    return { items: writeCchpCache("priority", site.base, orgId, items), missing: false, timedOut: false };
+  let keys = null;
+  try {
+    const pages = await fetchCchpKeyPages(site, orgId, headers);
+    if (pages.complete) keys = pages.keys;
+    else cchpLog("keys/page 未就绪（partial/preparing），沿用旧优先级");
+  } catch (error) {
+    if (error && error.code === "cchp_timeout") timedOut = true;
+    /* 取不到优先级只丢排序元数据，余额行照常显示 */
+    cchpLog(`keys/page 请求失败，沿用旧优先级: ${(error && error.message) || error}`);
   }
-  /* 有失败：按 ID 用旧 priority 补，没有旧值才置 null；不写缓存，免得把缺失固化一轮 */
+  if (keys) {
+    const items = cchpPriorityItems(providers, keys);
+    return {
+      items: writeCchpCache("priority", site.base, orgId, items),
+      missing: items.some((item) => numeric(item.priority) === null),
+      timedOut: false,
+      fellBack: false,
+    };
+  }
   const stale = cchpStalePriorities(site, orgId);
-  let fellBack = false;
-  const merged = items.map((item) => {
-    if (numeric(item.priority) !== null) return item;
-    /* 成功返回空 keys 的 provider 不属于失败集合，不回填旧值 */
-    if (!failedIds.has(String(item.id))) return item;
-    const old = stale.get(String(item.id));
-    if (old === undefined) return { id: item.id, priority: null, keyIds: item.keyIds };
-    fellBack = true;
-    return { id: item.id, priority: old.priority, keyIds: item.keyIds.length ? item.keyIds : old.keyIds };
+  const items = providers.map((provider) => {
+    const old = stale.get(String(provider.id));
+    /* 失败时按 provider ID 回填旧值；没有旧值的保持 null，不写缓存免得把缺失固化一轮 */
+    if (old === undefined) return { id: provider.id, priority: null, keyIds: [] };
+    return { id: provider.id, priority: old.priority, keyIds: old.keyIds };
   });
-  return { items: merged, missing: merged.some((item) => numeric(item.priority) === null), timedOut, fellBack };
+  return {
+    items,
+    missing: items.some((item) => numeric(item.priority) === null),
+    timedOut,
+    fellBack: stale.size > 0,
+  };
 }
 
 /* 今日用量与供应商健康：只用于展示，失败或预算耗尽都静默降级，不写缓存 */

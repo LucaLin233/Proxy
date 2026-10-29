@@ -111,8 +111,9 @@ CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:
 ```
 
 - Clouder 的余额仍由 CCH 站点（`user`/`cookie`/`login`）提供；**只有**站点名称等于 provider 名或品牌（如 `Clouder`），
-  或站点域名与 provider 的 `website_url` 域名一致，才会沿用 CCHP 里该 provider 的 key 优先级（仅用于同档排序）；
-  否则按名称落到固定档位，匹配不到才排最后，也可在站点末尾手写优先级（`=凭据:user:1`）作同档兜底。
+  或站点域名与 provider 的 `website_url` 域名一致，才会沿用 CCHP 里该 provider 的 key 优先级；
+  匹配不到就没有优先级（排在有优先级的行之后，按固定行序兜底），也可在站点末尾手写优先级（`=凭据:user:1`），
+  手写值优先于自动匹配。
 - 余额**默认只刷一把代表 key**：`aiapi_cchp_single_account` 默认开启，每个可见 provider 取 active `keyIds`
   去重后字符串升序第一把调 `?refresh=true`，面板只显示该 key 关联的 `balance.accounts` 单账户金额，
   不再把同一账户被拆出的两条 `totals` 相加。默认拓扑就是一个 provider 一个上游账户、新账户另开 provider。
@@ -121,7 +122,7 @@ CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:
   该开关只影响面板与日报展示，不修 CCHP 页面自身按账户相加的总额。
 - 关闭单账户开关时余额**每次刷新都强制查上游**：对每个 provider 的每把 active key 各调一次 `?refresh=true` 复查
   （同一上游账户常挂多把 key，只刷一把会让另一把停在旧值，CCHP 据此把同一账户拆成两条并重复计入总额），再取一次列表拿服务端聚合值；
-  Mi（`miapi`）与原 CCH 一致不展示，Clouder 不在此模式取余额也不刷新，只保留其 key 优先级用于同档排序。
+  Mi（`miapi`）与原 CCH 一致不展示，Clouder 不在此模式取余额也不刷新，只保留其 key 优先级参与排序。
 - 单账户模式下找不到唯一账户（多账户且没有一条的 `key_ids` 含代表 key）的 provider 不显示金额，
   底部提示「⚠️ 单账户余额不可用」；没有 active key 的 provider 不刷新，但仍计 1 个未完成目标（「⚠️ 部分余额未刷新」）。
 - 失败回退：全部刷新失败、被 27 秒预算跳过或在途请求被预算截断时，沿用列表里的服务端缓存值并提示「⚠️ 余额未刷新，来自服务端缓存」；
@@ -129,18 +130,23 @@ CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:
   该提示与超时提示去重（超时优先）。
   只有列表请求本身失败才回退上次快照并提示「⚠️ CCHP 余额来自缓存」（两者不会同时出现）。
   上游余额接口有频率限制：一次刷新对每把 active key 各调一次、失败不重试。
-- key 优先级仍缓存 600 秒（受 `cch_quota_interval` 控制），按 provider ID 回退旧值，**没有旧值才**按缺失处理
-  （「⚠️ 部分排序信息缺失」；固定行序不受影响，只影响同档顺序）。CCHP 需要串行多段请求，请求数还按 key 放大（每把 active key 各刷一次），
+- key 优先级与 `keyIds` 缓存 **24 小时**（固定值，不受 `cch_quota_interval` 控制）：有效期内面板不再请求
+  `keys/page`。取数失败或服务端返回 `partial`/`preparing`（还没备齐）时沿用旧缓存（**即便已过期**），
+  **没有旧缓存才**按缺失处理（priority 为空，行序退回固定兜底；同时提示「⚠️ 部分排序信息缺失」）。
+  代价：24 小时内新增的 key 不会成为实时刷新的目标，需要等缓存过期或清掉 `cchp_priority_*` 再刷新。
+  CCHP 需要串行多段请求，请求数还按 key 放大（每把 active key 各刷一次），
   所以 27 秒总预算同时限制**派发与等待**：到点不再派发新请求、也不再等在途请求（已发出的无法取消，
   晚到的响应直接丢弃），在模块 30 秒上限前降级（「⚠️ 部分请求超时」，与缺失提示合并只出现一次），
   已拿到的余额照常显示。例如 11 把 key × 12 秒、并发 5 约在 27 秒收尾，不会拖到 36 秒。
 - 多币种：`totals` 里每种币种按原单位并列显示（如 `余额 $2.00 + ¥70.00`），不做汇率换算；金额只用于展示，不参与排序
   （`total_usd` 缺失只影响该行金额的取值，不会把它排到同优先级末尾）。
-- 排序：固定行序 `CommandCode → Clouder → Kcne → SD → Air`（写死在 `aiapi_relay.js` 的 `PANEL_ROW_ORDER`，与 Scripting 版
-  `scripting/aiapi/relay.core.ts` 的 `ROW_ORDER` 一致，不依赖接口优先级，顺序不会因为某次取数失败而跳）。
-  按行名匹配，再按站点名；按名称前缀归类（`Kcne-Astra → Kcne`、`SD 备用 → SD`），大小写不敏感。
-  不在表里的行排最后；同一档内依次按优先级、名称（大小写不敏感）、配置顺序兜底；金额/余额不参与排序。
-  `:0` 仍可用于未列出站点或同档兜底，但不再需要它给 CommandCode 置顶。
+- 排序：**先按 CCH 优先级升序**（数值越小越靠前，即 CCHP 里各 provider 的 key 优先级；CCH 站点按域名/名称匹配到
+  CCHP 的厂商时沿用同一数值）。优先级相同再按名称（大小写不敏感），最后按配置顺序；金额/余额不参与排序。
+  没有优先级的行（CCH user 站点、匹配不到厂商的独立站点）排在有优先级的行之后，其间用兜底顺序
+  `CommandCode → Clouder → Kcne → SD → Air`（写死在 `aiapi_relay.js` 的 `PANEL_ROW_ORDER`，名称与 Scripting 版
+  `scripting/aiapi/relay.core.ts` 的 `ROW_ORDER` 一致）；按名称前缀归类（`Kcne-Astra → Kcne`、`SD 备用 → SD`），
+  大小写不敏感，不在表里的行排最后。站点末尾手写 `:优先级` 仍优先于自动匹配。
+  该优先级来自 CCHP `keys/page`，缓存 24 小时：取数失败时顺序不会跳，只有缓存过期且取数失败才退回固定兜底。
 - 功能摘要：余额 + 今日用量（次数/成功率/首字）+ 供应商健康（成功率/首字 P50），**不查供应商限额**。
 - **CommandCode 限额行**（`cmdcode` 模式）：CommandCode 在 CCHP 里是 `balance.status=unsupported`（上游不支持查余额），
   用 `cmdcode` 条目直接读它的限额：`CommandCode@api.commandcode.ai=<CommandCode API Key>:cmdcode:5`，
@@ -199,7 +205,7 @@ CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:
 | --- | --- | --- |
 | `surge_status.sgmodule` | Surge 运行时长与 MITM、Rewrite、Scripting 状态；点击面板可重载配置 | 不需要 |
 | `server.sgmodule` | 服务器流量与到期（Lightsail + Peekabo 合并为一个面板） | 需要，见模块内 `#!arguments-desc` |
-| `aiapi.sgmodule` | CCH / CCHP 站点余额，固定行序（CommandCode → Clouder → Kcne → SD → Air），Clouder 走 CCH | 需要，见模块内 `#!arguments-desc` |
+| `aiapi.sgmodule` | CCH / CCHP 站点余额，按 CCHP 优先级排序（缓存 24 小时），Clouder 走 CCH | 需要，见模块内 `#!arguments-desc` |
 | `app_js.sgmodule` | APP JS 重写合集：Netflix 评分与单集评分、淘票票豆瓣评分、TestFlight 账户管理、彩云天气 SVIP | 不需要 |
 | `bilibili_cdn.sgmodule` | 哔哩哔哩 CDN 优化 | 不需要 |
 | `block_startup.sgmodule` | 开屏与启动广告拦截 | 不需要 |
@@ -211,7 +217,7 @@ CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:
 
 | 脚本 | 用途 | 来源 |
 | --- | --- | --- |
-| `aiapi_relay.js` | 中转站面板：CCH / CCHP 站点余额，按固定行序 + 同档优先级排序，Clouder 走 CCH（CCH 的 admin 走 `/api/v1/providers/balances:batch` 列本站各上游，按厂商归并、名称取供应商名的品牌部分；user/cookie/login 走 `/api/v1/me/quota` 列账户余额；CCHP 的 cchp 走 `/api/account/orgs/{orgId}/providers` 取余额，每次刷新先按各 provider 的每把 active key 逐一调 `?refresh=true` 实时复查上游、再重取列表拿聚合值，并按 key 优先级排序），合并成一张表；同一脚本供 cron 日报推送同一列表 | 自建 |
+| `aiapi_relay.js` | 中转站面板：CCH / CCHP 站点余额，按 CCHP 优先级排序（缓存 24 小时，无优先级时退回固定行序），Clouder 走 CCH（CCH 的 admin 走 `/api/v1/providers/balances:batch` 列本站各上游，按厂商归并、名称取供应商名的品牌部分；user/cookie/login 走 `/api/v1/me/quota` 列账户余额；CCHP 的 cchp 走 `/api/account/orgs/{orgId}/providers` 取余额，每次刷新先按各 provider 的每把 active key 逐一调 `?refresh=true` 实时复查上游、再重取列表拿聚合值，并按 key 优先级排序），合并成一张表；同一脚本供 cron 日报推送同一列表 | 自建 |
 | `server_overview.js` | 服务器概览：AWS Lightsail 各实例流量（SigV4 直连 CloudWatch 指标）+ Peekabo 流量与到期，合并显示；同一脚本供 cron 日报 | 自建 |
 | `function.js` | Surge 运行时长与功能开关状态面板，点击重载配置 | 参考 chaizia/Profiles |
 | `ip_check.js` | 当前节点详情面板 | 感谢 @congcong |
