@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-10-26T14:00:23Z
-# Total:   6775
+# Updated: 2026-10-29T14:00:20Z
+# Total:   6777
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -2591,6 +2591,7 @@ DOMAIN-SUFFIX,imgsrv.crunchyroll.com
 DOMAIN-SUFFIX,imgssl.constantcontact.com
 DOMAIN-SUFFIX,imgtbl.com
 DOMAIN-SUFFIX,imgtp.com
+DOMAIN-SUFFIX,imgur.la
 DOMAIN-SUFFIX,imgyzzy.com
 DOMAIN-SUFFIX,imhentai.xxx
 DOMAIN-SUFFIX,imostatic.com
@@ -4112,6 +4113,7 @@ DOMAIN-SUFFIX,static.polldaddy.com
 DOMAIN-SUFFIX,static.pornpics.com
 DOMAIN-SUFFIX,static.prd.borderfree.com
 DOMAIN-SUFFIX,static.probit.com
+DOMAIN-SUFFIX,static.pub
 DOMAIN-SUFFIX,static.queue-it.net
 DOMAIN-SUFFIX,static.rakuten.com
 DOMAIN-SUFFIX,static.redhat.com
