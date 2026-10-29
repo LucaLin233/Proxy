@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-10-28T14:00:01Z
-# Total:   20225
+# Updated: 2026-10-29T14:00:02Z
+# Total:   20226
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -9658,6 +9658,7 @@ DOMAIN-SUFFIX,itweet.net
 DOMAIN-SUFFIX,iuhrdf.org
 DOMAIN-SUFFIX,iutunes.com
 DOMAIN-SUFFIX,ivacy.com
+DOMAIN-SUFFIX,ivi.tv
 DOMAIN-SUFFIX,ivicdn.tv
 DOMAIN-SUFFIX,ivintageporn.com
 DOMAIN-SUFFIX,ivonblog.com
