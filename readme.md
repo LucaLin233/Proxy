@@ -146,7 +146,7 @@ CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:
   `CommandCode → Clouder → Kcne → SD → Air`（写死在 `aiapi_relay.js` 的 `PANEL_ROW_ORDER`，名称与 Scripting 版
   `scripting/aiapi/relay.core.ts` 的 `ROW_ORDER` 一致）；按名称前缀归类（`Kcne-Astra → Kcne`、`SD 备用 → SD`），
   大小写不敏感，不在表里的行排最后。站点末尾手写 `:优先级` 仍优先于自动匹配。
-  该优先级来自 CCHP `keys/page`，缓存 24 小时：取数失败时顺序不会跳，只有缓存过期且取数失败才退回固定兜底。
+  该优先级来自 CCHP `keys/page`，缓存 24 小时：缓存过期后重新取数；失败仍沿用旧缓存，仅没有可用旧优先级时退回固定兜底。
 - 功能摘要：余额 + 今日用量（次数/成功率/首字）+ 供应商健康（成功率/首字 P50），**不查供应商限额**。
 - **CommandCode 限额行**（`cmdcode` 模式）：CommandCode 在 CCHP 里是 `balance.status=unsupported`（上游不支持查余额），
   用 `cmdcode` 条目直接读它的限额：`CommandCode@api.commandcode.ai=<CommandCode API Key>:cmdcode:5`，
