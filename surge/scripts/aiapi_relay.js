@@ -1044,7 +1044,7 @@ function cchpRepresentativeKey(keyIds) {
   return sorted.length ? sorted[0] : "";
 }
 
-/* 旧版本写的 priority 缓存只有单个 keyId：当作未命中重查一次，实时刷新才拿得到全部 key */
+/* 缓存项缺 keyIds（结构异常）时当作未命中重查一次，实时刷新才拿得到全部 key */
 function cchpPrioritiesComplete(items) {
   return items.every((item) => item && Array.isArray(item.keyIds));
 }
@@ -1065,9 +1065,11 @@ async function mapLimit(items, limit, worker) {
   return results;
 }
 
-/* 旧 priority 缓存按 provider ID 取用：请求失败时回退，缺旧值才算缺失 */
+/* 旧 priority 缓存按 provider ID 取用：请求失败时回退，缺旧值才算缺失。
+   新旧两套命名空间都看：v2 优先，旧 priority 只在失败回退时复用（全空项被跳过，不算可用旧值） */
 function cchpStalePriorities(site, orgId) {
-  const stale = readCchpCache("priority", site.base, orgId, true);
+  const stale = readCchpCache("priority_v2", site.base, orgId, true)
+    || readCchpCache("priority", site.base, orgId, true);
   const map = new Map();
   for (const item of stale ? stale.items : []) {
     if (!item || item.id === undefined) continue;
@@ -1125,12 +1127,20 @@ function cchpPriorityItems(providers, keys) {
 }
 
 /* 优先级与 keyIds 缓存 24 小时：有效期内不发请求。
+   缓存写在独立的 priority_v2 命名空间：旧 priority 缓存可能全是 priority=null（keys/page 尚未改版时的
+   空结果），那种缓存曾被当成 24h 有效命中，连 keys/page 与余额刷新都跳过，所以旧缓存只作失败回退。
    取数失败或服务端返回 partial/preparing 时沿用旧缓存（即便已过期），
    旧缓存也没有才回退固定行序（priority 全为 null，由 compareRows 用 PANEL_ROW_ORDER 兜底）。 */
 async function fetchCchpPriorities(site, orgId, providers, headers) {
-  const cached = readCchpCache("priority", site.base, orgId, false, CCHP_PRIORITY_CACHE_SECONDS);
+  const cached = readCchpCache("priority_v2", site.base, orgId, false, CCHP_PRIORITY_CACHE_SECONDS);
   if (cached && cchpPrioritiesComplete(cached.items)) {
-    return { items: cached.items, missing: false, timedOut: false, fellBack: false };
+    return {
+      items: cached.items,
+      /* 缓存里本来就有空 priority（没有 key 的 provider）：命中缓存也要保持缺失提示 */
+      missing: cached.items.some((item) => numeric(item.priority) === null),
+      timedOut: false,
+      fellBack: false,
+    };
   }
   let timedOut = false;
   let keys = null;
@@ -1146,7 +1156,7 @@ async function fetchCchpPriorities(site, orgId, providers, headers) {
   if (keys) {
     const items = cchpPriorityItems(providers, keys);
     return {
-      items: writeCchpCache("priority", site.base, orgId, items),
+      items: writeCchpCache("priority_v2", site.base, orgId, items),
       missing: items.some((item) => numeric(item.priority) === null),
       timedOut: false,
       fellBack: false,
