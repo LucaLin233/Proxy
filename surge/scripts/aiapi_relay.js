@@ -757,7 +757,7 @@ function cchGroupInfo(providers, vendors) {
 /* 兜底展示顺序：只在行拿不到 CCH 优先级时使用（CCH user 站点、独立站点且未写 `:优先级`）。
    名称与 Scripting 版（scripting/aiapi/relay.core.ts 的 ROW_ORDER）一致，便于两边兜底结果相同。
    按名称前缀归类（Kcne-Astra → Kcne）；不在表里的行排最后。 */
-const PANEL_ROW_ORDER = ["commandcode", "clouder", "kcne", "sd", "air"];
+const PANEL_ROW_ORDER = ["commandcode", "clouder", "kcne", "air"];
 
 /* 名称在固定顺序里的档位；不在表里返回表长（排最后） */
 function rowOrderRank(name) {
