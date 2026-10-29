@@ -963,6 +963,13 @@ function legacyPriorities(base: string, orgId: string): CchpPriority[] | null {
   return items
 }
 
+/* 空结果（[] 或全为 priority:null）也是真值，会让 `a || b || c` 在这层断掉，
+   后面的旧缓存和 legacy 优先级永远取不到；读兜底缓存前先滤一遍 */
+function usablePriorities(items: CchpPriority[] | null): CchpPriority[] | null {
+  const good = (items || []).filter((item) => item.priority !== null)
+  return good.length ? good : null
+}
+
 function isUnsupported(status: any): boolean {
   return String(status === undefined || status === null ? "" : status).trim().toLowerCase() === "unsupported"
 }
@@ -1242,8 +1249,8 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
   /* 全空说明上轮把失败结果写进去了，当作未命中重查 */
   if (priorities && priorities.every((item) => item.priority === null)) priorities = null
   const previous = priorities
-    || readSlot<CchpPriority[]>(prioSlot, 30 * 24 * 3600 * 1000)
-    || readSlot<CchpPriority[]>(`relay.cchp.prio.v2.${prioKey}`, 30 * 24 * 3600 * 1000)
+    || usablePriorities(readSlot<CchpPriority[]>(prioSlot, 30 * 24 * 3600 * 1000))
+    || usablePriorities(readSlot<CchpPriority[]>(`relay.cchp.prio.v2.${prioKey}`, 30 * 24 * 3600 * 1000))
     || legacyPriorities(site.base, orgId)
 
   if (!priorities) {
