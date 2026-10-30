@@ -168,6 +168,6 @@ are in THIRD_PARTY.md.
 
 **（3）上游标注不一致（照录，不裁定）**
 
-上游 `README.md` 的 `## License` 节写 `[Apache License 2.0](LICENSE)`，而根 `LICENSE` 正文是 **MIT License**（`Copyright (c) 2026 OpenMinis`）；`ios-dev/LICENSE` 同为 MIT（`Copyright (c) 2026 OpenMinis contributors`），并在正文后附「本许可覆盖本目录为本技能编写的文件，不覆盖 `THIRD_PARTY.md` 所列第三方软件」及致谢段。三处不一致如实并列，**不替上游裁定适用许可，不宣称冲突已解决**；上述两段通知按 MIT 文本照录，本件不另附 Apache-2.0 全文。
+上游 `README.md` 的 `## License` 节写明 Apache License 2.0，并指向仓库根的 `LICENSE` 文件，而根 `LICENSE` 正文是 **MIT License**（`Copyright (c) 2026 OpenMinis`）；`ios-dev/LICENSE` 同为 MIT（`Copyright (c) 2026 OpenMinis contributors`），并在正文后附「本许可覆盖本目录为本技能编写的文件，不覆盖 `THIRD_PARTY.md` 所列第三方软件」及致谢段。三处不一致如实并列，**不替上游裁定适用许可，不宣称冲突已解决**；上述两段通知按 MIT 文本照录，本件不另附 Apache-2.0 全文。
 
 以上原文于 2026-10-31 匿名只读、按该提交实取核对（根 `LICENSE` 1,066 B、`ios-dev/LICENSE` 1,770 B、`README.md` 7,014 B，均 HTTP 200）；未读 `THIRD_PARTY.md` 与 `ios-dev/THIRD_PARTY.md` 的第三方许可细则。
