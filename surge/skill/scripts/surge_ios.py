@@ -1,79 +1,45 @@
 #!/usr/bin/env python3
 """Control Surge iOS through its localhost HTTP API."""
-import argparse, json, os, re, sys
+import argparse, json, os, sys
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlparse
-from urllib.request import Request, urlopen
+from urllib.parse import urlencode
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+# 脚本可能被 install.sh 以符号链接落到 PATH，故用 realpath 解析同级共享模块所在目录。
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from _privacy import api_base_problem, dumps_redacted, redact_boundary  # noqa: E402
 
 BASE = os.getenv("SURGE_HTTP_API_BASE", "http://127.0.0.1:6171").rstrip("/")
 KEY = os.getenv("SURGE_API_KEY")
 
 
-def redact(text):
-    """抹掉文本中的凭据值：认证字段、JSON/引号形式（含转义、单引号键、平面数组）、裸键值、token 前缀。"""
-    text = str(text)
-    auth = r"(?:authorization|proxy-authorization|auth|authz)"
-    scheme = r"(?:bearer|basic|digest|negotiate|ntlm|aws4-hmac-sha256)"
-    key = (r"(?:password|passwd|pwd|psk|username|user|private[-_]key|token|api[-_]?key"
-           r"|x[-_]key|secret|credential)")
-    dq = r'"(?:[^"\\]|\\.)*"'
-    sq = r"'(?:[^'\\]|\\.)*'"
-    # 1a) 认证字段的引号值（JSON/结构化形态；键与值之间允许换行缩进，覆盖多行 JSON）。
-    #     双引号值与单引号值**分别**按各自引号的转义规则匹配——用一种引号的字符类排他，
-    #     会让「双引号值里含单引号」这种合法 JSON 整个漏抹。
-    text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<ak>' + auth + r')\b(?P=qk)'
-                  r'(?P<sep>\s*[:=]\s*)(?P<val>' + dq + r'|' + sq + r')',
-                  lambda m: '%s%s%s%s%s<redacted>%s' % (m.group('qk'), m.group('ak'), m.group('qk'),
-                                                        m.group('sep'), m.group('val')[0], m.group('val')[0]),
-                  text)
-    # 1b) 认证字段带方案词（Bearer/Basic/Digest/...）→ 取该字段整行值，覆盖逗号多段与 Digest 参数
-    text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<ak>' + auth + r')\b(?P=qk)'
-                  r'(?P<sep>[ \t]*[:=][ \t]*)(?P<val>' + scheme + r'\b[^\n]*)',
-                  lambda m: '%s%s%s%s"<redacted>"' % (m.group('qk'), m.group('ak'), m.group('qk'), m.group('sep')),
-                  text)
-    # 1c) 其余认证字段值：止于逗号/分号/换行，**不**把 `}`/`]` 当终止符
-    #     （否则 `Authorization: SYNTH}SECRET` 会在闭合符处截断、后半段泄漏）。
-    #     本函数只处理「已抹除标记」这一种残留：标记由本步上一条规则产出，不能信任输入中
-    #     的同形字符串，故一律丢弃标记之后的全部残余（含看似诊断字段的内容）——
-    #     即「认证裸行整段视为敏感值」的输出契约；仅当残余**全部**是结构闭合符时才保留，
-    #     以免吃掉 JSON 的 `}`。
-    def _auth_bare(m):
-        v = m.group('val')
-        head = '%s%s%s%s' % (m.group('qk'), m.group('ak'), m.group('qk'), m.group('sep'))
-        for mk in ('"<redacted>"', "'<redacted>'"):
-            if v.startswith(mk):
-                rest = v[len(mk):]
-                keep = rest if rest and set(rest) <= set('}] \t\r') else ''
-                return head + mk + keep
-        return head + '"<redacted>"'
-    text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<ak>' + auth + r')\b(?P=qk)'
-                  r'(?P<sep>[ \t]*[:=][ \t]*)(?P<val>[^\n,;]+)', _auth_bare, text)
-    # 2) 敏感键的数组/对象值（如 {"token":["x"]}）：整段值替换
-    text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<k>' + key + r')\b(?P=qk)(?P<sep>\s*:\s*)(\[[^\[\]]*\]|\{[^{}]*\})',
-                  lambda m: '%s%s%s%s["<redacted>"]' % (m.group('qk'), m.group('k'), m.group('qk'), m.group('sep')),
-                  text)
-    # 3) 带引号的值（键可带引号，值支持转义引号）
-    text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<k>' + key + r')\b(?P=qk)(?P<sep>\s*[:=]\s*)(?P<val>' + dq + '|' + sq + r')',
-                  lambda m: '%s%s%s%s%s<redacted>%s' % (m.group('qk'), m.group('k'), m.group('qk'),
-                                                        m.group('sep'), m.group('val')[0], m.group('val')[0]),
-                  text)
-    # 4) 裸值：以逗号/分号/空白为界
-    text = re.sub(r"(?i)\b(" + key + r")\b\s*[:=]\s*[^\s,;]+", r"\1=<redacted>", text)
-    # 5) 已知 token 前缀
-    return re.sub(r"(?i)\b(sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{16,}", "<redacted>", text)
+class _NoRedirect(HTTPRedirectHandler):
+    """不跟随 3xx：默认 urlopen 会把 X-Key 原样转发到重定向目标（跨源泄漏认证头）。"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+class _RedactingParser(argparse.ArgumentParser):
+    """`error()` 先过输出边界再写 stderr。
+
+    `argparse` 会把取值原样拼进入参错误消息；不覆写时 `--raw password=<值>` 这类用法／取值
+    错误会把凭据值写进 stderr。子解析器由 `add_subparsers()` 按父解析器类型创建，同口径生效。
+    """
+
+    def error(self, message):
+        super().error(redact_boundary(str(message)))
 
 
 def fail(message, code=2):
-    print(redact(message), file=sys.stderr)
+    print(redact_boundary(message), file=sys.stderr)
     raise SystemExit(code)
 
 
 def validate_base():
-    parsed = urlparse(BASE)
-    if parsed.scheme not in ("http", "https"):
-        fail("SURGE_HTTP_API_BASE must use http or https")
-    if parsed.hostname not in ("127.0.0.1", "localhost", "::1") and os.getenv("SURGE_ALLOW_REMOTE") != "1":
-        fail("Remote Surge API blocked; set SURGE_ALLOW_REMOTE=1 explicitly")
+    problem = api_base_problem(BASE)
+    if problem:
+        fail(problem)
     if not KEY:
         fail("SURGE_API_KEY is not set")
 
@@ -92,7 +58,7 @@ def request(method, path, body=None, dangerous=False, confirm=False):
         headers["Content-Type"] = "application/json"
     req = Request(BASE + path, data=data, headers=headers, method=method)
     try:
-        with urlopen(req, timeout=30) as response:
+        with build_opener(_NoRedirect).open(req, timeout=30) as response:
             raw = response.read()
             ctype = response.headers.get("Content-Type", "")
     except HTTPError as e:
@@ -109,14 +75,15 @@ def request(method, path, body=None, dangerous=False, confirm=False):
 
 
 def show(value):
+    """成功路径与 fail() 同口径脱敏：策略/代理响应里的凭据字段不得原样进输出。"""
     if isinstance(value, (dict, list)):
-        print(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
+        print(dumps_redacted(value, indent=2, sort_keys=True))
     else:
-        print(value)
+        print(redact_boundary(value))
 
 
 def main():
-    p = argparse.ArgumentParser(description=__doc__)
+    p = _RedactingParser(description=__doc__)
     p.add_argument("--confirm-dangerous", action="store_true")
     sub = p.add_subparsers(dest="command", required=True)
     raw = sub.add_parser("request", help="Call an API endpoint")

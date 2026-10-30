@@ -24,6 +24,9 @@ click through the GUI.
    shows detailed usage. Use it when unsure about syntax before falling back
    to the reference file.
 5. `surge-cli --check <path>` validates a profile file without a running Surge.
+   For editor integration, `surge-cli lsp` provides offline stdio diagnostics;
+   unknown `[General]` keys are reported as warnings. It is a persistent LSP
+   server, not a one-shot validation command.
 
 ## Picking the Right Command
 
@@ -36,7 +39,7 @@ Match the question to the command family; full semantics are in the
 | Is the network itself healthy? | `dump summary` (passive snapshot; run it first), then `test v4-router\|dns\|encrypted-dns\|external-ip\|nat-type` for active probes |
 | How would Surge route this request? | `rule match <host\|url>`; use `rule explain` when the question is "why" — it walks every policy-group hop with its decision reason |
 | Is this proxy/policy working? | `test-policy`, `test-policy-udp`, `test-group`, `test-policy-bandwidth`; `http probe <url> [policy]` for a real end-to-end request |
-| What is wrong with a Tailscale/WireGuard tunnel? | `dump policy` to find the proxy's `lineHash`, then `proxy-runtime-status <line-hash>` — it exposes handshakes, DERP, Exit Node, and peer paths that nothing else shows |
+| What is wrong with a Tailscale/WireGuard tunnel? | `proxy-runtime-status "<policy-name>"` (name from `dump policy`; a line-hash also works) — it exposes handshakes, DERP, Exit Node, and peer paths that nothing else shows |
 | What is Surge resolving this to? | `dns lookup <domain>`, `dns trace` for the resolver log, `geoip <ip>` for GEOIP/IP-ASN database checks, `flush dns` |
 | What happened just now? | `log memory 500` (all levels, recent), `log file 1000` (longer history), `log watch` (follow live), `logbook`, `script-log` |
 | What connections/traffic exist? | `dump active\|recent\|request\|traffic\|traffic-stat\|traffic-stat-host`, `watch request`, `watch speed`, `kill <id>` |

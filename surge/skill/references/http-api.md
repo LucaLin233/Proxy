@@ -1,96 +1,50 @@
-# Surge iOS HTTP API Reference
+# Surge iOS HTTP API 参考
 
-Official manual: <https://manual.nssurge.com/tools/http-api.html>
+官方手册：<https://manual.nssurge.com/tools/http-api.html>。需 Surge iOS 4.4.0+；每请求带 `X-Key`；GET 用查询参数、POST 用 JSON 体；响应除注明外为 JSON。
 
-Requires Surge iOS 4.4.0+. Send `X-Key` on every request. GET uses query parameters; POST uses a JSON body; responses are JSON unless noted.
+## 引擎状态预检
 
-## Engine-state preflight
+依赖 Surge 联网的任务（含本回退）先按 [../SKILL.md](../SKILL.md) §2 预检。HTTP 特有判读：API 能响应不等于引擎在正常处理流量；Suspend 时内层 `$httpClient` 探针可能返回 `EOF`/超时，意外 EOF/超时后重新预检，不沿用历史状态。
 
-依赖 Surge 联网的任务（含本 HTTP API 回退）先按入口做引擎状态预检，见 [../SKILL.md](../SKILL.md) §2；不在此重复。HTTP 特有判读：HTTP API 能响应不等于引擎在正常处理流量，Suspend 时内层 `$httpClient` 探针可能返回 `EOF`/超时；意外 EOF/超时后重新预检，不沿用历史状态。
+## iOS 端点
 
-## iOS endpoints
+**Features**：`GET|POST /v1/features/{mitm,capture,rewrite,scripting}`（mitm 返回 `{"enabled":true}`）
 
-### Features
-- `GET|POST /v1/features/mitm` — `{ "enabled": true }`
-- `GET|POST /v1/features/capture`
-- `GET|POST /v1/features/rewrite`
-- `GET|POST /v1/features/scripting`
+**Outbound 与策略**：`GET|POST /v1/outbound`（`direct`/`proxy`/`rule`）、`/v1/outbound/global`（`{"policy":"ProxyA"}`）、`GET /v1/policies`、`/v1/policies/detail?policy_name=…`、`POST /v1/policies/test`（`{"policy_names":[…],"url":"http://bing.com"}`）、`GET /v1/policy_groups`、`/v1/policy_groups/test_results`、`/v1/policy_groups/select?group_name=…`、`POST /v1/policy_groups/select`（`{"group_name":…,"policy":…}`）、`POST /v1/policy_groups/test`（`{"group_name":…}`）
 
-### Outbound and policies
-- `GET|POST /v1/outbound` — modes: `direct`, `proxy`, `rule`
-- `GET|POST /v1/outbound/global` — `{ "policy": "ProxyA" }`
-- `GET /v1/policies`
-- `GET /v1/policies/detail?policy_name=...`
-- `POST /v1/policies/test` — `{ "policy_names": [...], "url": "http://bing.com" }`
-- `GET /v1/policy_groups`
-- `GET /v1/policy_groups/test_results`
-- `GET /v1/policy_groups/select?group_name=...`
-- `POST /v1/policy_groups/select` — `{ "group_name": "GroupA", "policy": "ProxyA" }`
-- `POST /v1/policy_groups/test` — `{ "group_name": "GroupA" }`
+**请求**：`GET /v1/requests/recent`、`/v1/requests/active`、`POST /v1/requests/kill`（`{"id":100}`）
 
-### Requests
-- `GET /v1/requests/recent`
-- `GET /v1/requests/active`
-- `POST /v1/requests/kill` — `{ "id": 100 }`
+**Profile／DNS／模块**：`GET /v1/profiles/current?sensitive=0`、`POST /v1/profiles/reload`、`POST /v1/dns/flush`、`GET /v1/dns`、`POST /v1/test/dns_delay`、`GET /v1/modules`、`POST /v1/modules`（module 名到布尔值）
 
-### Profile, DNS, and modules
-- `GET /v1/profiles/current?sensitive=0`
-- `POST /v1/profiles/reload`
-- `POST /v1/dns/flush`
-- `GET /v1/dns`
-- `POST /v1/test/dns_delay`
-- `GET /v1/modules`
-- `POST /v1/modules` — module-name-to-boolean map
+**脚本**：`GET /v1/scripting`、`POST /v1/scripting/evaluate`（`script_text`、`mock_type`、`timeout`）、`POST /v1/scripting/cron/evaluate`（`{"script_name":"script1"}`）
 
-### Scripting
-- `GET /v1/scripting`
-- `POST /v1/scripting/evaluate` — `script_text`, `mock_type`, `timeout`
-- `POST /v1/scripting/cron/evaluate` — `{ "script_name": "script1" }`
+**其他**：`POST /v1/stop`、`GET /v1/events`、`/v1/rules`、`/v1/traffic`、`POST /v1/log/level`（`{"level":"verbose"}`）、`GET /v1/mitm/ca`（DER 证书，非 JSON）
 
-### Test an unconfigured node with `policy-descriptor`
+**macOS-only，iOS Skill 不用**：`system_proxy`、`enhanced_mode`、profile 列出/切换/检查、设备管理相关端点。
 
-`POST /v1/policies/test` only accepts configured policy names. To probe a new node without editing or reloading the Profile, evaluate a cron script whose `$httpClient` request includes a complete Surge policy line as `policy-descriptor`. This option takes precedence over `policy`.
+## 用 `policy-descriptor` 测未配置节点
 
-Use the bundled helper. The descriptor contains passwords/PSKs, so the default form feeds one line through stdin (`--descriptor-file -`); nothing is written to disk, to the shell history, or to the Profile:
+`POST /v1/policies/test` 只接受已配置策略名。要不动 Profile 探新节点，可执行一个 cron 脚本，其 `$httpClient` 请求带一条完整 Surge 策略行作 `policy-descriptor`（**优先于** `policy`）。
+
+用自带助手；描述符含密码/PSK，默认形式经 stdin 送一行（`--descriptor-file -`），不落盘、不进 shell history、不写入 Profile：
 
 ```sh
-# 默认形式：stdin 提供一行描述符，不落盘、不进 shell history、不写入配置。
-python3 /var/minis/skills/surge/scripts/test_policy_descriptor.py \
-  --descriptor-file - \
-  --url http://checkip.amazonaws.com
+python3 /var/minis/skills/luno-surge/scripts/test_policy_descriptor.py \
+  --descriptor-file - --url http://checkip.amazonaws.com
 ```
 
-That one line must come from a source the caller is already authorized to use (for example a user pasting into the terminal, or a controlled secret injection). This reference neither defines nor requires such a source, and the helper must not be pointed at a path of a file that already holds the descriptor.
+描述符仅引用任务已授权且执行环境已注入的指定变量，经 stdin 送入；缺失即停，不接受聊天粘贴作秘密来源，不读凭据文件、不落盘。`--descriptor-file <path>` 是脚本能力，不是助手获准的来源。
 
-File form (exception, not a default step): only when the caller already owns a descriptor file that it created and is authorized to use may `--descriptor-file <path>` or shell redirection be used. In that case the file must stay in the caller's own controlled directory with mode `0600`, and **its owner — the caller, not this skill and not the assistant — is responsible for deleting it after use**. Creating, copying, or retaining a secret file is never a default step; do not treat "write a file under `/tmp`, then delete it" as the normal flow.
+助手只从 `SURGE_API_KEY` 读 key，调 `/v1/scripting/evaluate`，报告探针状态、响应体、延迟与错误且**不打印描述符**。指向用户指定的活动 Mac/iOS 实例用 `SURGE_HTTP_API_BASE=http://<trusted-host>:6171`，不静默换主机。明文 HTTP 会把 API key 与描述符暴露到网络，远程使用限可信局域网或改 HTTPS。解释探针失败前先套用上节预检——Suspend 是通用网络诊断考量，非 `policy-descriptor` 专属限制。
 
-The helper reads the API key only from `SURGE_API_KEY`, calls `/v1/scripting/evaluate`, and reports the probe status, response body, latency, and error without printing the descriptor. To use a user-specified active Mac/iOS Surge instance, set `SURGE_HTTP_API_BASE=http://<trusted-host>:6171`; do not silently switch to another host. Plain HTTP exposes the API key and the node descriptor to the network, so remote use must be limited to a trusted LAN or replaced with HTTPS where available.
+## Metrics（iOS 5.22.0+）
 
-Apply the engine-state preflight above before interpreting `$httpClient` probe failures; Suspend is a general networking diagnostic consideration, not a `policy-descriptor`-specific limitation.
-
-### Metrics (iOS 5.22.0+)
-- `GET /v1/metrics` — Prometheus text exposition; it is not JSON and still requires the `X-Key` header.
-
-Use the helper instead of printing the API key in a curl command:
+`GET /v1/metrics` 是 Prometheus 文本输出，**不是 JSON**，仍需 `X-Key`；用助手避免在 curl 命令里打印 key：
 
 ```sh
-python3 /var/minis/skills/surge/scripts/surge_ios.py metrics
+python3 /var/minis/skills/luno-surge/scripts/surge_ios.py metrics
 ```
 
-Historical observation: the formal iOS 5.22.0 build 3830 was verified to expose build info, uptime, memory, active request/DNS-cache/ban gauges, and per-interface/per-policy traffic counters (2026-09-02 record, not a current-version claim). The official manual confirms the HTTP Controller route is `/v1/metrics`; bare `/metrics` is not an API route.
+历史观察：正式版 iOS 5.22.0 build 3830 曾验证暴露 build 信息、uptime、内存、活动请求/DNS 缓存/封禁计量与按接口/策略流量计数器（2026-09-02 记录，非当前版本声明）。官方手册确认 HTTP Controller 路由是 `/v1/metrics`，裸 `/metrics` 不是 API 路由；流量计数器在引擎重启时归零，PromQL `rate()`／`increase()` 可处理重置；Prometheus 通常无法加 `X-Key`，实际抓取可用 `x-key` 查询参数传递——该 key 不得进入聊天、日志或共享配置。
 
-The official manual notes that traffic counters reset when the engine restarts; PromQL `rate()` and `increase()` handle counter resets. Prometheus cannot normally add `X-Key`, so an actual scrape configuration may pass the API key as the `x-key` query parameter. Do not place that key in chat, logs, or a shared config file.
-
-### Miscellaneous
-- `POST /v1/stop`
-- `GET /v1/events`
-- `GET /v1/rules`
-- `GET /v1/traffic`
-- `POST /v1/log/level` — `{ "level": "verbose" }`
-- `GET /v1/mitm/ca` — DER certificate, not JSON
-
-## Excluded macOS-only endpoints
-
-Do not use these for this iOS Skill: `system_proxy`, `enhanced_mode`, profile listing/switch/check, and device management endpoints documented as Mac Only.
-
-This reference was refreshed against the official manual and Surge iOS 5.22.0 build 3830 on 2026-09-02 (historical record). Consult the official URL before adding or changing endpoints.
+本参考曾于 2026-09-02 对照官方手册与 iOS 5.22.0 build 3830 刷新（历史记录）；增改端点前先查官方 URL。

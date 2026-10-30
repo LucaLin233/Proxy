@@ -10,18 +10,16 @@ controller commands that are not all shown by `-h`.
 
 ### 1.1 Controller protocol requirements
 
-执行前查 [platform-compatibility.md](platform-compatibility.md) 的唯一协议门槛表（`rule`/`dns`/`http probe`/`security ban`、`geoip` 与性能/规则使用/虚拟 IP dump、`vmnet`、`plugin`、`restart-engine` 的最低协议与平台限制）；不满足或未知时不得直接执行，本文件不复述第二份表。`surge-cli --raw version` 可读当前平台与 Controller Protocol；历史验证结论与日期同样只在该表维护。
-
-**兼容性表是执行判据**：本文件 §2 起官方正文中出现的协议号或版本语句（例如 §3.0 标题的 `controller protocol ≥24`）是上游历史文字，仅作说明，不作为执行判据；门槛与平台限制一律以该表为准。
+执行前查 [platform-compatibility.md](platform-compatibility.md) 的唯一协议门槛表（`rule`/`dns`/`http probe`/`security ban`、`geoip` 与性能/规则使用/虚拟 IP dump、`vmnet`、`plugin`、`restart-engine` 的最低协议与平台限制）；不满足或未知时不得执行，本文件不复述第二份表。`surge-cli --raw version` 可读当前平台与 Controller Protocol。**该表是执行判据**：本文件 §2 起官方正文中出现的协议号或版本语句（例如 §3.0 标题的 `controller protocol ≥24`）是上游历史文字，仅作说明。
 
 ### 1.2 Minis execution priority over the upstream recommendations
 
-**本地执行优先级**：本节（§1 前言）优先于本文件 §2 起官方正文中的**操作建议**；`SKILL.md` 的引擎状态预检、`--raw` 优先与最小读取边界，以及 [diagnostics.md](diagnostics.md) 的按需工作流是本地执行判据。官方 §5「Practical Recommendations for AI Agents」中与本节直接冲突的两条建议一律按本节执行：
+本节（§1 前言）优先于 §2 起官方正文中的**操作建议**；`SKILL.md` 的引擎状态预检、`--raw` 优先与最小读取边界，以及 [diagnostics.md](diagnostics.md) 的按需工作流是本地执行判据。官方 §5「Practical Recommendations for AI Agents」中与本节直接冲突的两条一律按本节执行：
 
-1. **默认输出形式以 `--raw` 为准。** §5 建议「默认用 rendered 输出，除文档中缺失字段外不要传 `--raw`」在本客户端不适用：`--raw` 是 Controller 原始响应，也是自动化判读与验证的依据；human-readable 格式化只是可选呈现。
-2. **修改前不默认收集 `dump policy`／`dump profile`，一律按需。** §5 建议「每次修改设置前同时收集 `environment`、`dump policy` 与 `dump profile`」不采用：仅在当前任务确实需要策略组／`lineHash` 或 profile 内容时才读取，不作为每次修改的前置步骤或基线。其中 `dump profile` 可能含节点、订阅 URL 与隐私数据，**仅在确有必要时读取，并遵守最小读取边界**（只取所需字段、脱敏后引用、不写入支持包）。
+1. **默认输出形式以 `--raw` 为准**：§5 建议「默认用 rendered 输出、除缺失字段外不要传 `--raw`」在本客户端不适用——`--raw` 是自动化判读的结构化输出依据，内容经客户端脱敏、**不是服务端原文**，human-readable 只是可选呈现。
+2. **修改前不默认收集 `dump policy`／`dump profile`，一律按需**：§5 建议「修改设置前同时收集 `environment`、`dump policy` 与 `dump profile`」不采用——仅在任务确实需要策略组、代理运行时状态或 profile 内容时读取（`dump policy` 给策略名，`line-hash` 要从 `policy-group list`／`dump policy-group-sub-policies` 取）。`dump profile` 可能含节点、订阅 URL 与隐私数据，**仅在确有必要时按最小读取边界读取**（只取所需字段、脱敏引用、不写入支持包）。
 
-本节只覆盖官方正文中的**操作建议**；官方 §2 起的历史命令语义与协议号／版本说明仍按既有口径处理（即上一段：仅作说明，不作执行判据），§2 起的正文文字保持原样，本文件不复述第二份协议表。
+§2 起正文除 §4 的 `<nil>` 示例加引号与 §5 的一处按需收集改写外保持官方原样；本节只覆盖其中的操作建议，历史命令语义与协议号仍仅作说明。
 
 ### 1.3 Basic format
 
@@ -29,19 +27,14 @@ controller commands that are not all shown by `-h`.
 surge-cli [--remote host:port] [--password-stdin] [--raw] <command> [args...]
 ```
 
-Executable location in Minis:
-
-```bash
-/usr/local/bin/surge-cli
-```
-
-- `--raw`: output raw JSON (recommended for agents).
-- `--remote` / `-r`: connect to another Controller; the Minis default is `127.0.0.1:6170`.
-- Authentication comes from `--password-stdin` or the Minis environment variable `SURGE_API_KEY`; the Minis implementation is non-interactive and never prompts. Never put the password in `--remote`; the Minis CLI does not use password files. Credential precedence and transport: [controller-cli.md](controller-cli.md); security rules: [../SKILL.md](../SKILL.md) §3.
-- `--check <path>` / `-c <path>`: upload the explicitly named UTF-8 profile to Surge's official beta validation service (`https://services.nssurge.com/v1/config/validate`). This is remote validation, not the bundled macOS local parser. The CLI never uploads the active profile automatically; warn about profile secrets and redact a copy first when appropriate.
-- `--help` / `-h`: print help.
-- If no command is provided, the Minis implementation prints help rather than entering an interactive terminal.
-- Command keywords are handled by the connected Controller.
+- 可执行位置：`/usr/local/bin/surge-cli`。
+- `--raw`：输出结构化 JSON（agent 推荐）；内容经客户端脱敏，非服务端原文。
+- `--remote`／`-r`：连其他 Controller；Minis 默认 `127.0.0.1:6170`。
+- 认证取 `--password-stdin` 或 Minis 环境变量 `SURGE_API_KEY`；Minis 实现非交互、从不提示，不用密码文件，不把密码放进 `--remote`。凭据优先级与传输见 [controller-cli.md](controller-cli.md)；安全规则见 [../SKILL.md](../SKILL.md) §3。
+- `--check <path>`／`-c <path>`：把显式指定的 UTF-8 profile 上传到官方 beta 校验服务（`https://services.nssurge.com/v1/config/validate`），是远程校验、非自带 macOS 本地解析器；CLI 绝不自动上传活动 profile，必要时先脱敏副本。
+- `lsp [--stdio]`（官方 6.10.0+）：编辑器用的**离线** stdio 语言服务器——本客户端不实现，也不得当作 Controller 命令转发；它需要真正的 LSP 客户端，不能当一次性校验命令（一次性校验用 `--check`），不与 `--remote`／认证参数同用。官方 VS Code 扩展 Surge Language Support 需 Surge Mac 6.10.0+，与 iOS 端无关。
+- `--help`／`-h`：打印帮助；无命令时打印帮助而非进入交互终端。
+- 命令关键字由所连 Controller 处理。
 
 ### 1.4 Response envelope
 
@@ -82,7 +75,7 @@ own rows.
 | `test-group` | `<group-name>` | retest a policy group immediately | |
 | `test-all-policies` | none | retest all policies | |
 | `test-policy` | `<policy...>` | test one or more policies | |
-| `test-policy-udp` | `<policy...>` | UDP policy test | |
+| `test-policy-udp` | `<policy...>` | UDP policy test | Requires Internet egress: a peer-to-peer Tailscale/WireGuard policy (`Test Capability: rtt-only`) returns a not-applicable error; use `test-policy` for its RTT probe |
 | `test-policy-external-ip` | `<policy>` | probe external IP via a policy | STUN-based |
 | `test-policy-nat-type` | `<policy>` | probe NAT type via a policy | STUN-based |
 | `test-policy-bandwidth` | `<download\|upload> <policy>` | run bandwidth diagnostics via a policy | streaming output |
@@ -108,7 +101,7 @@ own rows.
 | `switch-profile` | `<profile-name>` | switch to another profile | |
 | `managed-profile` | `update` | update and reload the active managed profile | macOS only |
 | `update-profile` | `<base64-rule-section>` | update Rule section | macOS only |
-| `proxy-runtime-status` | `<line-hash>` | inspect one proxy's live runtime and recent errors | essential for Tailscale/WireGuard diagnosis, see 3.1 |
+| `proxy-runtime-status` | `<policy-name \| line-hash>` | inspect one proxy's live runtime and recent errors | essential for Tailscale/WireGuard diagnosis, see 3.1 |
 | `add-temp-rule` | `<rule>` | add temporary rule | |
 | `del-temp-rule` | `<rule>` | delete temporary rule | |
 | `update-temp-rule` | `<rule> <new-policy>` | change policy of temporary rule | |
@@ -159,15 +152,17 @@ surge-cli plugin list        # confirm state == enabled
 
 ```bash
 surge-cli dump policy
-surge-cli proxy-runtime-status <line-hash>
+surge-cli proxy-runtime-status "<policy-name>"
 surge-cli proxy-runtime-status <line-hash>
 ```
 
 `proxy-runtime-status` is the primary per-proxy diagnostic command and is
 especially important for Tailscale and WireGuard. General status, summary, and
 connectivity-test commands do not expose the tunnel's internal runtime state.
-Use `dump policy` to find the proxy's `line-hash`, shown in square brackets in
-human-readable output, then pass it to this command.
+Pass the proxy's name as listed by `dump policy` (quote names containing
+spaces). A `line-hash` (`POLICY::…`) is also accepted; `dump policy` does not
+print it, but `policy-group list` and `dump policy-group-sub-policies` show it
+in square brackets for proxies that are members of a policy group.
 
 The common response includes traffic and speed, UDP relay support, test
 capability, runtime details, and recent connection errors. WireGuard adds the
@@ -685,7 +680,8 @@ surge-cli set Replica=1 ReplicaSessionParameters.requestCountLimit=200
 1. Use the default rendered output; do not pass `--raw` unless a documented
    field is unavailable in the rendered form.
 2. Start network troubleshooting with `status` and `dump summary`; before
-   mutating settings, also collect relevant context with `environment`,
-   `dump policy`, and `dump profile`.
+   mutating settings, also collect context with `status`, `environment`, and
+   `dump policy`; run `dump profile` only when necessary and treat its output
+   as sensitive.
 3. For streaming commands (`diagnostics`, `test-policy-bandwidth`, `benchmark encryption`, `test-ponte`), handle incremental chunks and end conditions.
 4. Check platform capability before using platform-limited commands (`update-profile`, `set-dhcp-device`, `provider-message`).

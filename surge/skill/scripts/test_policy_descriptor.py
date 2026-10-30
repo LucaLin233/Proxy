@@ -4,64 +4,31 @@
 import argparse
 import json
 import os
-import re
 import sys
 import urllib.error
 import urllib.request
 
+# 脚本可能被 install.sh 以符号链接落到 PATH，故用 realpath 解析同级共享模块所在目录。
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from _privacy import api_base_problem, dumps_redacted, redact_boundary  # noqa: E402
 
-def redact(text):
-    """抹掉文本中的凭据值：认证字段、JSON/引号形式（含转义、单引号键、平面数组）、裸键值、token 前缀。"""
-    text = str(text)
-    auth = r"(?:authorization|proxy-authorization|auth|authz)"
-    scheme = r"(?:bearer|basic|digest|negotiate|ntlm|aws4-hmac-sha256)"
-    key = (r"(?:password|passwd|pwd|psk|username|user|private[-_]key|token|api[-_]?key"
-           r"|x[-_]key|secret|credential)")
-    dq = r'"(?:[^"\\]|\\.)*"'
-    sq = r"'(?:[^'\\]|\\.)*'"
-    # 1a) 认证字段的引号值（JSON/结构化形态；键与值之间允许换行缩进，覆盖多行 JSON）。
-    #     双引号值与单引号值**分别**按各自引号的转义规则匹配——用一种引号的字符类排他，
-    #     会让「双引号值里含单引号」这种合法 JSON 整个漏抹。
-    text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<ak>' + auth + r')\b(?P=qk)'
-                  r'(?P<sep>\s*[:=]\s*)(?P<val>' + dq + r'|' + sq + r')',
-                  lambda m: '%s%s%s%s%s<redacted>%s' % (m.group('qk'), m.group('ak'), m.group('qk'),
-                                                        m.group('sep'), m.group('val')[0], m.group('val')[0]),
-                  text)
-    # 1b) 认证字段带方案词（Bearer/Basic/Digest/...）→ 取该字段整行值，覆盖逗号多段与 Digest 参数
-    text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<ak>' + auth + r')\b(?P=qk)'
-                  r'(?P<sep>[ \t]*[:=][ \t]*)(?P<val>' + scheme + r'\b[^\n]*)',
-                  lambda m: '%s%s%s%s"<redacted>"' % (m.group('qk'), m.group('ak'), m.group('qk'), m.group('sep')),
-                  text)
-    # 1c) 其余认证字段值：止于逗号/分号/换行，**不**把 `}`/`]` 当终止符
-    #     （否则 `Authorization: SYNTH}SECRET` 会在闭合符处截断、后半段泄漏）。
-    #     本函数只处理「已抹除标记」这一种残留：标记由本步上一条规则产出，不能信任输入中
-    #     的同形字符串，故一律丢弃标记之后的全部残余（含看似诊断字段的内容）——
-    #     即「认证裸行整段视为敏感值」的输出契约；仅当残余**全部**是结构闭合符时才保留，
-    #     以免吃掉 JSON 的 `}`。
-    def _auth_bare(m):
-        v = m.group('val')
-        head = '%s%s%s%s' % (m.group('qk'), m.group('ak'), m.group('qk'), m.group('sep'))
-        for mk in ('"<redacted>"', "'<redacted>'"):
-            if v.startswith(mk):
-                rest = v[len(mk):]
-                keep = rest if rest and set(rest) <= set('}] \t\r') else ''
-                return head + mk + keep
-        return head + '"<redacted>"'
-    text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<ak>' + auth + r')\b(?P=qk)'
-                  r'(?P<sep>[ \t]*[:=][ \t]*)(?P<val>[^\n,;]+)', _auth_bare, text)
-    # 2) 敏感键的数组/对象值（如 {"token":["x"]}）：整段值替换
-    text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<k>' + key + r')\b(?P=qk)(?P<sep>\s*:\s*)(\[[^\[\]]*\]|\{[^{}]*\})',
-                  lambda m: '%s%s%s%s["<redacted>"]' % (m.group('qk'), m.group('k'), m.group('qk'), m.group('sep')),
-                  text)
-    # 3) 带引号的值（键可带引号，值支持转义引号）
-    text = re.sub(r'(?i)(?P<qk>["\']?)\b(?P<k>' + key + r')\b(?P=qk)(?P<sep>\s*[:=]\s*)(?P<val>' + dq + '|' + sq + r')',
-                  lambda m: '%s%s%s%s%s<redacted>%s' % (m.group('qk'), m.group('k'), m.group('qk'),
-                                                        m.group('sep'), m.group('val')[0], m.group('val')[0]),
-                  text)
-    # 4) 裸值：以逗号/分号/空白为界
-    text = re.sub(r"(?i)\b(" + key + r")\b\s*[:=]\s*[^\s,;]+", r"\1=<redacted>", text)
-    # 5) 已知 token 前缀
-    return re.sub(r"(?i)\b(sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{16,}", "<redacted>", text)
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """不跟随 3xx：默认 urlopen 会把 X-Key 原样转发到重定向目标（跨源泄漏认证头）。"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+class _RedactingParser(argparse.ArgumentParser):
+    """`error()` 先过输出边界再写 stderr。
+
+    `--timeout password=<值>` 这类入参错误由 `argparse` 拼进消息，原样输出会把凭据值写进
+    stderr；覆写 `error()` 使**所有**用法/取值错误同口径脱敏。
+    """
+
+    def error(self, message):
+        super().error(redact_boundary(str(message)))
 
 
 def read_descriptor(path: str) -> str:
@@ -77,7 +44,7 @@ def read_descriptor(path: str) -> str:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(
+    p = _RedactingParser(
         description="Use /v1/scripting/evaluate + policy-descriptor to test an unconfigured node."
     )
     p.add_argument("--descriptor-file", default="-", help="one Surge policy line; default: stdin")
@@ -95,6 +62,12 @@ def main() -> int:
         p.error("SURGE_API_KEY is not set")
     if args.timeout <= 0:
         p.error("--timeout must be positive")
+    # 与 HTTP 回退同口径的远端门禁：scheme／URL userinfo／非本机主机（须 SURGE_ALLOW_REMOTE=1）。
+    # `--api-base` 此前只做 `rstrip`，与 `surge_ios.py` 的 `validate_base()` 不一致，
+    # 会让探测脚本把 X-Key 与节点描述符发到未显式放行的远端。
+    problem = api_base_problem(args.api_base, "--api-base", "SURGE_ALLOW_REMOTE")
+    if problem:
+        p.error(problem)
 
     try:
         descriptor = read_descriptor(args.descriptor_file)
@@ -130,7 +103,7 @@ def main() -> int:
     )
 
     try:
-        with urllib.request.urlopen(request, timeout=args.timeout + 8) as response:
+        with urllib.request.build_opener(_NoRedirect).open(request, timeout=args.timeout + 8) as response:
             payload = json.loads(response.read())
             result = payload.get("result", payload)
             output = {
@@ -138,14 +111,14 @@ def main() -> int:
                 "http_api_status": response.status,
                 "result": result,
             }
-            print(redact(json.dumps(output, ensure_ascii=False, indent=2)))
+            print(dumps_redacted(output, indent=2))
             failed = result.get("error") or not 200 <= int(result.get("status", 0)) < 400
             return 1 if failed else 0
     except urllib.error.HTTPError as e:
-        detail = redact(e.read().decode("utf-8", "replace"))
-        print(json.dumps({"node": name, "http_error": e.code, "detail": detail}, ensure_ascii=False))
+        detail = e.read().decode("utf-8", "replace")
+        print(dumps_redacted({"node": name, "http_error": e.code, "detail": detail}))
     except Exception as e:
-        print(json.dumps({"node": name, "request_error": redact(str(e))}, ensure_ascii=False))
+        print(dumps_redacted({"node": name, "request_error": str(e)}))
     return 1
 
 
