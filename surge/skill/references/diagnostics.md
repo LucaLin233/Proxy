@@ -41,10 +41,17 @@ surge-cli --raw benchmark encryption 25
 
 `dump policy`、`dump performance`、`dump rule-usage` 与各 benchmark 一律按需读取，不作为每次任务的前置或基线。`benchmark encryption` 测量 Surge 所在设备的本地加密性能，不是网络带宽。
 
-排查 Tailscale/WireGuard 时，先从 `dump policy` 找到 `lineHash`，再读取运行时状态：
+排查 Tailscale/WireGuard 时，用 `proxy-runtime-status` 传策略名读取运行时状态；含空格的名称要加引号。`line-hash` 仍可用，但 `dump policy` 已不打印它——要从 `policy-group list`／`dump policy-group-sub-policies` 的方括号里取：
 
 ```sh
-surge-cli --raw proxy-runtime-status <line-hash>
+surge-cli --raw proxy-runtime-status "<策略名>"
+surge-cli --raw proxy-runtime-status POLICY::…
 ```
 
 优先检查握手、底层策略、Tailscale 会话、Exit Node、DERP 和 peer path，不要先做宽泛日志搜索。
+
+`test-policy-udp` 需要真实 Internet 出网：对 P2P 的 Tailscale/WireGuard 策略（`Test Capability: rtt-only`）会返回 not-applicable，这类策略改用 `test-policy` 取 RTT——该错误**不是**隧道故障证据。
+
+### CoreDevice/RSD 同机回环
+仅此场景才评估 `[IP Rewrite]` 的目标地址 `reflect` 与该地址 `/32` 的 `tun-included-routes`；先核目标地址、现有路由、模块及配对前提，版本/平台条件依 `references/platform-compatibility.md`。不自动改路由，不整段覆盖既有路由，不移植“无副作用”保证。TCP connect 成功不是协议成功；任意端口瞬连却无数据可能是假通，须区分 TCP、Pair-Verify、RSD 会话与获准的只读业务返回。上游要求导入模块后重启 VPN；不为验证自动导入、启停模块或重启 VPN，所需动作先列明影响及回滚，按入口及既有授权关口执行；未满足前提不得宣称验证通过。配对凭据或设备访问缺授权即停该步，不读凭据文件取密。
+来源：OpenMinis/MinisSkills@164395f193a56e3507ca98415383c7c16780da00，coredevice-toolkit/references/SURGE_LOOPBACK.md、ios-dev/references/loopback.md；2026-10-25 本地核对；许可文件根 LICENSE 与 ios-dev/LICENSE 记载 MIT，README 标 Apache-2.0 的冲突未裁定；精选改写；在线可取性及本机行为未复核，分发前须裁定许可并保留适用通知。

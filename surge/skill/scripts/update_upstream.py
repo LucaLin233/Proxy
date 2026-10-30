@@ -43,7 +43,13 @@ ADAPTER = ROOT/'scripts/adapt_upstream_reference.py'
 # compared by hand after every prepare.
 DOWNLOAD = {'SKILL.md':'references/upstream-SKILL.md', 'references/command-reference.md':'references/command-reference.md', 'references/plugin-authoring.md':'references/plugin-authoring.md', 'agents/openai.yaml':'agents/openai.yaml', 'assets/logo.png':'assets/logo.png'}
 MANUAL = {'agents/openai.yaml'}
-APPLY = {src: dst for src, dst in DOWNLOAD.items() if dst not in MANUAL}
+# The official icon is not retained locally (the local `agents/openai.yaml` no longer
+# references it). It stays in DOWNLOAD so the structural --source gate and the
+# provenance manifest keep covering all five official files, but `apply` never writes
+# it back into the active tree.
+NO_APPLY = {'assets/logo.png'}
+UNWRITTEN = MANUAL | NO_APPLY
+APPLY = {src: dst for src, dst in DOWNLOAD.items() if dst not in UNWRITTEN}
 GENERATED = {'references/upstream-command-reference.md', 'references/upstream-manifest.json'}
 NEW_FILE_MODE = 0o644
 def sha(data): return hashlib.sha256(data).hexdigest()
@@ -94,6 +100,12 @@ def prepare(args):
     if source is not None:
         # Validated before any transaction directory exists: nothing is created or staged.
         check_reference_is_raw(source/'references/command-reference.md')
+    if source is None and not args.host:
+        # Fail closed before the transaction directory, scp or ssh: no host is cached here.
+        raise SystemExit(
+            'Explicit --host required when --source is not given: pass the Mac target the user '
+            'designated for this run. No default host is built into this skill, and nothing was '
+            'created or downloaded.')
     folder=TRANSACTION_ROOT/datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f')
     folder.mkdir(parents=True); raw=folder/'raw'; staged=folder/'staged'
     version=args.version
@@ -129,12 +141,14 @@ def prepare(args):
     provenance={'source':args.source or args.host,'version_report':version,'retrieved_at':datetime.datetime.now().isoformat(),'raw_sha256':{s:current(raw/s) for s in DOWNLOAD},'runtime_validation':'not performed'}
     put(staged/'references/upstream-manifest.json',json.dumps(provenance,indent=2).encode())
     # Only auto-applied files enter the transaction; staged copies of manual files
-    # stay in staged/ for human comparison and are never written by apply. Each
-    # entry records the active file's original mode (None = file did not exist yet).
-    files={str(p.relative_to(staged)):{'before':current(ROOT/p.relative_to(staged)),'after':current(p),'mode':mode_of(ROOT/p.relative_to(staged))} for p in staged.rglob('*') if p.is_file() and str(p.relative_to(staged)) not in MANUAL}
+    # stay in staged/ for human comparison, and staged copies of NO_APPLY files stay
+    # in staged/ only - neither is ever written by apply. Each entry records the
+    # active file's original mode (None = file did not exist yet).
+    files={str(p.relative_to(staged)):{'before':current(ROOT/p.relative_to(staged)),'after':current(p),'mode':mode_of(ROOT/p.relative_to(staged))} for p in staged.rglob('*') if p.is_file() and str(p.relative_to(staged)) not in UNWRITTEN}
     (folder/'transaction.json').write_text(json.dumps({'files':files,'adapter':current(ADAPTER),'manual':sorted(MANUAL)},indent=2))
     print('Prepared; active skill unchanged. Inspect review.diff, raw/, staged/ before apply.')
     print('Manual comparison required after review: '+', '.join(sorted(MANUAL)))
+    print('Not written back by apply (gate/provenance only): '+', '.join(sorted(NO_APPLY))+' - the official icon is not retained locally.')
     print('Gate scope: --source was checked structurally (five official file paths) and by the '
           'command-reference hash only; the other four files (SKILL.md, references/plugin-authoring.md, '
           'agents/openai.yaml, assets/logo.png) are NOT verified by it - compare them by hand.')
@@ -176,7 +190,7 @@ def apply(args):
 p=argparse.ArgumentParser(description=__doc__,formatter_class=argparse.RawDescriptionHelpFormatter,epilog='--source gate = structural check (the directory must contain the five official file paths SKILL.md, references/command-reference.md, references/plugin-authoring.md, agents/openai.yaml, assets/logo.png; existence only) + command-reference hash check (sha256 must be in the adapter REVIEWED_SHA256 set of reviewed official raw text). The other four files require manual comparison after prepare: this gate is not a source or authenticity certification, and a directory name or version label never proves "official". Never pass this skill/candidate tree or an already-adapted upstream copy: an adapted references/command-reference.md is rejected fail-closed.')
 sub=p.add_subparsers(dest='action',required=True)
 s=sub.add_parser('prepare',description='Stage the five official files for review; never changes the active skill.')
-s.add_argument('--host',default='macmini')
+s.add_argument('--host',help='scp/ssh target the user designated for this run; required unless --source is given (no default host is cached).')
 s.add_argument('--source',help='Snapshot directory gated by: structural check (must contain the five official file paths SKILL.md, references/command-reference.md, references/plugin-authoring.md, agents/openai.yaml, assets/logo.png; existence only) + command-reference hash check (must be in the reviewed official raw set). The other four files need manual comparison; this is not a source/authenticity certification. Not this skill/candidate tree, not an already-adapted upstream copy.')
 s.add_argument('--version',help='Version label for a local --source (required when --source is used).')
 s=sub.add_parser('apply',description='Apply a prepared transaction directory (content + recorded modes); refuses content or mode drift since prepare before creating backup/.')

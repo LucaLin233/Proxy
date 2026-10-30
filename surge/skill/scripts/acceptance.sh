@@ -1,9 +1,10 @@
 #!/bin/sh
 # Non-destructive acceptance test for Minis Surge CLI.
-# Tiers: --offline (default: syntax + local links only), --controller (adds
-# read-only queries against the local instance), --network (additionally uploads a
-# synthetic secret-free Profile and sends DNS requests). No tier changes Surge
-# settings; --network never uploads a real profile.
+# Tiers: --offline (default: syntax + local links only), --installed (offline plus
+# the PATH entry must resolve into this package), --controller (adds read-only
+# queries against the local instance), --network (additionally uploads a synthetic
+# secret-free Profile and sends DNS requests). No tier changes Surge settings;
+# --network never uploads a real profile.
 set -eu
 SELF_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 CLI="${SURGE_CLI_BIN:-surge-cli}"
@@ -21,7 +22,7 @@ PY
 
 command -v python3 >/dev/null || fail "python3 is unavailable"
 MODE="${1:---offline}"
-case "$MODE" in --offline|--controller|--network) ;; *) fail 'Use --offline, --controller or --network' ;; esac
+case "$MODE" in --offline|--installed|--controller|--network) ;; *) fail 'Use --offline, --installed, --controller or --network' ;; esac
 python3 - "$SELF_DIR" <<'PY'
 import sys,re
 from pathlib import Path
@@ -36,6 +37,35 @@ for p in root.rglob('*.md'):
         if target and not (p.parent/target).exists(): raise SystemExit(f'Broken link: {p.name}: {link}')
 PY
 pass "Offline syntax and local links"
+
+# --installed: the PATH entry must be a live link into *this* package. Renaming or
+# moving the skill directory leaves the old symlink dangling while every in-package
+# check still passes. SURGE_CLI_BIN (name or path) redirects the lookup so fixture
+# runs stay isolated from the host install point.
+if [ "$MODE" = --installed ]; then
+  python3 - "$SELF_DIR/surge_cli.py" "$CLI" <<'PY' || fail "Installed surge-cli does not resolve into this package"
+import os,sys
+expected=os.path.realpath(sys.argv[1])
+name=sys.argv[2]
+def die(why):
+    sys.stderr.write("installed-check: %s: %s\n" % (why,name))
+    raise SystemExit(1)
+if os.sep in name:
+    found=name
+else:
+    found=next((os.path.join(d or ".",name) for d in os.environ.get("PATH","").split(os.pathsep)
+                if os.path.lexists(os.path.join(d or ".",name))),None)
+    if found is None: die("not found on PATH")
+if not os.path.exists(found): die("missing target (broken link)")
+if not (os.stat(found).st_mode & 0o111): die("not executable")
+real=os.path.realpath(found)
+if real != expected:
+    sys.stderr.write("installed-check: points elsewhere: %s -> %s (expected %s)\n" % (name,real,expected))
+    raise SystemExit(1)
+PY
+  pass "Installed surge-cli resolves to this package"
+  exit 0
+fi
 [ "$MODE" != --offline ] || exit 0
 
 # The temp workspace is only needed once a connected tier actually runs.

@@ -6,6 +6,10 @@ import urllib.error, urllib.request
 from datetime import datetime
 from pathlib import Path
 
+# 脚本可能被 install.sh 以符号链接落到 PATH，故用 realpath 解析同级共享模块所在目录。
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from _privacy import dumps_redacted, redact_boundary  # noqa: E402
+
 signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 DEFAULT_REMOTE = os.getenv("SURGE_CLI_REMOTE", "127.0.0.1:6170")
@@ -79,8 +83,40 @@ HELP = {
 "set-log-level":"Usage: set-log-level <log-level>",
 }
 
+# ── 输出边界（统一脱敏）───────────────────────────────────────────────────
+# 这些命令的响应体可能含 Profile 全文、代理行凭据、订阅 URL、请求正文与日志；
+# 错误输出同样来自服务端。**所有** stdout／stderr 写出都经这里，而不是只给
+# `--raw` 分支加正则——`Error:` 分支、render 的格式化分支、`profile diff`、
+# `--check` 校验服务的错误详情、`die()` 的本地错误消息一并覆盖。
+# 端口形态/换行一律保持：先脱敏再 print，不改变既有格式。
+def _emit(stream, text, end="\n"):
+    stream.write(redact_boundary(text) + end)
+    if stream is sys.stdout:
+        sys.stdout.flush()
+
+
+def out(text="", end="\n"):
+    """默认空串：`render_summary`／`render_vmnet ra` 用 `out()` 输出小节后的空行。"""
+    _emit(sys.stdout, text, end)
+
+
+def out_literal(text, end="\n"):
+    """输出**编译期字面量**（帮助/用法文本）：不经脱敏。
+
+    这些字符串来自本文件常量、不含任何运行时数据，脱敏只会产生假阳性——例如帮助里的
+    `Remote password: SURGE_API_KEY` 与 `Credential: SURGE_API_KEY` 是**变量名**，
+    却被敏感键启发式（`password`／`credential`）当成凭据值抹掉，破坏既有帮助文本。
+    """
+    sys.stdout.write(text + end)
+    sys.stdout.flush()
+
+
+def err(text, end="\n"):
+    _emit(sys.stderr, text, end)
+
+
 def die(msg: str, code: int = 1):
-    print(msg, file=sys.stderr)
+    err(msg)
     raise SystemExit(code)
 
 def split_hostport(value: str):
@@ -115,7 +151,7 @@ def parse_cli(args):
             if i>=len(args): die(f"{a} requires host:port",2)
             remote=args[i]
         elif a=="--password-stdin": stdin_mode=True
-        elif a in ("--help","-h") and not command: print(MAIN_HELP); raise SystemExit
+        elif a in ("--help","-h") and not command: out_literal(MAIN_HELP); raise SystemExit
         elif a in ("--check","-c"):
             i+=1
             if i>=len(args): die(f"{a} requires a profile path",2)
@@ -152,13 +188,13 @@ def validate_profile(path: str, raw: bool):
     if not isinstance(result,dict) or not isinstance(result.get("valid"),bool):
         die("Official validation service returned an unexpected response")
     if raw:
-        print(json.dumps(result,ensure_ascii=False,separators=(",",":")))
+        out(dumps_redacted(result, separators=(",",":")))
     elif result["valid"]:
-        print("OK")
+        out("OK")
     else:
         error=result.get("error")
         message=error.get("message") if isinstance(error,dict) else error
-        print(f"Failed: {message or 'Invalid profile'}",file=sys.stderr)
+        err(f"Failed: {message or 'Invalid profile'}")
     raise SystemExit(0 if result["valid"] else 1)
 
 def normalize(argv):
@@ -250,18 +286,18 @@ def scalar(v):
 def render_status(o):
     started=o.get("start-time")
     st=datetime.fromtimestamp(started).astimezone().strftime("%Y-%m-%d %H:%M:%S %z") if isinstance(started,(int,float)) else scalar(started)
-    print(f"Surge {o.get('version','?')} ({o.get('build','?')})")
-    print(f"Core: {o.get('core-version','?')}\nController Protocol: {o.get('controller-protocol','?')}")
-    print(f"System: {o.get('system','?')} {o.get('system-version','')}")
-    print(f"Device: {o.get('device-name','?')} [{o.get('device-identifier','?')}]\n")
-    print(f"Profile: {o.get('profile','?')}\nProfile Path: {o.get('profile-path','?')}")
-    print(f"Mode: {o.get('mode','?')}\nGlobal Policy: {scalar(o.get('global-policy'))}")
-    print(f"Started: {st}\nUptime: {duration(o.get('uptime',0))}\n\nFeatures:")
-    for k,v in sorted(o.get("features",{}).items()): print(f"  {k}: {onoff(v)}")
+    out(f"Surge {o.get('version','?')} ({o.get('build','?')})")
+    out(f"Core: {o.get('core-version','?')}\nController Protocol: {o.get('controller-protocol','?')}")
+    out(f"System: {o.get('system','?')} {o.get('system-version','')}")
+    out(f"Device: {o.get('device-name','?')} [{o.get('device-identifier','?')}]\n")
+    out(f"Profile: {o.get('profile','?')}\nProfile Path: {o.get('profile-path','?')}")
+    out(f"Mode: {o.get('mode','?')}\nGlobal Policy: {scalar(o.get('global-policy'))}")
+    out(f"Started: {st}\nUptime: {duration(o.get('uptime',0))}\n\nFeatures:")
+    for k,v in sorted(o.get("features",{}).items()): out(f"  {k}: {onoff(v)}")
 def render_version(o):
-    print(f"Surge {o.get('version','?')} ({o.get('build','?')})\nCore: {o.get('core-version','?')}\nController Protocol: {o.get('controller-protocol','?')}\nSystem: {o.get('system','?')} {o.get('system-version','')}\nDevice: {o.get('device-name','?')} [{o.get('device-identifier','?')}]")
+    out(f"Surge {o.get('version','?')} ({o.get('build','?')})\nCore: {o.get('core-version','?')}\nController Protocol: {o.get('controller-protocol','?')}\nSystem: {o.get('system','?')} {o.get('system-version','')}\nDevice: {o.get('device-name','?')} [{o.get('device-identifier','?')}]")
 def render_group(g):
-    print(f"{g.get('name','?')} ({g.get('type','?')})\n  Selected: {scalar(g.get('selected'))}\n  Options:")
+    out(f"{g.get('name','?')} ({g.get('type','?')})\n  Selected: {scalar(g.get('selected'))}\n  Options:")
     for x in g.get("options",[]):
         details=[]
         if x.get("typeDescription"): details.append(x["typeDescription"])
@@ -269,26 +305,26 @@ def render_group(g):
         if not x.get("enabled",True): details.append("disabled")
         tail=f" ({', '.join(details)})" if details else ""
         h=f" [{x['lineHash']}]" if x.get("lineHash") else ""
-        print(f"    {x.get('name','?')}{tail}{h}")
+        out(f"    {x.get('name','?')}{tail}{h}")
 def render_rule(o, explain=False):
     if not explain:
-        print(f"Matched rule: {o.get('rule','?')}\nPolicy: {o.get('policy','?')}")
+        out(f"Matched rule: {o.get('rule','?')}\nPolicy: {o.get('policy','?')}")
         return
-    print(f"Matched rule: {o.get('rule','?')}")
+    out(f"Matched rule: {o.get('rule','?')}")
     if o.get("steps"):
-        print("\nDecision path:")
+        out("\nDecision path:")
         for x in o["steps"]:
-            print(f"  {x.get('group','?')} ({x.get('type','?')}) -> {x.get('selected','?')}  [{x.get('reason','?')}]")
-    print(f"\nFinal policy: {o.get('final','?')} ({o.get('final-type','?')})")
-    if o.get("duration-ms") is not None: print(f"Duration: {o['duration-ms']:.2f} ms")
+            out(f"  {x.get('group','?')} ({x.get('type','?')}) -> {x.get('selected','?')}  [{x.get('reason','?')}]")
+    out(f"\nFinal policy: {o.get('final','?')} ({o.get('final-type','?')})")
+    if o.get("duration-ms") is not None: out(f"Duration: {o['duration-ms']:.2f} ms")
     if o.get("notes"):
-        print("\nNotes:")
-        for n in o["notes"]: print(f"  {n}")
+        out("\nNotes:")
+        for n in o["notes"]: out(f"  {n}")
 def render_dns(o):
-    print(f"Domain: {o.get('domain','?')}\nIPv4: {', '.join(o.get('v4Addresses',[])) or '(none)'}\nIPv6: {', '.join(o.get('v6Addresses',[])) or '(none)'}\nServer: {scalar(o.get('server'))}\nInterface: {scalar(o.get('interface'))}\nPath: {scalar(o.get('path'))}\nDuration: {o.get('duration-ms','?')} ms")
+    out(f"Domain: {o.get('domain','?')}\nIPv4: {', '.join(o.get('v4Addresses',[])) or '(none)'}\nIPv6: {', '.join(o.get('v6Addresses',[])) or '(none)'}\nServer: {scalar(o.get('server'))}\nInterface: {scalar(o.get('interface'))}\nPath: {scalar(o.get('path'))}\nDuration: {o.get('duration-ms','?')} ms")
     if o.get("logs"):
-        print("Logs:")
-        for x in o["logs"]: print(f"  {x}")
+        out("Logs:")
+        for x in o["logs"]: out(f"  {x}")
 def render_vmnet(argv,o):
     sub=argv[1] if len(argv)>1 else ""
     if sub=="status":
@@ -302,44 +338,53 @@ def render_vmnet(argv,o):
             ("NDP entries","nd-entries",scalar),("RA clients","ra-clients",scalar),
             ("RA blacklist","ra-blacklist",scalar),("Known routers","known-routers",scalar),
         )
-        for title,key,fmt in fields: print(f"{title}: {fmt(o.get(key))}")
+        for title,key,fmt in fields: out(f"{title}: {fmt(o.get(key))}")
         return
     if sub in ("arp","ndp"):
         entries=o.get("entries",[])
-        if not entries: print("(none)")
-        for x in entries: print(f"{x.get('ip','?'):<44} {x.get('mac','?')}  (age {x.get('age-seconds','?')}s)")
+        if not entries: out("(none)")
+        for x in entries: out(f"{x.get('ip','?'):<44} {x.get('mac','?')}  (age {x.get('age-seconds','?')}s)")
         return
     if sub=="ra":
         for title,key in (("RA takeover clients","clients"),("Known routers","routers"),("Blacklisted clients","blacklist")):
-            values=o.get(key,[]); print(f"{title} ({len(values)}):")
-            if not values: print("  (none)")
-            for x in values: print("  "+json.dumps(x,ensure_ascii=False,separators=(",",":")))
-            print()
+            values=o.get(key,[]); out(f"{title} ({len(values)}):")
+            if not values: out("  (none)")
+            for x in values: out("  "+dumps_redacted(x, separators=(",",":")))
+            out()
         return
-    print(json.dumps(o,ensure_ascii=False,indent=2))
+    out(dumps_redacted(o, indent=2))
 
 def render_summary(o):
     sections=o.get("sections",[])
     if not isinstance(sections,list):
-        print(json.dumps(o,ensure_ascii=False,indent=2)); return
+        out(dumps_redacted(o, indent=2)); return
     for section in sections:
-        print(f"{section.get('section','Summary')}:")
+        out(f"{section.get('section','Summary')}:")
         for line in section.get("lines",[]):
-            content=str(line.get("content",""))
+            # **先对整段 content 脱敏，再分行输出**（2026-10-12 N1）：逐行脱敏会把跨行引号口令
+            # 拆散——首行只剩开引号、续行没有凭据上下文，尾段（如 `"a,b"` 的后半）原样泄漏。
+            content=redact_boundary(str(line.get("content","")))
             parts=content.splitlines() or [""]
-            print(f"  {line.get('title','?')}: {parts[0]}")
-            for extra in parts[1:]: print(f"    {extra}")
-        print()
+            out(f"  {line.get('title','?')}: {parts[0]}")
+            for extra in parts[1:]: out(f"    {extra}")
+        out()
 
 def render_profile_diff(o):
     original=o.get("originalProfile")
     effective=o.get("profile")
     if not isinstance(original,str) or not isinstance(effective,str):
-        print(json.dumps(o,ensure_ascii=False,indent=2)); return
-    sys.stdout.writelines(difflib.unified_diff(
-        original.splitlines(keepends=True),effective.splitlines(keepends=True),
+        out(dumps_redacted(o, indent=2)); return
+    # **先脱敏整份 profile，再分行做 diff**（2026-10-12 N2）：逐行脱敏会把跨行引号口令截断
+    # （尾段连同换行被抹掉），而 difflib 仍按原行数写 `@@` 头 ⇒ hunk 计数与正文不符、相邻行
+    # 粘连。整份先脱敏后，`@@` 计数与正文都按**脱敏后**的文本计算，结构自洽；代价＝仅凭据
+    # 不同的差异会随脱敏一并消失（非敏感差异仍可见）。
+    # **边界**：本输出只表示**脱敏文本**的差异——空输出不证明原始配置相同，不得用于配置等价
+    # 判定或回导（凭据差异、以及保守脱敏尾段里的非敏感差异都可能不可见）。
+    out("".join(difflib.unified_diff(
+        redact_boundary(original).splitlines(keepends=True),
+        redact_boundary(effective).splitlines(keepends=True),
         fromfile="original",tofile="effective"
-    ))
+    )), end="")
 
 def render(argv,o,original_argv=None):
     shown=original_argv or argv
@@ -348,13 +393,13 @@ def render(argv,o,original_argv=None):
     if shown==["profile","diff"]: return render_profile_diff(o)
     if cmd=="status": return render_status(o)
     if cmd=="version": return render_version(o)
-    if cmd=="mode" and "mode" in o: print(o["mode"]); return
-    if cmd=="global-policy" and "policy" in o: print(scalar(o["policy"])); return
+    if cmd=="mode" and "mode" in o: out(o["mode"]); return
+    if cmd=="global-policy" and "policy" in o: out(scalar(o["policy"])); return
     if cmd=="feature" and "features" in o:
-        for k,v in sorted(o["features"].items()): print(f"{k}: {onoff(v)}")
+        for k,v in sorted(o["features"].items()): out(f"{k}: {onoff(v)}")
         return
     if key==("policy-group","list") and "groups" in o:
-        for g in o["groups"]: print(f"{g.get('name','?')}: {scalar(g.get('selected'))} ({g.get('type','?')})")
+        for g in o["groups"]: out(f"{g.get('name','?')}: {scalar(g.get('selected'))} ({g.get('type','?')})")
         return
     if key==("policy-group","get"):
         g=o.get("group",o)
@@ -362,29 +407,29 @@ def render(argv,o,original_argv=None):
     if key in (("rule","match"),("rule","explain")): return render_rule(o,key[1]=="explain")
     if cmd=="vmnet": return render_vmnet(argv,o)
     if key in (("dns","lookup"),("dns","trace")): return render_dns(o)
-    if cmd=="profile" and "profile" in o and len(o)==1: print(o["profile"]); return
+    if cmd=="profile" and "profile" in o and len(o)==1: out(o["profile"]); return
     if key==("module","list"):
-        enabled=set(o.get("enabled",[])); print("Modules:")
-        for n in o.get("available",[]): print(f"  {'[x]' if n in enabled else '[ ]'} {n}")
+        enabled=set(o.get("enabled",[])); out("Modules:")
+        for n in o.get("available",[]): out(f"  {'[x]' if n in enabled else '[ ]'} {n}")
         return
     if cmd=="geoip":
         for k in ("address","country","asn","organization","geoip-db-date","asn-db-date"):
-            if k in o: print(f"{k}: {scalar(o[k])}")
+            if k in o: out(f"{k}: {scalar(o[k])}")
         return
     if key==("dump","performance"):
-        for k,v in o.items(): print(f"{k}: {v}")
+        for k,v in o.items(): out(f"{k}: {v}")
         return
-    if "result" in o and len(o)==1: print(scalar(o["result"])); return
-    print(json.dumps(o,ensure_ascii=False,indent=2))
+    if "result" in o and len(o)==1: out(scalar(o["result"])); return
+    out(dumps_redacted(o, indent=2))
 
 def main():
     raw,remote,stdin_mode,check_path,argv=parse_cli(sys.argv[1:])
     if check_path is not None:
         validate_profile(check_path,raw)
-    if not argv: print(MAIN_HELP); return
+    if not argv: out_literal(MAIN_HELP); return
     if argv[0]=="help":
         key=" ".join(argv[1:3]) if " ".join(argv[1:3]) in HELP else (argv[1] if len(argv)>1 else "")
-        print(HELP.get(key,MAIN_HELP)); return
+        out_literal(HELP.get(key,MAIN_HELP)); return
     original_argv=list(argv)
     argv=normalize(argv)
     c=Controller(remote,credential(stdin_mode))
@@ -396,10 +441,10 @@ def main():
         code=0
         for o in values:
             if isinstance(o,dict) and o.get("error"):
-                print(json.dumps(o,ensure_ascii=False,separators=(",",":")) if raw else f"Error: {o['error']}",file=sys.stderr)
+                err(dumps_redacted(o, separators=(",",":")) if raw else f"Error: {o['error']}")
                 code=1
                 break
-            if raw: print(json.dumps(o,ensure_ascii=False,separators=(",",":")),flush=True)
+            if raw: out(dumps_redacted(o, separators=(",",":")))
             else: render(argv,o,original_argv)
         raise SystemExit(code)
     finally: c.close()

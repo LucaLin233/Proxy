@@ -1,51 +1,47 @@
 # Minis Surge CLI
 
-A Python reimplementation of the transport and command-line surface used by Surge's `surge-cli --remote` mode, designed for iSH/Minis on iOS.
+Surge `surge-cli --remote` 传输与命令行面的 Python 重实现，面向 iOS 上的 iSH/Minis。
 
-## Protocol
+## 传输（Protocol）
 
-The External Controller transport is a CRLF-delimited command/result stream:
+External Controller 是 CRLF 分隔的命令/结果流：
 
-1. Client sends password plus CRLF.
-2. Server returns a welcome JSON object plus CRLF.
-3. Client sends one textual command line plus CRLF. The command verb is bare and every following argv item is double-quoted, for example `rule "match" "example.com"`.
-4. Server returns one result JSON object, or a stream of JSON event objects.
+1. 客户端发密码＋CRLF；
+2. 服务端回 welcome JSON＋CRLF；
+3. 客户端发一行文本命令＋CRLF——动词裸写、其后的 argv 逐项双引号包裹，如 `rule "match" "example.com"`；
+4. 服务端回一个结果 JSON 对象，或一串 JSON 事件对象。
 
-Surge iOS Protocol 25 still accepts the legacy `{"argv":[...]}` JSON request discovered in older official remote-mode clients, but the formal Surge Mac 6.9.0 build 12250 CLI emits the textual command line above (documented conclusion from that build, not a re-measurement of the current runtime). The Minis client follows that documented textual encoding. Arguments containing CR/LF are rejected locally; ordinary quotes and backslashes are sent verbatim inside the quoted field, matching the official client. Per-build evidence and dates live only in the single table at [platform-compatibility.md](platform-compatibility.md), which is the execution criterion.
+Surge iOS Protocol 25 仍接受旧式 `{"argv":[...]}` JSON 请求，但正式版 Surge Mac 6.9.0 build 12250 CLI 用上述文本编码，Minis 客户端随其对齐。含 CR/LF 的参数本地拒绝；普通引号与反斜杠在引号字段内原样发送，与官方客户端一致。**逐版本证据与日期只存在于 `platform-compatibility.md` 的唯一表，该表是执行判据。**
 
-No HTTP API translation is used. The Surge Controller parses most command arguments, so ordinary commands track the connected Surge build. The client also reproduces the official CLI's known local conversions for `summary`, `profile diff`, `rule temp`, `watch speed`, and `script evaluate <file>` (including mock-type name to numeric ID conversion). Online `plugin` operations are ordinary Controller commands on macOS; the official CLI's offline `plugin validate` and `plugin pack` depend on local macOS tooling and are intentionally unavailable in iSH. `--raw` returns the resulting Controller JSON unchanged apart from compact serialization.
+不做 HTTP API 转换。Controller 自行解析多数命令参数，故普通命令随所连 Surge 版本；客户端另行复现官方 CLI 的已知本地转换：`summary`、`profile diff`、`rule temp`、`watch speed`、`script evaluate <file>`（含 mock-type 名到数字 ID）。macOS 上在线 `plugin` 操作是普通 Controller 命令；官方 CLI 的离线 `plugin validate`／`plugin pack` 依赖本地 macOS 工具，在 iSH 中**有意不可用**。`--raw` 返回经客户端脱敏的 Controller JSON（紧凑序列化），不保证与服务端原文逐字节一致。
 
-## Installation
+## 安装与凭据优先级
 
-`/usr/local/bin/surge-cli` is a symlink to `scripts/surge_cli.py`.
+`/usr/local/bin/surge-cli` 是指向 `scripts/surge_cli.py` 的符号链接；默认 Controller 为 `127.0.0.1:6170`（可用 `SURGE_CLI_REMOTE` 或 `--remote` 覆盖）。
 
-Default controller: `127.0.0.1:6170` (override with `SURGE_CLI_REMOTE` or `--remote`).
-
-Credential precedence:
+凭据优先级：
 
 1. `--password-stdin`
-2. `SURGE_API_KEY` — recommended for Minis; store it in Settings → Environment Variables
+2. `SURGE_API_KEY` —— Minis 推荐；存于「设置 → 环境变量」
 
-The client is non-interactive: it does not create or read password files and does not prompt for a password on a TTY. When `SURGE_API_KEY` is missing, offer the Minis environment-variable settings link rather than asking the user to disclose the password in chat. Calling-safety rules, re-confirmation of dangerous operations and data minimization live in [../SKILL.md](../SKILL.md) §3; this file only covers CLI credential precedence and transport.
+客户端非交互：不建、不读密码文件，不在 TTY 提示输入。`SURGE_API_KEY` 缺失时给 Minis 环境变量设置入口，不要让用户把密码发到聊天里。调用安全、危险操作再确认与数据最小化见 [../SKILL.md](../SKILL.md) §3；本文件只管 CLI 凭据优先级与传输。
 
-## Remote management: Surge-specific behavior
+## 远程管理差异
 
-Official guide: [Surge Remote Management](https://kb.nssurge.com/surge-knowledge-base/guidelines/remote-management) (reviewed 2026-09-26). Append `.md` to read its Markdown source. It documents official controllers; do not assume every UI/transport feature exists in this Minis implementation.
+官方指南：[Surge Remote Management](https://kb.nssurge.com/surge-knowledge-base/guidelines/remote-management)（2026-09-26 审阅；加 `.md` 读 Markdown 源）。它写官方控制器，不假定每个特性在本实现中都存在。
 
-- **Ponte and remote loopback:** with a working, user-authorized Ponte route, `--remote <name>.sgponte:6170` reaches the remote Mac's loopback interface. Its External Controller can remain bound to `127.0.0.1`; do not widen the listener just to enable this access. Native Ponte device discovery/password-free management in Surge's UI is distinct from this CLI's host/port/password connection; keep Minis credential handling unchanged.
-- **iOS reachability:** Surge iOS cannot act as a Ponte server. Remote cellular-network External Controller connections are rejected; Wi-Fi access requires Allow Access From Wi-Fi. These remote inbound restrictions do not by themselves establish whether same-device Minis loopback access works. Check the actual target and connection path.
-- **USB:** the official Mac Surge Dashboard can manage a USB-connected iPhone/iPad, including while it uses cellular data. This Python CLI does not implement that USB connection method. Do not infer USB support from the generic External Controller capability table.
-- **Authentication bans:** 10 failed password attempts within 30 seconds temporarily ban the source IP or local process. Stop repeated authentication attempts and consider a ban before diagnosing a dead service. Consult the command reference for `security ban` inspection/clear syntax; clearing a ban is not an automatic test-recovery step.
-- **Ponte versus HTTP API:** the guide's comparison table marks HTTP API/Web Dashboard as not supporting Ponte. Distinguish native remote-management integration from reaching an HTTP port through an existing `.sgponte` tunnel; the table alone does not invalidate such a route. Verify the specific endpoint rather than silently changing instances.
-- **Official versus Minis CLI:** the Mac CLI enters interactive mode without a command; Minis prints help. The guide's Mac-only capabilities (Gateway devices, plugins, unattended app upgrades) are not a command specification or permission to upgrade/restart. Check the exact platform, command and impact when needed.
-- **Version mismatch:** missing remote features can reflect a controller/instance version mismatch or Mac-only capability, not a transport failure. The official guide recommends aligned current versions, including beta on both ends when applicable; diagnose first, do not automatically upgrade either device.
+- **Ponte 与远端 loopback**：有用户授权的 Ponte 通路时，`--remote <name>.sgponte:6170` 可达远端 Mac 的 loopback；其 External Controller 可仍绑 `127.0.0.1`，不为它放宽监听。Surge UI 的原生 Ponte 免密发现与此 CLI 的 host/port/password 连接是两回事，凭据处理不变。
+- **iOS 可达性**：Surge iOS 不能作 Ponte 服务端；蜂窝网络下远程 External Controller 连接被拒，Wi-Fi 需开启 Allow Access From Wi-Fi。这些入站限制不能证明同机 Minis loopback 可用——看实际路径。
+- **USB**：官方 Mac Dashboard 可管理 USB 连接的 iPhone/iPad（含走蜂窝时），本 CLI 不实现；不从通用能力表推断 USB 支持。
+- **认证封禁**：30 秒内 10 次失败密码会临时封禁来源 IP 或本地进程；先停止反复认证、考虑封禁再诊断「服务已死」。`security ban` 的查看/清除语法见命令参考；清封禁不是自动的测试恢复步骤。
+- **Ponte 与 HTTP API**：官方对比表把 HTTP API/Web Dashboard 标为不支持 Ponte。区分「原生远程管理集成」与「经已有 `.sgponte` 隧道访问 HTTP 端口」——该表不否定后者；核实际端点。
+- **官方 vs Minis CLI**：Mac CLI 无命令时进交互模式，Minis 打印帮助。指南中的 Mac-only 能力（Gateway 设备、插件、无人值守升级）不是命令规范，也不是升级/重启的授权；远程功能缺失可能是版本不匹配或 Mac-only 能力而非传输故障，官方建议两端版本对齐（必要时同为 beta），先诊断不自动升级。
 
-## Compatibility
+## 兼容性
 
-Most commands are transparently passed to Surge. Human-readable formatting is implemented for common commands such as status, version, mode, features, policy groups, rule match/explain, DNS lookup/trace, modules, GeoIP, performance, and macOS VMNET diagnostics. Other commands print pretty JSON; use `--raw` for scripting and exact Controller data.
+多数命令透明转发；status、version、mode、features、策略组、rule match/explain、DNS lookup/trace、modules、GeoIP、performance 与 macOS VMNET 等常用命令有可读格式化，其余打印美化 JSON——脚本与精确 Controller 数据用 `--raw`。
 
-Protocol 23 added `vmnet status|arp|ndp|ra` (official release-note statement). The local client passes these through and can render their response, but the VMNET backend is macOS-only, so on iOS the command answers `Unsupported command` — as recorded for the historical iOS builds listed in [platform-compatibility.md](platform-compatibility.md), which is the execution criterion for protocol thresholds and platform limits.
-
-Protocol 24 introduced `restart-engine`; the formal Surge iOS 5.22.0 release retained that documented behavior. Unlike `reload`, it completely restarts the engine, closes active connections, and clears caches and temporary rules. It uses the ordinary Controller command transport and returns `{"result":"success"}` before or during the restart. Capabilities beyond the release notes are not inferred from the protocol number alone. Verified builds, per-item conclusions and dates are maintained only in the single historical table at [platform-compatibility.md](platform-compatibility.md), which is the execution criterion — including the 2026-09-15 authentication/read-only retest on Controller build 3842; `restart-engine` was not retested on that build and its conclusion stays with the earlier build records.
-
-- `--check <path>` / `-c <path>` uses Surge's official beta HTTPS validation service (`https://services.nssurge.com/v1/config/validate`) because the bundled macOS local parser is unavailable in iSH. It reads only the explicitly named UTF-8 file, POSTs a JSON `profile` field, prints `OK` or `Failed: ...`, and exits 0/1 like the official CLI. This is an upload: never substitute or upload the active profile implicitly, and warn/redact when a profile may contain server addresses, subscription URLs, usernames, passwords, PSKs, or other secrets.
+- Protocol 23 新增 `vmnet status|arp|ndp|ra`（官方发布说明口径）：本客户端透传并可渲染，但 VMNET 后端仅 macOS，iOS 应答 `Unsupported command`。
+- Protocol 24 引入 `restart-engine`；正式版 Surge iOS 5.22.0 保留该行为。与 `reload` 不同，它完整重启引擎、关闭活动连接、清除缓存与临时规则，走普通命令传输并可能在重启前/中返回 `{"result":"success"}`。不凭协议号推断发布说明之外的能力。
+- 已验证 build 与逐项结论只维护在 `platform-compatibility.md` 的唯一历史表（执行判据），含 2026-09-15 于 build 3842 的认证/只读复测；`restart-engine` 未在该 build 复测，结论仍属更早的 build 记录。
+- `--check <path>`／`-c <path>` 用 Surge 官方 beta HTTPS 校验服务（`https://services.nssurge.com/v1/config/validate`），因 iSH 无自带 macOS 本地解析器。只读显式指定的 UTF-8 文件，POST JSON `profile` 字段，按官方 CLI 打印 `OK` 或 `Failed: ...` 并以 0/1 退出。**这是上传**：绝不隐式替换或上传活动 profile；profile 可能含服务器地址、订阅 URL、用户名、密码、PSK 等秘密，先告警并在必要时脱敏。
