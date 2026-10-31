@@ -866,8 +866,6 @@ function cchUpstreamRows(providers, balances, vendors) {
 /* 刷新余额时逐把 key 复查，最多 5 个请求在途 */
 const CCHP_KEY_CONCURRENCY = 5;
 
-/* 优先级只是排序与刷新目标的元数据：取一次缓存 24 小时，面板每次刷新不再为它请求 */
-const CCHP_PRIORITY_CACHE_SECONDS = 24 * 3600;
 /* keys/page 的单页上限；页数上限防止服务端游标不前进时卡在循环里 */
 const CCHP_KEY_PAGE_LIMIT = 100;
 const CCHP_KEY_PAGE_MAX = 10;
@@ -899,16 +897,14 @@ function cchpCacheKey(kind, base, orgId) {
   return `cchp_${kind}_${hashString(`${base}|${orgId}`)}`;
 }
 
-/* allowStale=true 时忽略时效，用于请求失败后回退旧值；
-   ttlSeconds 缺省沿用 cch_quota_interval（优先级缓存传 24 小时） */
-function readCchpCache(kind, base, orgId, allowStale, ttlSeconds) {
+/* allowStale=true 时忽略时效，用于请求失败后回退旧值（目前只有 provider 列表快照这么用） */
+function readCchpCache(kind, base, orgId, allowStale) {
   try {
     const raw = $persistentStore.read(cchpCacheKey(kind, base, orgId));
     if (!raw) return null;
     const cache = JSON.parse(raw);
     if (!cache || cache.version !== 1 || !Array.isArray(cache.items)) return null;
-    const ttl = Number(ttlSeconds) > 0 ? Number(ttlSeconds) : CCH_QUOTA_CACHE_SECONDS;
-    const fresh = Date.now() - Number(cache.updatedAt || 0) < ttl * 1000;
+    const fresh = Date.now() - Number(cache.updatedAt || 0) < CCH_QUOTA_CACHE_SECONDS * 1000;
     if (!fresh && !allowStale) return null;
     return { items: cache.items, fresh };
   } catch (_) { return null; }
@@ -1044,11 +1040,6 @@ function cchpRepresentativeKey(keyIds) {
   return sorted.length ? sorted[0] : "";
 }
 
-/* 缓存项缺 keyIds（结构异常）时当作未命中重查一次，实时刷新才拿得到全部 key */
-function cchpPrioritiesComplete(items) {
-  return items.every((item) => item && Array.isArray(item.keyIds));
-}
-
 /* provider 可能不少，逐个查 key 时限制同时进行的请求数 */
 async function mapLimit(items, limit, worker) {
   const results = new Array(items.length);
@@ -1063,22 +1054,6 @@ async function mapLimit(items, limit, worker) {
   for (let i = 0; i < Math.min(limit, items.length); i++) runners.push(run());
   await Promise.all(runners);
   return results;
-}
-
-/* 旧 priority 缓存按 provider ID 取用：请求失败时回退，缺旧值才算缺失。
-   新旧两套命名空间都看：v2 优先，旧 priority 只在失败回退时复用（全空项被跳过，不算可用旧值） */
-function cchpStalePriorities(site, orgId) {
-  const stale = readCchpCache("priority_v2", site.base, orgId, true)
-    || readCchpCache("priority", site.base, orgId, true);
-  const map = new Map();
-  for (const item of stale ? stale.items : []) {
-    if (!item || item.id === undefined) continue;
-    const priority = numeric(item.priority);
-    if (priority === null) continue;
-    /* 旧缓存的单个 keyId 不用于刷新：只刷一把正是要修的缺陷，宁可当作没有 key */
-    map.set(String(item.id), { priority, keyIds: Array.isArray(item.keyIds) ? item.keyIds : [] });
-  }
-  return map;
 }
 
 /* CCHP 1.0.12 起 /providers/{id}/keys 已移除（404）：改为一次分页接口取全量 key 再按 provider 分组。
@@ -1126,54 +1101,36 @@ function cchpPriorityItems(providers, keys) {
   });
 }
 
-/* 优先级与 keyIds 缓存 24 小时：有效期内不发请求。
-   缓存写在独立的 priority_v2 命名空间：旧 priority 缓存可能全是 priority=null（keys/page 尚未改版时的
-   空结果），那种缓存曾被当成 24h 有效命中，连 keys/page 与余额刷新都跳过，所以旧缓存只作失败回退。
-   取数失败或服务端返回 partial/preparing 时沿用旧缓存（即便已过期），
-   旧缓存也没有才回退固定行序（priority 全为 null，由 compareRows 用 PANEL_ROW_ORDER 兜底）。 */
+/* 优先级与 keyIds 每轮都实取 keys/page：key 的启停与优先级随时会变，缓存会让停用/新增的 key
+   拖到过期才生效（可见性判据与实时刷新目标都依赖它）。
+   分页取全（nextCursor 走完）才算「取数完整」：只有取全时才敢按「无 active key」隐藏行。
+   取数失败或服务端返回 partial/preparing 时不隐藏任何行，priority 留空退回固定行序
+   （由 compareRows 用 PANEL_ROW_ORDER 兜底），并保留「部分排序信息缺失」提示。 */
 async function fetchCchpPriorities(site, orgId, providers, headers) {
-  const cached = readCchpCache("priority_v2", site.base, orgId, false, CCHP_PRIORITY_CACHE_SECONDS);
-  if (cached && cchpPrioritiesComplete(cached.items)) {
-    return {
-      items: cached.items,
-      /* 缓存里本来就有空 priority（没有 key 的 provider）：命中缓存也要保持缺失提示 */
-      missing: cached.items.some((item) => numeric(item.priority) === null),
-      timedOut: false,
-      fellBack: false,
-    };
-  }
   let timedOut = false;
-  let keys = null;
   try {
     const pages = await fetchCchpKeyPages(site, orgId, headers);
-    if (pages.complete) keys = pages.keys;
-    else cchpLog("keys/page 未就绪（partial/preparing），沿用旧优先级");
+    if (pages.complete) {
+      const items = cchpPriorityItems(providers, pages.keys);
+      return {
+        items,
+        missing: items.some((item) => numeric(item.priority) === null),
+        timedOut: false,
+        keysComplete: true,
+      };
+    }
+    cchpLog("keys/page 未就绪（partial/preparing 或页数用满），本轮不据 key 隐藏行");
   } catch (error) {
     if (error && error.code === "cchp_timeout") timedOut = true;
-    /* 取不到优先级只丢排序元数据，余额行照常显示 */
-    cchpLog(`keys/page 请求失败，沿用旧优先级: ${(error && error.message) || error}`);
+    /* 取不到 keys 只丢排序与 keyIds：余额行照常显示，也不会把 provider 当成已停用 */
+    cchpLog(`keys/page 请求失败，本轮不据 key 隐藏行: ${(error && error.message) || error}`);
   }
-  if (keys) {
-    const items = cchpPriorityItems(providers, keys);
-    return {
-      items: writeCchpCache("priority_v2", site.base, orgId, items),
-      missing: items.some((item) => numeric(item.priority) === null),
-      timedOut: false,
-      fellBack: false,
-    };
-  }
-  const stale = cchpStalePriorities(site, orgId);
-  const items = providers.map((provider) => {
-    const old = stale.get(String(provider.id));
-    /* 失败时按 provider ID 回填旧值；没有旧值的保持 null，不写缓存免得把缺失固化一轮 */
-    if (old === undefined) return { id: provider.id, priority: null, keyIds: [] };
-    return { id: provider.id, priority: old.priority, keyIds: old.keyIds };
-  });
+  const items = providers.map((provider) => ({ id: provider.id, priority: null, keyIds: [] }));
   return {
     items,
     missing: items.some((item) => numeric(item.priority) === null),
     timedOut,
-    fellBack: stale.size > 0,
+    keysComplete: false,
   };
 }
 
@@ -1267,12 +1224,14 @@ async function fetchCchpUsage(site, headers) {
    CCHP_SINGLE_ACCOUNT 打开时一个 provider 只刷代表 key，total/ok 改为按 provider 计：
    其余 key 是主动跳过，不算部分刷新失败。 */
 async function refreshCchpBalances(site, orgId, providers, headers) {
-  /* Clouder 行由 CCH 提供，不算刷新目标；没有 keyIds 的 provider 无法刷新，但按 provider 计入 total，
-     由调用方按 ok < total 提示，而不是静默沿用旧值 */
+  /* Clouder 行由 CCH 提供，不算刷新目标；keys 取不全时没有 keyIds 的 provider 无法刷新，
+     但按 provider 计入 total，由调用方按 ok < total 提示，而不是静默沿用旧值。
+     已停用（无 active key）的 provider 不出行，也不再计未刷新目标 */
   /* unsupported（如 CommandCode）是「上游不支持查余额」，不是刷新失败：既没有账户也没有可刷的目标，
      计进 total 只会把正常状态算成未刷新，限额改由 cmdcode 站点展示 */
   const visible = providers.filter((provider) => !cchpIsClouder(provider.name)
-    && !cchpUnsupported(provider.status));
+    && !cchpUnsupported(provider.status)
+    && !provider.noActiveKey);
   let total = 0;
   const targets = [];
   for (const provider of visible) {
@@ -1331,6 +1290,11 @@ async function fetchCchpSite(site, headers) {
   const keyIdsById = new Map(
     priorities.items.map((item) => [String(item.id), Array.isArray(item.keyIds) ? item.keyIds : []])
   );
+  /* keys/page 取全，而该 provider 一把 active key 都没有（全部停用，或压根没建 key）：按已停用处理，不出行。
+     Clouder 的余额由 CCH 站点提供，不受这条判据影响；keys/page 取不全时一律不隐藏任何行 */
+  const noActiveKeyOf = (provider) => Boolean(priorities.keysComplete)
+    && !(keyIdsById.get(String(provider.id)) || []).length
+    && !cchpIsClouder(provider.name);
   /* 余额实时：先逐把 key 触发上游复查，再取一次聚合列表。
      列表本身失败回退旧快照时不再刷新；刷新不全（部分失败/缺 keyIds/被预算跳过）沿用首次列表值并标 balanceStale */
   let current = providers;
@@ -1345,6 +1309,8 @@ async function fetchCchpSite(site, headers) {
       orgId,
       providers.map((provider) => ({ id: provider.id, name: provider.name,
         status: provider.balance ? provider.balance.status : null,
+        /* 已停用（无 active key）的 provider 不出行，也不再计未刷新目标 */
+        noActiveKey: noActiveKeyOf(provider),
         keyIds: keyIdsById.get(String(provider.id)) || [] })),
       headers
     );
@@ -1378,10 +1344,12 @@ async function fetchCchpSite(site, headers) {
   /* 单账户视图只投影展示返回值，缓存里仍是原始快照；开关来回切换互不影响 */
   let singleAccountUnavailable = false;
   const displayProviders = current.map((provider) => {
+    const noActiveKey = noActiveKeyOf(provider);
     let balance = provider.balance;
     /* Clouder 的余额行由 CCH 站点提供，投影会误判不可用；保持原样。
-       unsupported 的 provider 本来就没有账户，投影只会造出「单账户余额不可用」 */
-    if (CCHP_SINGLE_ACCOUNT && !cchpIsClouder(provider.name)
+       unsupported 的 provider 本来就没有账户，投影只会造出「单账户余额不可用」；
+       已停用（无 active key）的 provider 不出行，也不用再投影 */
+    if (!noActiveKey && CCHP_SINGLE_ACCOUNT && !cchpIsClouder(provider.name)
       && !cchpUnsupported(provider.balance && provider.balance.status)) {
       const view = cchpSingleAccountView(
         provider.balance,
@@ -1395,6 +1363,8 @@ async function fetchCchpSite(site, headers) {
       name: provider.name,
       host: provider.host,
       priority: priorityById.has(provider.id) ? priorityById.get(provider.id) : null,
+      /* 无 active key：cchpRows 跳过该行 */
+      noActiveKey,
       balance,
     };
   });
@@ -1411,7 +1381,6 @@ async function fetchCchpSite(site, headers) {
     balanceSuppressStale: Boolean(balanceSuppressStale),
     /* 部分请求因总预算耗尽被跳过（含刷新阶段与重取列表）；priority 回退过旧值 / 回退后仍缺 */
     timedOut: Boolean(snapshot.timedOut || priorities.timedOut || balanceTimedOut),
-    priorityStale: Boolean(priorities.fellBack),
     priorityMissing: Boolean(priorities.missing),
     /* 今日用量（today）与按 providerId 的健康数据；取不到为 null */
     summary: usage.summary,
@@ -1547,11 +1516,14 @@ function cchpRowParts(label, text, amountText, healthParts) {
   return fitRowWidth([label, amountText], CCH_ROW_WIDTH);
 }
 
-/* 余额行：只显示 status=ok 且有数值（或 unlimited）的 provider；Clouder 由 CCH 站点提供 */
+/* 余额行：只显示 status=ok、有 active key（keys/page 取全时）且有数值（或 unlimited）的 provider；
+   Clouder 由 CCH 站点提供 */
 function cchpRows(data) {
   const rows = [];
   for (const provider of data.providers || []) {
     if (cchpIsClouder(provider.name)) continue;
+    /* 已停用：keys/page 取全且该 provider 一把 active key 都没有（全部停用或未建 key） */
+    if (provider.noActiveKey) continue;
     const balance = provider.balance || {};
     if (String(balance.status || "").toLowerCase() !== "ok") continue;
     const unlimited = balance.unlimited === true;
