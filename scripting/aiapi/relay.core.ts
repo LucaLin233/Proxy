@@ -956,24 +956,6 @@ function isClouder(name: string): boolean {
   return brandOf(name).toLowerCase() === "clouder"
 }
 
-/* 旧版本（v1）的优先级缓存：升级后接口又挂时，用它把顺序先接上 */
-function legacyPriorities(base: string, orgId: string): CchpPriority[] | null {
-  const items = readSlot<CchpPriority[]>(`relay.cchp.prio.${hash(base + "|" + orgId)}`, 30 * 24 * 3600 * 1000)
-  if (!items || !items.some((item) => item.priority !== null)) return null
-  return items
-}
-
-/* 空结果（[] 或全为 priority:null）也是真值，会让 `a || b || c` 在这层断掉，
-   后面的旧缓存和 legacy 优先级永远取不到；读兜底缓存前先滤一遍 */
-function usablePriorities(items: CchpPriority[] | null): CchpPriority[] | null {
-  const good = (items || []).filter((item) => item.priority !== null)
-  return good.length ? good : null
-}
-
-function isUnsupported(status: any): boolean {
-  return String(status === undefined || status === null ? "" : status).trim().toLowerCase() === "unsupported"
-}
-
 /* Mi（miapi）与原 CCH 一致：不进余额行 */
 function cchpHidden(provider: any): boolean {
   if (!provider) return false
@@ -1003,6 +985,8 @@ function balanceKeyIds(balance: any): string[] {
   return ids
 }
 
+/* active key 的最小 priority；没有 active key 时退回全部 key。
+   此时该 provider 已因无 active key 不出行，这个兜底只影响排序提示 */
 function keyPriority(keys: any): number | null {
   const list = Array.isArray(keys) ? keys : []
   const active = list.filter((item) => String(item && item.status || "").toLowerCase() === "active")
@@ -1240,44 +1224,46 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
 
   let providers: CchpProvider[] = rawProviders.filter((item) => !cchpHidden(item)).map(cchpProvider)
 
-  /* key 优先级：新版面板一次返回整个组织的 key（旧 /providers/{id}/keys 已 404）。
-     active key 的最小 priority 作为 provider 优先级，同时留下 keyId 供实时刷新；
-     新鲜缓存 24 小时，取数失败才回退旧缓存 */
-  const prioKey = hash(site.base + "|" + orgId)
-  const prioSlot = `relay.cchp.prio.v3.${prioKey}`
-  let priorities = readSlot<CchpPriority[]>(prioSlot, 24 * 3600 * 1000)
-  /* 全空说明上轮把失败结果写进去了，当作未命中重查 */
-  if (priorities && priorities.every((item) => item.priority === null)) priorities = null
-  const previous = priorities
-    || usablePriorities(readSlot<CchpPriority[]>(prioSlot, 30 * 24 * 3600 * 1000))
-    || usablePriorities(readSlot<CchpPriority[]>(`relay.cchp.prio.v2.${prioKey}`, 30 * 24 * 3600 * 1000))
-    || legacyPriorities(site.base, orgId)
-
-  if (!priorities) {
-    if (budgetLeft(budget) < 1500) {
-      timedOut = true
-      priorities = previous
+  /* key 优先级与可见性：新版面板一次返回整个组织的 key（旧 /providers/{id}/keys 已 404）。
+     每轮都实取（分页取全），不做缓存，停用或新增 key 当轮生效；
+     active key 的最小 priority 作为 provider 优先级，activeKeyIds 既用来挑代表 key，
+     也用来判断该 provider 是否还有启用的 key。取数不完整时两者都不可用。 */
+  let keysComplete = false
+  let priorityMissing = false
+  let priorities: CchpPriority[] | null = null
+  if (budgetLeft(budget) < 1500) {
+    timedOut = true
+  } else {
+    const page = await fetchProviderKeys(site, orgId, headers, budget)
+    if (page.ok) {
+      keysComplete = true
+      priorities = prioritiesFromKeys(page.keys, providers)
     } else {
-      const page = await fetchProviderKeys(site, orgId, headers, budget)
-      if (page.ok) {
-        const items = prioritiesFromKeys(page.keys, providers)
-        priorities = items
-        /* 全空不写缓存：下一轮还要重查 */
-        if (items.some((item) => item.priority !== null)) writeSlot(prioSlot, items)
-      } else {
-        /* 非 200 / 超时 / partial：本轮不写缓存，按新→旧顺序兜底 */
-        priorities = previous
-      }
+      /* 非 200 / 超时 / partial：本轮没有排序与 keyIds，也不隐藏任何行 */
+      priorityMissing = true
     }
   }
 
   const prioById = new Map<string, CchpPriority>()
   for (const item of priorities || []) prioById.set(item.id, item)
 
-  /* 代表 key：优先用 /keys 缓存里的 active keyIds；该接口 404 后缓存为空，
-     改用 balance.keys 里的 key_id，保证多账户 provider 仍能选中一个账户 */
+  /* 可见性：keys/page 取全时，没有任何 active key 的 provider（key 全停用或没建 key）不出行。
+     keys/page 失败、超时、partial/preparing 或页数用满时一律不隐藏，只丢排序与 keyIds，
+     行序退回 ROW_ORDER 兜底。Clouder 的余额由 CCH 站点提供，不参与这条判据。 */
+  const hiddenIds = new Set<string>()
+  if (keysComplete) {
+    for (const provider of providers) {
+      if (isClouder(provider.name)) continue
+      const item = prioById.get(provider.id)
+      if (!item || item.keyIds.length === 0) hiddenIds.add(provider.id)
+    }
+  }
+
+  /* 代表 key：优先用本轮 keys/page 的 active keyIds；取不到时改用 balance.keys 里的 key_id，
+     保证多账户 provider 仍能选中一个账户。balance.keys 只用来挑代表 key，不用于判可见性 */
   const repKeyById = new Map<string, string>()
   for (const provider of providers) {
+    if (hiddenIds.has(provider.id)) continue
     const item = prioById.get(provider.id)
     const ids = item && item.keyIds.length ? item.keyIds : balanceKeyIds(provider.balance)
     const keyId = representativeKey(ids)
@@ -1287,7 +1273,7 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
   /* 余额实时化：每个可见 provider 只刷代表 key，刷完重取一次聚合列表 */
   const targets: { id: string; keyId: string }[] = []
   for (const provider of providers) {
-    if (isClouder(provider.name)) continue
+    if (hiddenIds.has(provider.id) || isClouder(provider.name)) continue
     const keyId = repKeyById.get(provider.id) || ""
     if (keyId) targets.push({ id: provider.id, keyId })
   }
@@ -1347,6 +1333,7 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
   let singleAccountUnavailable = false
 
   for (const provider of providers) {
+    if (hiddenIds.has(provider.id)) continue
     const item = prioById.get(provider.id)
     const priority = item ? item.priority : null
     /* Clouder 的余额由 CCH 站点提供，这里不画行，但仍要把优先级喂给那个站点的行 */
@@ -1357,7 +1344,6 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
 
     const balance = provider.balance || {}
     if (String(balance.status || "").toLowerCase() !== "ok") continue
-    if (isUnsupported(balance.status)) continue
 
     const view = singleAccountView(balance, repKeyById.get(provider.id) || "")
     if (view.unavailable) singleAccountUnavailable = true
@@ -1393,6 +1379,7 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
 
   if (singleAccountUnavailable) notices.push("⚠️ 单账户余额不可用")
   if (timedOut) notices.push("⚠️ 部分请求超时")
+  else if (priorityMissing) notices.push("⚠️ 部分排序信息缺失")
 
   return { rows, usage, notices, error: null, hints }
 }

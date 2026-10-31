@@ -31,15 +31,17 @@
 
 | 模式 | 取数 | 展示 |
 |---|---|---|
-| `cchp` | 组织树 → provider 列表 → `providers/keys/page` 一次取全组织 key（优先级 + keyId）→ 代表 key 触发上游复查 → 重取列表；另有今日用量与 provider 健康（24h） | 余额 + 成功率 + 首字延迟 |
+| `cchp` | 组织树 → provider 列表 → `providers/keys/page` 每轮取全组织 key（优先级 + keyId）→ 代表 key 触发上游复查 → 重取列表；另有今日用量与 provider 健康（24h） | 余额 + 成功率 + 首字延迟 |
 | `admin` | `/api/v1/providers` + `/api/v1/provider-vendors` + `balances:batch`，按厂商归并取最低余额 | 厂商余额（Clouder / Miapi 不在此列） |
 | `user` / `cookie` / `login` | `/api/v1/me/quota` 取余额；再取 `/api/v1/me/usage-logs/full` 最近 24h 日志 | 余额 + 成功率 + 首字 P50（日志不足时不显示） |
 | `cmdcode` | `/alpha/whoami?limits=1` → `/alpha/billing/credits` | `5H` / `W` / `M` 三个剩余百分比 |
 
-CCHP 的 `/providers/{id}/keys` 已返回 404：优先级改由 `providers/keys/page` 一次拉取（有 `nextCursor` 时续页），
-成功取到才写缓存 `relay.cchp.prio.v3.*`，新鲜期 24 小时；失败时按 v3 旧值 → v2 → 更早的优先级缓存兜底。
+CCHP 的 `/providers/{id}/keys` 已返回 404：优先级与可见性都改由 `providers/keys/page` 每轮实取
+（有 `nextCursor` 时续页，最多 10 页），不再写优先级缓存，停用或新增 key 当轮生效。
+取数完整时，没有任何 active key 的 provider（key 全部停用或还没建 key）不显示；
+取数不完整（请求失败、超时、`partial` / `preparing`、页数用满）时不据 key 隐藏任何行，只是没有优先级。
 代表 key 取该 provider 的 active keyId，取不到时回退 `provider.balance.keys[].key_id`，
-避免多账户 provider 被判成「单账户余额不可用」而整行消失。
+避免多账户 provider 被判成「单账户余额不可用」而整行消失；`balance.keys` 只用于挑代表 key，不用于判可见性。
 
 排序按 CCHP 优先级升序（数值小的在前），没有优先级的行排最后；
 优先级相同或都缺失时才用固定的 `ROW_ORDER` 兜底。
@@ -51,14 +53,13 @@ App 内不再展示面板，余额、限额和失败状态都看桌面小组件�
 
 - 第一键是 CCHP 的 provider 优先级（该 provider 下 active key 的最小 `priority`），升序；没有优先级的排最后。
 - 优先级相同或都缺失时，才按 `relay.core.ts` 的 `ROW_ORDER` 兜底：`CommandCode → Clouder → Kcne → Air`。
-- 优先级来自 `providers/keys/page`，成功取到且至少一项非空才写缓存 `relay.cchp.prio.v3.*`；新鲜期 24 小时，过期后重新取。
+- 优先级来自 `providers/keys/page`，每轮实取（分页取全），不缓存；失败或取数不完整时没有优先级，按 `ROW_ORDER` 兜底，并提示「部分排序信息缺失」。
 - 站点配置里手写的 `:优先级` 仍然优先于自动匹配；CCH 站点按域名/名称沿用 CCHP 优先级的逻辑不变。
-- 缓存失效、接口又失败时，会依次回退 v3 旧值（最多 30 天）→ v2 → 更早的优先级缓存；空的缓存不算数，不会把后面仍有效的顺序挡住。
 - 中、大组件会把第一个带限额的站点（目前是 CommandCode）固定放在顶部大卡片；其余行按优先级排序。
 - 固定表按行名匹配，再按站点名；按名称前缀归类（`Kcne-Astra → Kcne`），大小写不敏感。
 - 不在表里的行排在最后，同档内依次用名称、采集顺序兜底。
 - 取数失败的站点永远排最后，不占用固定位置。
-- 在 CCHP 改了优先级后，最多 24 小时才会跟着变；要立即生效就清掉 `relay.cchp.prio.v3.*`。
+- 在 CCHP 改了优先级、停用或新增 key 后，下一轮取数即生效（小组件默认 15 分钟刷新一次）。
 
 ## 小组件
 
@@ -97,6 +98,9 @@ App 内不再展示面板，余额、限额和失败状态都看桌面小组件�
 - 没有 23:50 的日报通知。
 - CCH 管理站的「供应商限额」不再单独成段展示；只有 CommandCode 显示三个限额。
 - 时间预算：CCHP 一轮最多约 24 秒（原脚本 27 秒），超时就沿用服务端聚合值并给出提示。
+- 可见性判据与 Surge 一致：`keys/page` 取全时，没有任何 active key 的 provider 不显示；取不全或失败时不隐藏任何行。
+- 单账户投影恒开：Surge 有 `aiapi_cchp_single_account` 开关（默认 true，可关掉走多 key 聚合），Scripting 版没有这个开关。
+- 代表 key 来源：Surge 只用 `keys/page` 的 active keyId；Scripting 额外用 `provider.balance.keys[].key_id` 兜底，但这条兜底不用于判断可见性。
 
 ## 注意
 
