@@ -146,8 +146,8 @@ CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:
 - 排序：**先按 CCH 优先级升序**（数值越小越靠前，即 CCHP 里各 provider 的 key 优先级；CCH 站点按域名/名称匹配到
   CCHP 的厂商时沿用同一数值）。优先级相同再按名称（大小写不敏感），最后按配置顺序；金额/余额不参与排序。
   没有优先级的行（CCH user 站点、匹配不到厂商的独立站点）排在有优先级的行之后，其间用兜底顺序
-  `CommandCode → Clouder → Kcne → SD → Air`（写死在 `aiapi_relay.js` 的 `PANEL_ROW_ORDER`，名称与 Scripting 版
-  `scripting/aiapi/relay.core.ts` 的 `ROW_ORDER` 一致）；按名称前缀归类（`Kcne-Astra → Kcne`、`SD 备用 → SD`），
+  `CommandCode → Clouder → Kcne → Air`（写死在 `aiapi_relay.js` 的 `PANEL_ROW_ORDER`，名称与 Scripting 版
+  `scripting/aiapi/relay.core.ts` 的 `ROW_ORDER` 一致）；按名称前缀归类（`Kcne-Astra → Kcne`；`SD 备用` 这类不在表里的行排最后），
   大小写不敏感，不在表里的行排最后。站点末尾手写 `:优先级` 仍优先于自动匹配。
   该优先级来自 CCHP `keys/page`，每轮实取；失败或取数不完整时没有优先级，退回固定兜底。
 - 功能摘要：余额 + 今日用量（次数/成功率/首字）+ 供应商健康（成功率/首字 P50），**不查供应商限额**。
