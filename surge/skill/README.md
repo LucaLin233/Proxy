@@ -25,12 +25,12 @@ set -eu
 # 在 surge/skill 目录下以普通用户运行；下面的路径都相对当前目录，不写死本机路径
 WORK=$(mktemp -d "$PWD/.pkg.XXXXXX")      # 本次独占的工作树，收尾整体删除
 STAGE=$WORK/stage                         # 只放待发布成员
-OUT=$WORK/out/surge-skill-YYYYMMDD.zip    # 产物在暂存树之外
+OUT=$PWD/surge-skill-YYYYMMDD.zip         # 产物写当前目录，暂存树之外
 mkdir -p "$STAGE"
 tar cf - SKILL.md references scripts agents | (cd "$STAGE" && tar xf -)   # 不带 README.md 与旧 ZIP
 find "$STAGE" -type d -exec chmod 755 {} +; find "$STAGE" -type f -exec chmod 644 {} +
 (cd "$STAGE" && python3 scripts/package_release.py "$OUT")
-# 核对成员集合与 sha256 后再复制回本目录同名 ZIP
+# 产物已带日期名写到当前目录；核对成员集合与 sha256 后，再按需改名覆盖同名 surge-skill.zip
 rm -rf -- "${WORK:?}"
 ```
 
