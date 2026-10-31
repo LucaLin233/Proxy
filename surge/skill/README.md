@@ -18,18 +18,20 @@ python3 scripts/package_release.py /var/minis/shared/release/surge-skill-2026092
 # 显式路径仍可覆盖；路径落在技能目录内会被拒绝
 ```
 
-公开镜像包要从**独占暂存树**打：打包器以 `scripts/` 的上级目录为源、递归收成员，只按固定名字与后缀排除，把这棵目录整个交出去会把同目录的旧 `surge-skill.zip` 和 `README.md` 一起打进包。所以只把成员（`SKILL.md`、`agents/`、`references/`、`scripts/`）放进暂存树，在树内运行同一份打包器，产物写到树外；并且用**非 root** 用户运行——root 下 `os.access(X_OK)` 对 644 文件也返回真，成员会被写成 755。`README.md` 与旧 ZIP 都不入包，所以只改本文件不必重打 ZIP（重打可用 `sha256sum` 与旧包比对，内容未变则哈希一致）：
+公开镜像包要从**独占暂存树**打：打包器以 `scripts/` 的上级目录为源、递归收成员，只按固定名字与后缀排除，把这棵目录整个交出去会把同目录的旧 `surge-skill.zip` 和 `README.md` 一起打进包。所以只把成员（`SKILL.md`、`agents/`、`references/`、`scripts/`）放进暂存树，在树内运行同一份打包器，产物写到暂存树之外；整个过程用**普通用户**在当前目录下运行，不必 `su` 到 root，也不需要放宽工作树权限。在 Minis/iSH 的 root 下实测，`os.access(X_OK)` 对 644 文件也返回真，成员会被写成 755（Linux 上行为相反，见 `access(2)`），所以这里只把它当本机限制、不当通用事实：用普通用户运行即可得到 644。`README.md` 与旧 ZIP 都不入包，所以只改本文件不必重打 ZIP（重打可用 `sha256sum` 与旧包比对，内容未变则哈希一致）：
 
 ```sh
-WORK=/var/minis/shared/release/.pkg-work          # 独占工作树，收尾整体删除
-STAGE=$WORK/stage                                 # 只放待发布成员
-OUT=$WORK/surge-skill-YYYYMMDD.zip                # 产物在暂存树外
-rm -rf "$WORK"; mkdir -p "$STAGE"
+set -eu
+# 在 surge/skill 目录下以普通用户运行；下面的路径都相对当前目录，不写死本机路径
+WORK=$(mktemp -d "$PWD/.pkg.XXXXXX")      # 本次独占的工作树，收尾整体删除
+STAGE=$WORK/stage                         # 只放待发布成员
+OUT=$WORK/out/surge-skill-YYYYMMDD.zip    # 产物在暂存树之外
+mkdir -p "$STAGE"
 tar cf - SKILL.md references scripts agents | (cd "$STAGE" && tar xf -)   # 不带 README.md 与旧 ZIP
 find "$STAGE" -type d -exec chmod 755 {} +; find "$STAGE" -type f -exec chmod 644 {} +
-chmod 777 "$WORK"                                 # 非 root 用户要能读暂存树、写产物目录
-su nobody -s /bin/sh -c "cd '$STAGE' && python3 scripts/package_release.py '$OUT'"
-# 核对成员集合与 sha256 后再复制回本目录同名 ZIP；收尾 rm -rf "$WORK"
+(cd "$STAGE" && python3 scripts/package_release.py "$OUT")
+# 核对成员集合与 sha256 后再复制回本目录同名 ZIP
+rm -rf -- "${WORK:?}"
 ```
 
 归档条目落在 **ZIP 根**（`SKILL.md`、`agents/…`、`references/…`、`scripts/…`，无顶层目录），即 `lh skill install` 消费的布局；固定时间戳；按可执行位写 755/644。写入前拒绝符号链接，排除 `__pycache__`、日志与密钥类目录/文件名以及 `.pem`、`.key`、`.conf` 等后缀，并扫描私钥块与 `sk-`/`ghp_`/`github_pat`/`xox*` 等 token 前缀——命中即中止；输出 ZIP 必须位于技能目录之外。禁止打包凭据、profile、抓包、请求正文、数据库与运行输出；打包前按 `references/SOURCE.md` 的验收要求核对内容。
