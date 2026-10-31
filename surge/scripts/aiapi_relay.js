@@ -766,7 +766,7 @@ function rowOrderRank(name) {
   for (let index = 0; index < PANEL_ROW_ORDER.length; index += 1) {
     const token = PANEL_ROW_ORDER[index];
     if (text === token) return index;
-    /* Kcne-Astra、SD 备用 这类同品牌的子项归到同一档 */
+    /* Kcne-Astra 这类同品牌的子项归到同一档 */
     if (text.startsWith(token) && /^[-_\s·]/.test(text.slice(token.length))) return index;
   }
   return PANEL_ROW_ORDER.length;
@@ -774,7 +774,7 @@ function rowOrderRank(name) {
 
 /* 排序：先按 CCH 优先级升序（数值越小越优先）；没有优先级的行（CCH user 站点、独立站点
    且未写 `:优先级`）一律排在有优先级的行之后，其间按写死的展示顺序兜底
-   （CommandCode → Clouder → Kcne → SD → Air）；再按显示名（大小写不敏感）、插入序号。
+   （CommandCode → Clouder → Kcne → Air；SD 等不在表里的行排最后）；再按显示名（大小写不敏感）、插入序号。
    金额只用于展示，不参与排序——余额变化不会让行序跳动 */
 function compareRows(a, b) {
   const leftPriority = numeric(a.priority);
@@ -1061,6 +1061,9 @@ async function mapLimit(items, limit, worker) {
 async function fetchCchpKeyPages(site, orgId, headers) {
   const keys = [];
   let cursor = "";
+  /* 游标必须前进：服务端回同一个游标（相邻重复）或游标成环时，翻页永远到不了终点。
+     这类分页结果不可信，按「取数不完整」返回，行不据此隐藏、也不保留部分优先级 */
+  const seen = new Set();
   for (let page = 0; page < CCHP_KEY_PAGE_MAX; page += 1) {
     if (cchpBudgetSpent()) throw cchpTimeoutError();
     const query = `limit=${CCHP_KEY_PAGE_LIMIT}${cursor ? `&after=${encodeURIComponent(cursor)}` : ""}`;
@@ -1078,6 +1081,11 @@ async function fetchCchpKeyPages(site, orgId, headers) {
     if (body.partial === true || body.preparing === true) return { keys, complete: false };
     const next = String(body.nextCursor || "").trim();
     if (!next) return { keys, complete: true };
+    if (seen.has(next)) {
+      cchpLog(`keys/page 游标未前进（重复或成环），本轮不据 key 隐藏行: ${next}`);
+      return { keys, complete: false };
+    }
+    seen.add(next);
     cursor = next;
   }
   /* 页数用满还有游标：按不完整处理，避免游标不前进时死循环 */
@@ -1379,7 +1387,7 @@ async function fetchCchpSite(site, headers) {
     balancePartial: Boolean(balancePartial),
     /* 刷新不全且重取超时：超时提示已解释，不再重复「余额未刷新」 */
     balanceSuppressStale: Boolean(balanceSuppressStale),
-    /* 部分请求因总预算耗尽被跳过（含刷新阶段与重取列表）；priority 回退过旧值 / 回退后仍缺 */
+    /* 部分请求因总预算耗尽被跳过（含刷新阶段与重取列表）；priority 取不全时按没有优先级处理 */
     timedOut: Boolean(snapshot.timedOut || priorities.timedOut || balanceTimedOut),
     priorityMissing: Boolean(priorities.missing),
     /* 今日用量（today）与按 providerId 的健康数据；取不到为 null */
