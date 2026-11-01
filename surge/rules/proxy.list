@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-10-31T14:00:01Z
-# Total:   20234
+# Updated: 2026-11-01T14:00:01Z
+# Total:   20236
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -16944,6 +16944,7 @@ DOMAIN-SUFFIX,torlock.com
 DOMAIN-SUFFIX,toroporno.com
 DOMAIN-SUFFIX,torproject.org
 DOMAIN-SUFFIX,torrentkitty.tv
+DOMAIN-SUFFIX,torrentleech.org
 DOMAIN-SUFFIX,torrentprivacy.com
 DOMAIN-SUFFIX,torrenty.org
 DOMAIN-SUFFIX,torrindex.net
@@ -19261,6 +19262,7 @@ DOMAIN-SUFFIX,youtubego.com
 DOMAIN-SUFFIX,youtubekids.com
 DOMAIN-SUFFIX,youtubemobilesupport.com
 DOMAIN-SUFFIX,youversion.com
+DOMAIN-SUFFIX,youversionapi.com
 DOMAIN-SUFFIX,youwin.com
 DOMAIN-SUFFIX,youwuss.com
 DOMAIN-SUFFIX,youxu.info
