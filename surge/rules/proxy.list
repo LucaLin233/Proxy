@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-11-02T14:00:01Z
-# Total:   20240
+# Updated: 2026-11-04T14:00:02Z
+# Total:   20242
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -2619,6 +2619,7 @@ DOMAIN-SUFFIX,befuck.com
 DOMAIN-SUFFIX,befuck.net
 DOMAIN-SUFFIX,beget.cloud
 DOMAIN-SUFFIX,beget.com
+DOMAIN-SUFFIX,beget.email
 DOMAIN-SUFFIX,beget.hosting
 DOMAIN-SUFFIX,beget.pro
 DOMAIN-SUFFIX,beget.tech
@@ -2812,6 +2813,7 @@ DOMAIN-SUFFIX,bikaios.xyz
 DOMAIN-SUFFIX,bili2.cc
 DOMAIN-SUFFIX,bili888.com
 DOMAIN-SUFFIX,bili999.com
+DOMAIN-SUFFIX,bilibili.tv
 DOMAIN-SUFFIX,bilinovel.com
 DOMAIN-SUFFIX,biliplus.com
 DOMAIN-SUFFIX,biliworld.com
