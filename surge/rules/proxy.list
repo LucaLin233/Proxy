@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-10-29T14:00:02Z
-# Total:   20226
+# Updated: 2026-11-05T14:00:02Z
+# Total:   20247
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -170,6 +170,7 @@ DOMAIN-SUFFIX,18comic-god.club
 DOMAIN-SUFFIX,18comic-god.xyz
 DOMAIN-SUFFIX,18comic.cc
 DOMAIN-SUFFIX,18comic.company
+DOMAIN-SUFFIX,18comic.ink
 DOMAIN-SUFFIX,18comic.org
 DOMAIN-SUFFIX,18comic.vip
 DOMAIN-SUFFIX,18commic.com
@@ -2618,6 +2619,7 @@ DOMAIN-SUFFIX,befuck.com
 DOMAIN-SUFFIX,befuck.net
 DOMAIN-SUFFIX,beget.cloud
 DOMAIN-SUFFIX,beget.com
+DOMAIN-SUFFIX,beget.email
 DOMAIN-SUFFIX,beget.hosting
 DOMAIN-SUFFIX,beget.pro
 DOMAIN-SUFFIX,beget.tech
@@ -2811,6 +2813,7 @@ DOMAIN-SUFFIX,bikaios.xyz
 DOMAIN-SUFFIX,bili2.cc
 DOMAIN-SUFFIX,bili888.com
 DOMAIN-SUFFIX,bili999.com
+DOMAIN-SUFFIX,bilibili.tv
 DOMAIN-SUFFIX,bilinovel.com
 DOMAIN-SUFFIX,biliplus.com
 DOMAIN-SUFFIX,biliworld.com
@@ -2874,6 +2877,7 @@ DOMAIN-SUFFIX,bingapistatistics.com
 DOMAIN-SUFFIX,bingoporno.com
 DOMAIN-SUFFIX,bingparachute.com
 DOMAIN-SUFFIX,bingsandbox.com
+DOMAIN-SUFFIX,bingstatic.com
 DOMAIN-SUFFIX,bingvisualsearch.com
 DOMAIN-SUFFIX,bingworld.com
 DOMAIN-SUFFIX,bingx.com
@@ -3055,6 +3059,7 @@ DOMAIN-SUFFIX,bmdru.com
 DOMAIN-SUFFIX,bmia.org
 DOMAIN-SUFFIX,bmj.com
 DOMAIN-SUFFIX,bml.info
+DOMAIN-SUFFIX,bmonkeys.net
 DOMAIN-SUFFIX,bmw
 DOMAIN-SUFFIX,bmw-abudhabi.com
 DOMAIN-SUFFIX,bmw-adventskalender.com
@@ -3238,6 +3243,7 @@ DOMAIN-SUFFIX,bohemia.net
 DOMAIN-SUFFIX,bokep.net
 DOMAIN-SUFFIX,bokepseks.org
 DOMAIN-SUFFIX,bokepvidz.com
+DOMAIN-SUFFIX,boldgrid.com
 DOMAIN-SUFFIX,bolehvpn.net
 DOMAIN-SUFFIX,bollywoodlife.com
 DOMAIN-SUFFIX,boltdns.net
@@ -3437,6 +3443,7 @@ DOMAIN-SUFFIX,bs-adreview.com
 DOMAIN-SUFFIX,bsappapi.cc
 DOMAIN-SUFFIX,bsappapi.com
 DOMAIN-SUFFIX,bscdnweb.com
+DOMAIN-SUFFIX,bsky.chat
 DOMAIN-SUFFIX,bsky.network
 DOMAIN-SUFFIX,bsky.social
 DOMAIN-SUFFIX,bstatic.com
@@ -7645,6 +7652,7 @@ DOMAIN-SUFFIX,githubapp.com
 DOMAIN-SUFFIX,githubassets.com
 DOMAIN-SUFFIX,githubcopilot.com
 DOMAIN-SUFFIX,githubhackathon.com
+DOMAIN-SUFFIX,githubhelp.com
 DOMAIN-SUFFIX,githubnext.com
 DOMAIN-SUFFIX,githubstatus.com
 DOMAIN-SUFFIX,githubsupport.com
@@ -10534,6 +10542,9 @@ DOMAIN-SUFFIX,lilaoshibushinilaoshi.com
 DOMAIN-SUFFIX,lilhumpers.com
 DOMAIN-SUFFIX,liliav.com
 DOMAIN-SUFFIX,lilith-soft.com
+DOMAIN-SUFFIX,limbuscompany.global
+DOMAIN-SUFFIX,limbuscompanyapi.com
+DOMAIN-SUFFIX,limbuscompanycdn.org
 DOMAIN-SUFFIX,limelight.com
 DOMAIN-SUFFIX,limertw.cc
 DOMAIN-SUFFIX,limeteensex.com
@@ -11826,6 +11837,7 @@ DOMAIN-SUFFIX,msftauthimages.net
 DOMAIN-SUFFIX,msftconnecttest.com
 DOMAIN-SUFFIX,msftncsi.com
 DOMAIN-SUFFIX,msftnet.org
+DOMAIN-SUFFIX,msftstatic.com
 DOMAIN-SUFFIX,msgamesresearch.com
 DOMAIN-SUFFIX,msgamestudios.com
 DOMAIN-SUFFIX,mshome.net
@@ -14193,6 +14205,7 @@ DOMAIN-SUFFIX,projectbaseline.com
 DOMAIN-SUFFIX,projectcircuitbreaker.com
 DOMAIN-SUFFIX,projecteuclid.org
 DOMAIN-SUFFIX,projectjav.com
+DOMAIN-SUFFIX,projectmoon.studio
 DOMAIN-SUFFIX,projectmurphy.net
 DOMAIN-SUFFIX,projectpoint.com
 DOMAIN-SUFFIX,projectpoint.net
@@ -15621,6 +15634,7 @@ DOMAIN-SUFFIX,skillbox.pro
 DOMAIN-SUFFIX,skillshare.com
 DOMAIN-SUFFIX,skimtube.com
 DOMAIN-SUFFIX,skinstrip.net
+DOMAIN-SUFFIX,skinswap.com
 DOMAIN-SUFFIX,skokka.com
 DOMAIN-SUFFIX,sksarab.top
 DOMAIN-SUFFIX,skunkgirl.cc
@@ -16792,7 +16806,10 @@ DOMAIN-SUFFIX,tiktokd.org
 DOMAIN-SUFFIX,tiktokeu-cdn.com
 DOMAIN-SUFFIX,tiktokglobalshopv.com
 DOMAIN-SUFFIX,tiktokrow-cdn.com
+DOMAIN-SUFFIX,tiktokshop.com
+DOMAIN-SUFFIX,tiktokstaticb.com
 DOMAIN-SUFFIX,tiktokv.com
+DOMAIN-SUFFIX,tiktokvapp.com
 DOMAIN-SUFFIX,tilda.cc
 DOMAIN-SUFFIX,tildaapi.com
 DOMAIN-SUFFIX,tildacdn.com
@@ -16936,6 +16953,7 @@ DOMAIN-SUFFIX,torlock.com
 DOMAIN-SUFFIX,toroporno.com
 DOMAIN-SUFFIX,torproject.org
 DOMAIN-SUFFIX,torrentkitty.tv
+DOMAIN-SUFFIX,torrentleech.org
 DOMAIN-SUFFIX,torrentprivacy.com
 DOMAIN-SUFFIX,torrenty.org
 DOMAIN-SUFFIX,torrindex.net
@@ -18114,6 +18132,7 @@ DOMAIN-SUFFIX,webcamtubexxx.com
 DOMAIN-SUFFIX,webcitation.org
 DOMAIN-SUFFIX,webex.com
 DOMAIN-SUFFIX,webex.com.hk
+DOMAIN-SUFFIX,webflow-ext.com
 DOMAIN-SUFFIX,webflow.com
 DOMAIN-SUFFIX,webgata.net
 DOMAIN-SUFFIX,webgirlsonline.net
@@ -18133,6 +18152,7 @@ DOMAIN-SUFFIX,webpass.net
 DOMAIN-SUFFIX,webpkgcache.com
 DOMAIN-SUFFIX,webrtc.org
 DOMAIN-SUFFIX,websdr.org
+DOMAIN-SUFFIX,website-files.com
 DOMAIN-SUFFIX,webtoons.com
 DOMAIN-SUFFIX,webtoonscorp.com
 DOMAIN-SUFFIX,webtype.com
@@ -19253,6 +19273,7 @@ DOMAIN-SUFFIX,youtubego.com
 DOMAIN-SUFFIX,youtubekids.com
 DOMAIN-SUFFIX,youtubemobilesupport.com
 DOMAIN-SUFFIX,youversion.com
+DOMAIN-SUFFIX,youversionapi.com
 DOMAIN-SUFFIX,youwin.com
 DOMAIN-SUFFIX,youwuss.com
 DOMAIN-SUFFIX,youxu.info

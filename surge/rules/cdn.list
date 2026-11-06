@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-10-29T14:00:20Z
-# Total:   6777
+# Updated: 2026-11-05T14:00:22Z
+# Total:   6778
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -396,6 +396,7 @@ DOMAIN-SUFFIX,assets.swiftkey.com
 DOMAIN-SUFFIX,assets.swoogo.com
 DOMAIN-SUFFIX,assets.tangled.network
 DOMAIN-SUFFIX,assets.tatlerasia.com
+DOMAIN-SUFFIX,assets.temporary-phone-number.com
 DOMAIN-SUFFIX,assets.the-independent.com
 DOMAIN-SUFFIX,assets.tigerdata.com
 DOMAIN-SUFFIX,assets.time.com
