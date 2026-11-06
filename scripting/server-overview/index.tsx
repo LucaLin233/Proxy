@@ -1,44 +1,34 @@
-// 服务器监控 · App 内页面（数据层在 core.ts）
+// 服务器监控 · App 内设置页（数据层在 core.ts）
 import {
   Button,
   Form,
-  HStack,
-  List,
   Navigation,
   NavigationStack,
   Picker,
-  ProgressView,
   Script,
   Section,
   SecureField,
-  Spacer,
   Text,
   TextField,
   Toggle,
   VStack,
   Widget,
-  useEffect,
   useState,
 } from "scripting"
 import {
-  daysLeft,
-  formatBytes,
-  formatClock,
-  formatDate,
+  REFRESH_CHOICES,
+  clampRefreshMinutes,
+  clearPanelCache,
   lightsailReady,
-  loadPanel,
-  maskIp,
   parseSurgeArguments,
   peekaboReady,
-  percentText,
   readConfig,
   surgeArgumentsOf,
   writeConfig,
 } from "./core"
-import type { Config, IpMode, ServerData } from "./core"
+import type { Config, IpMode } from "./core"
 
 const MUTED: any = { light: "#6B6B70", dark: "#9A9AA0" }
-const RED = "#FF453A"
 
 declare const Clipboard: any
 
@@ -54,173 +44,10 @@ function messageOf(error: any): string {
   return String(error.message || error)
 }
 
-function ratioInk(ratio: number | null): any {
-  if (ratio === null) return MUTED
-  if (ratio >= 0.9) return { light: "#C4170C", dark: "#FF6961" }
-  if (ratio >= 0.7) return { light: "#9A5B00", dark: "#FFD60A" }
-  return { light: "#137A3A", dark: "#32D74B" }
-}
-
-function ratioTint(ratio: number | null): any {
-  if (ratio === null) return "#8E8E93"
-  if (ratio >= 0.9) return "#FF453A"
-  if (ratio >= 0.7) return "#FF9F0A"
-  return "#30D158"
-}
-
-function ipText(ip: string, mode: IpMode): string {
-  if (!ip) return "无公网 IP"
-  if (mode === "hide") return "IP 已隐藏"
-  return mode === "mask" ? maskIp(ip) : ip
-}
-
-function clampRatio(value: number): number {
-  if (!Number.isFinite(value)) return 0
-  return Math.max(0, Math.min(1, value))
-}
-
-/* ── 面板 ── */
-
-function PanelScreen({
-  data,
-  loading,
-  error,
-  config,
-  onRefresh,
-  onSettings,
-}: {
-  data: ServerData | null
-  loading: boolean
-  error: string
-  config: Config
-  onRefresh: () => void
-  onSettings: () => void
-}) {
-  const groups = data ? data.groups.slice(0, config.maxRows) : []
-  const hidden = data ? data.groups.length - groups.length : 0
-  const peekabo = data ? data.peekabo : null
-
-  return (
-    <NavigationStack>
-      <List
-        navigationTitle="服务器监控"
-        navigationBarTitleDisplayMode="inline"
-        toolbar={{
-          cancellationAction: <Button title="关闭" action={() => Script.exit()} />,
-          confirmationAction: <Button title="刷新" action={onRefresh} />,
-        }}
-      >
-        {error ? (
-          <Section header={<Text>错误</Text>}>
-            <Text foregroundStyle={RED}>{error}</Text>
-          </Section>
-        ) : null}
-
-        <Section
-          header={
-            <Text>
-              {loading
-                ? "正在取数…"
-                : data
-                  ? `Lightsail · 更新于 ${formatClock(data.updatedAt)}${data.fromCache ? " · 缓存" : ""}`
-                  : "Lightsail"}
-            </Text>
-          }
-        >
-          {groups.length
-            ? groups.map((group) => {
-                const known = group.quotaBytes > 0
-                return (
-                  <VStack key={group.key} alignment="leading" spacing={5}>
-                    <HStack alignment="firstTextBaseline" spacing={6}>
-                      <Text font={16} fontWeight="semibold" lineLimit={1}>{group.regionName}</Text>
-                      <Text font={11} foregroundStyle={MUTED} lineLimit={1}>{group.bundleId}</Text>
-                      <Spacer />
-                      <Text
-                        font={15}
-                        fontWeight="bold"
-                        fontDesign="rounded"
-                        monospacedDigit
-                        foregroundStyle={ratioInk(known ? group.percent : null)}
-                      >
-                        {known ? percentText(group.percent, 1) : "--"}
-                      </Text>
-                    </HStack>
-                    <ProgressView
-                      value={known ? clampRatio(group.percent) : 0}
-                      total={1}
-                      tint={ratioTint(known ? group.percent : null)}
-                    />
-                    <Text font={12} foregroundStyle={MUTED}>
-                      {`${formatBytes(group.usedBytes)} / ${known ? formatBytes(group.quotaBytes) : "配额未知"}${config.showToday ? ` · 今日 ${formatBytes(group.todayBytes)}` : ""}`}
-                    </Text>
-                    {group.instances.map((instance) => (
-                      <Text key={`${group.key}.${instance.name}`} font={11} foregroundStyle={MUTED} lineLimit={1}>
-                        {`${instance.name} · ${ipText(instance.ip, config.ipMode)} · ${formatBytes(instance.usedBytes)}`}
-                      </Text>
-                    ))}
-                  </VStack>
-                )
-              })
-            : (
-              <Text foregroundStyle={MUTED}>
-                {loading ? "取数中…" : lightsailReady(config) ? "没有找到 Lightsail 实例" : "未配置 AWS 密钥"}
-              </Text>
-            )}
-          {hidden > 0 ? <Text font={12} foregroundStyle={MUTED}>{`还有 ${hidden} 组未显示`}</Text> : null}
-        </Section>
-
-        {peekabo ? (
-          <Section header={<Text>Peekabo</Text>}>
-            {peekabo.ok ? (
-              <VStack alignment="leading" spacing={5}>
-                <HStack alignment="firstTextBaseline" spacing={6}>
-                  <Text font={16} fontWeight="semibold">当月流量</Text>
-                  <Spacer />
-                  <Text font={15} fontWeight="bold" fontDesign="rounded" monospacedDigit foregroundStyle={ratioInk(peekabo.percent)}>
-                    {percentText(peekabo.percent, 1)}
-                  </Text>
-                </HStack>
-                <ProgressView value={clampRatio(peekabo.percent)} total={1} tint={ratioTint(peekabo.percent)} />
-                <Text font={12} foregroundStyle={MUTED}>{`${formatBytes(peekabo.used)} / ${formatBytes(peekabo.total)}`}</Text>
-                <HStack alignment="center" spacing={6}>
-                  <Text font={12} foregroundStyle={MUTED}>{`到期 ${formatDate(peekabo.expireAt)}`}</Text>
-                  <Spacer />
-                  <Text
-                    font={12}
-                    fontWeight="semibold"
-                    foregroundStyle={peekabo.daysLeft <= 3 ? RED : MUTED}
-                  >
-                    {peekabo.daysLeft <= 0 ? "已到期" : `剩 ${peekabo.daysLeft} 天`}
-                  </Text>
-                </HStack>
-              </VStack>
-            ) : (
-              <Text foregroundStyle={RED}>{`❌ ${peekabo.error}`}</Text>
-            )}
-          </Section>
-        ) : null}
-
-        {data && data.errors.length ? (
-          <Section header={<Text>提示</Text>}>
-            {data.errors.map((item) => (
-              <Text key={`${item.source}.${item.message}`} font={12} foregroundStyle={RED}>
-                {`${item.source}：${item.message}`}
-              </Text>
-            ))}
-            {data.stale ? <Text font={12} foregroundStyle={MUTED}>本次取数失败，上面显示的是上一次的缓存。</Text> : null}
-          </Section>
-        ) : null}
-
-        <Section>
-          <Button title="设置" action={onSettings} />
-          <Text font={12} foregroundStyle={MUTED}>
-            AWS 密钥只需要 lightsail:GetInstances / GetBundles / GetInstanceMetricData 三个只读权限。
-          </Text>
-        </Section>
-      </List>
-    </NavigationStack>
-  )
+function refreshLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes} 分钟`
+  const hours = minutes / 60
+  return Number.isInteger(hours) ? `${hours} 小时` : `${minutes} 分钟`
 }
 
 /* ── 设置 ── */
@@ -252,7 +79,6 @@ function SettingsScreen({
   }
 
   const save = () => {
-    const rows = Math.max(3, Math.min(30, Math.round(Number(draft.maxRows) || 8)))
     onSave({
       ...draft,
       awsKeyId: draft.awsKeyId.trim(),
@@ -260,7 +86,7 @@ function SettingsScreen({
       regions: draft.regions.trim() || "ap-east-1|ap-northeast-1",
       peekaboToken: draft.peekaboToken.trim(),
       peekaboId: draft.peekaboId.trim(),
-      maxRows: rows,
+      refreshMinutes: clampRefreshMinutes(draft.refreshMinutes),
     })
   }
 
@@ -304,12 +130,6 @@ function SettingsScreen({
             prompt="ap-east-1|ap-northeast-1"
             />
           </VStack>
-          <Picker title="IP 显示" value={draft.ipMode} onChanged={(value: any) => patch({ ipMode: value as IpMode })}>
-            {IP_LABELS.map(([value, label]) => <Text key={value} tag={value}>{label}</Text>)}
-          </Picker>
-          <Toggle value={draft.showToday} onChanged={(value: boolean) => patch({ showToday: value })}>
-            <Text>显示今日流量</Text>
-          </Toggle>
         </Section>
 
         <Section
@@ -336,19 +156,31 @@ function SettingsScreen({
           </VStack>
         </Section>
 
-        <Section header={<Text>显示</Text>}>
-          <VStack alignment="leading" spacing={4}>
-            <Text font={12} fontWeight="medium" foregroundStyle={MUTED}>列表行数</Text>
-            <TextField
-              label={<Text>列表行数</Text>}
-            value={String(draft.maxRows)}
-            onChanged={(value: string) => {
-              const parsed = Number(value.replace(/[^0-9]/g, ""))
-              patch({ maxRows: Number.isFinite(parsed) && parsed > 0 ? parsed : 8 })
-            }}
-            prompt="App 内最多显示多少组，默认 8"
-            />
-          </VStack>
+        <Section header={<Text>显示</Text>} footer={<Text>IP 脱敏只影响 IPv4；今日流量要多查一轮接口，关掉刷新更快。</Text>}>
+          <Picker title="IP 显示" value={draft.ipMode} onChanged={(value: any) => patch({ ipMode: value as IpMode })}>
+            {IP_LABELS.map(([value, label]) => <Text key={value} tag={value}>{label}</Text>)}
+          </Picker>
+          <Toggle value={draft.showToday} onChanged={(value: boolean) => patch({ showToday: value })}>
+            <Text>显示今日流量</Text>
+          </Toggle>
+        </Section>
+
+        <Section header={<Text>刷新</Text>}>
+          <Picker
+            title="小组件刷新间隔"
+            value={String(draft.refreshMinutes)}
+            onChanged={(value: any) => patch({ refreshMinutes: clampRefreshMinutes(value) })}
+          >
+            {REFRESH_CHOICES.map((minutes) => (
+              <Text key={String(minutes)} tag={String(minutes)}>{refreshLabel(minutes)}</Text>
+            ))}
+          </Picker>
+          <Text font={12} foregroundStyle={MUTED}>
+            默认 30 分钟；到点后小组件会自动重取流量。可选 15 分钟到 12 小时。
+          </Text>
+          <Text font={12} foregroundStyle={MUTED}>
+            iOS 会按电量、使用频率和小组件个数节流，实际刷新可能比设定更晚；想立即取一次，用小组件右上角的刷新按钮。
+          </Text>
         </Section>
 
         <Section header={<Text>从 Surge 导入</Text>}>
@@ -358,7 +190,7 @@ function SettingsScreen({
               label={<Text>argument</Text>}
             value={bulk}
             onChanged={(value: string) => setBulk(value)}
-            prompt="lightsail_ak=…&amp;lightsail_sk=…"
+            prompt="lightsail_ak=…&lightsail_sk=…"
             />
           </VStack>
           <Button title="解析并填入上方" action={doImport} />
@@ -381,6 +213,12 @@ function SettingsScreen({
             }}
           />
         </Section>
+
+        <Section header={<Text>说明</Text>}>
+          <Text font={12} foregroundStyle={MUTED}>
+            这里只保存参数，不取数；流量与到期时间都在桌面小组件里查看。保存后会清掉旧缓存、按新间隔重取，并关闭此页。
+          </Text>
+        </Section>
       </Form>
     </NavigationStack>
   )
@@ -389,63 +227,23 @@ function SettingsScreen({
 /* ── 入口 ── */
 
 function App() {
-  const [config, setConfig] = useState<Config>(readConfig())
-  const [data, setData] = useState<ServerData | null>(null)
-  const [loading, setLoading] = useState<boolean>(false)
-  const [error, setError] = useState<string>("")
-  const [nonce, setNonce] = useState<number>(0)
-  const [screen, setScreen] = useState<string>(
-    lightsailReady(config) || peekaboReady(config) ? "panel" : "settings"
-  )
+  const [config] = useState<Config>(readConfig())
 
-  useEffect(() => {
-    if (!lightsailReady(config) && !peekaboReady(config)) {
-      setData(null)
-      setLoading(false)
-      return
-    }
-    let alive = true
-    setLoading(true)
-    setError("")
-    loadPanel(config, 0)
-      .then((value) => {
-        if (!alive) return
-        setData(value)
-        setLoading(false)
-        try { Widget.reloadAll() } catch (_) {}
-      })
-      .catch((reason) => {
-        if (!alive) return
-        setError(messageOf(reason))
-        setLoading(false)
-      })
-    return () => { alive = false }
-  }, [config, nonce])
-
-  if (screen === "settings") {
-    return (
-      <SettingsScreen
-        config={config}
-        onCancel={() => setScreen("panel")}
-        onSave={(next) => {
-          writeConfig(next)
-          setConfig(next)
-          setScreen("panel")
-          setNonce(nonce + 1)
-          try { Widget.reloadAll() } catch (_) {}
-        }}
-      />
-    )
+  const finish = () => {
+    try { Script.exit() } catch (_) {}
   }
 
   return (
-    <PanelScreen
-      data={data}
-      loading={loading}
-      error={error}
+    <SettingsScreen
       config={config}
-      onRefresh={() => setNonce(nonce + 1)}
-      onSettings={() => setScreen("settings")}
+      onCancel={finish}
+      onSave={(next) => {
+        writeConfig(next)
+        /* 参数或间隔变了就让下次时间线重新取数，而不是继续用旧缓存 */
+        clearPanelCache()
+        try { Widget.reloadAll() } catch (_) {}
+        finish()
+      }}
     />
   )
 }

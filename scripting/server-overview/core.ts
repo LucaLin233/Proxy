@@ -21,8 +21,8 @@ export type Config = {
   peekaboId: string
   /* 是否取「今日」流量：多一轮接口，关掉能快一半 */
   showToday: boolean
-  /* App 内最多显示多少组 */
-  maxRows: number
+  /* 小组件刷新间隔（分钟）：同时决定这一轮数据能被复用多久 */
+  refreshMinutes: number
 }
 
 export type ServerInstance = {
@@ -93,7 +93,18 @@ export const DEFAULT_CONFIG: Config = {
   peekaboToken: "",
   peekaboId: "",
   showToday: true,
-  maxRows: 8,
+  refreshMinutes: 30,
+}
+
+/* 刷新间隔可选值（分钟）：iOS 对小组件刷新有节流，最短给到 15 分钟 */
+export const REFRESH_CHOICES: number[] = [15, 30, 60, 120, 180, 360, 720]
+export const REFRESH_MIN = 15
+export const REFRESH_MAX = 720
+
+export function clampRefreshMinutes(value: any): number {
+  const minutes = Number(value)
+  if (!isFinite(minutes)) return DEFAULT_CONFIG.refreshMinutes
+  return Math.min(REFRESH_MAX, Math.max(REFRESH_MIN, Math.round(minutes)))
 }
 
 const IP_MODES: IpMode[] = ["full", "mask", "hide"]
@@ -113,6 +124,7 @@ export function readConfig(): Config {
         ...parsed,
         ipMode: normalizeIpMode(parsed.ipMode),
         showToday: parsed.showToday !== false,
+        refreshMinutes: clampRefreshMinutes(parsed.refreshMinutes),
       }
     }
   } catch (_) {}

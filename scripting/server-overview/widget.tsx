@@ -1,6 +1,6 @@
 // 服务器监控 · 桌面小组件入口
 import { Widget } from "scripting"
-import { emptyData, lightsailReady, loadPanel, peekaboReady, readConfig } from "./core"
+import { clampRefreshMinutes, emptyData, lightsailReady, loadPanel, peekaboReady, readConfig } from "./core"
 import { ServerWidget } from "./views"
 
 function familyOf(): string {
@@ -28,11 +28,15 @@ async function run() {
   }
 
   try {
-    /* 5 分钟内复用上次结果：桌面连续刷新时不重复打 AWS 接口 */
-    const data = await loadPanel(config, 5 * 60 * 1000)
+    /* 刷新间隔来自设置页（默认 30 分钟）；间隔内复用上次结果，系统提前唤醒时不重复打 AWS 接口 */
+    const refreshMs = clampRefreshMinutes(config.refreshMinutes) * 60 * 1000
+    const cacheMs = Math.max(60 * 1000, refreshMs - 60 * 1000)
+    const data = await loadPanel(config, cacheMs)
+    /* 下一次时间线以「数据时间 + 间隔」为锚点：系统提前唤醒时不会把节奏拖后 */
+    const next = Math.max(Date.now() + 60 * 1000, data.updatedAt + refreshMs)
     Widget.present(
       <ServerWidget data={data} config={config} widgetSizeHint={family} />,
-      { policy: "after", date: new Date(Date.now() + 30 * 60 * 1000) }
+      { policy: "after", date: new Date(next) }
     )
   } catch (error) {
     Widget.present(
