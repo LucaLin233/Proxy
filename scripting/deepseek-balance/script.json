@@ -1,0 +1,23 @@
+{
+  "name": "DeepSeek 余额",
+  "icon": "sparkles",
+  "color": "rgba(77, 107, 254, 1)",
+  "version": "1.0.0",
+  "runInApp": true,
+  "entry": "index.tsx",
+  "description": "DeepSeek account balance, grant / top-up breakdown and spend history, with a home screen widget.",
+  "author": null,
+  "iconImage": null,
+  "permissions": null,
+  "remoteResource": null,
+  "intentInputTypes": [],
+  "contributors": [],
+  "localizedNames": {
+    "zh": "DeepSeek 余额",
+    "en": "DeepSeek Balance"
+  },
+  "localizedDescriptions": {
+    "zh": "DeepSeek 可用余额、赠送/充值构成与消耗记录，支持桌面小组件",
+    "en": "DeepSeek balance, grant / top-up breakdown and spend history, with a home screen widget."
+  }
+}
