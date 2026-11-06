@@ -25,6 +25,8 @@ export type Options = {
   monthCap: number
   /* App 内最多显示多少行 */
   maxRows: number
+  /* 小组件多久重取一次余额（分钟），默认 15 */
+  refreshMinutes: number
 }
 
 export type RowLimit = {
@@ -106,7 +108,18 @@ const STORE_SITES = "relay.sites.v2"
 const STORE_OPTS = "relay.opts.v1"
 const STORE_CACHE = "relay.panel.v1"
 
-const DEFAULT_OPTIONS: Options = { monthCap: 70, maxRows: 10 }
+const DEFAULT_OPTIONS: Options = { monthCap: 70, maxRows: 10, refreshMinutes: 15 }
+
+/* 刷新间隔可选值（分钟）：iOS 对小组件刷新有节流，最短给到 15 分钟 */
+export const REFRESH_CHOICES: number[] = [15, 30, 60, 120, 180, 360, 720]
+export const REFRESH_MIN = 15
+export const REFRESH_MAX = 720
+
+export function clampRefreshMinutes(value: any): number {
+  const minutes = numeric(value)
+  if (minutes === null) return DEFAULT_OPTIONS.refreshMinutes
+  return Math.min(REFRESH_MAX, Math.max(REFRESH_MIN, Math.round(minutes)))
+}
 
 /* 兜底展示顺序：有 CCHP 优先级（priority）时按优先级排，只有优先级相同或缺失才用这张表。
    与 Surge 模块 surge/scripts/aiapi_relay.js 的 PANEL_ROW_ORDER 保持一致。
@@ -172,6 +185,7 @@ export function readOptions(): Options {
       return {
         monthCap: monthCap !== null && monthCap > 0 ? monthCap : DEFAULT_OPTIONS.monthCap,
         maxRows: maxRows !== null ? Math.min(20, Math.max(3, Math.round(maxRows))) : DEFAULT_OPTIONS.maxRows,
+        refreshMinutes: clampRefreshMinutes(parsed.refreshMinutes),
       }
     }
   } catch (_) {}

@@ -23,7 +23,7 @@ async function run() {
   const family = familyOf()
 
   let sites: Site[] = []
-  let options: Options = { monthCap: 70, maxRows: 10 }
+  let options: Options = { monthCap: 70, maxRows: 10, refreshMinutes: 15 }
   try {
     sites = readSites()
     options = readOptions()
@@ -34,12 +34,17 @@ async function run() {
     return
   }
 
+  /* 刷新间隔来自设置页（默认 15 分钟）；间隔内复用上次结果，避免系统提前唤醒时重复打接口 */
+  const refreshMs = Math.max(1, options.refreshMinutes) * 60 * 1000
+  const cacheMs = Math.max(60 * 1000, refreshMs - 60 * 1000)
+
   try {
-    /* 90 秒内复用上次结果：桌面连续刷新时不重复打接口 */
-    const data = await loadPanel(sites, options, 90 * 1000)
+    const data = await loadPanel(sites, options, cacheMs)
+    /* 下一次时间线以「数据时间 + 间隔」为锚点：系统提前唤醒时不会把节奏拖后 */
+    const next = Math.max(Date.now() + 60 * 1000, data.updatedAt + refreshMs)
     Widget.present(
       <PanelWidget data={data} widgetSizeHint={family} />,
-      { policy: "after", date: new Date(Date.now() + 15 * 60 * 1000) }
+      { policy: "after", date: new Date(next) }
     )
   } catch (error) {
     Widget.present(<PanelWidget data={null} widgetSizeHint={family} message={`❌ ${messageOf(error)}`} />)

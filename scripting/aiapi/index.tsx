@@ -16,6 +16,9 @@ import {
 } from "scripting"
 import {
   MODE_LABELS,
+  REFRESH_CHOICES,
+  clampRefreshMinutes,
+  clearPanelCache,
   parseEndpoints,
   readOptions,
   readSites,
@@ -33,6 +36,12 @@ function messageOf(error: any): string {
   if (!error) return "未知错误"
   if (typeof error === "string") return error
   return String(error.message || error)
+}
+
+function refreshLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes} 分钟`
+  const hours = minutes / 60
+  return Number.isInteger(hours) ? `${hours} 小时` : `${minutes} 分钟`
 }
 
 function newSite(): Site {
@@ -185,6 +194,25 @@ function SettingsScreen({
           />
         </Section>
 
+        <Section header={<Text>刷新</Text>}>
+          <Picker
+            title="小组件刷新间隔"
+            value={String(opts.refreshMinutes)}
+            onChanged={(value: any) => setOpts({ ...opts, refreshMinutes: clampRefreshMinutes(value) })}
+          >
+            {REFRESH_CHOICES.map((minutes) => (
+              <Text key={String(minutes)} tag={String(minutes)}>{refreshLabel(minutes)}</Text>
+            ))}
+          </Picker>
+          <Text font={12} foregroundStyle={MUTED}>
+            默认 15 分钟；到点后小组件会自动重取余额。可选 15 分钟到 12 小时。
+          </Text>
+          <Text font={12} foregroundStyle={MUTED}>
+            iOS 会按电量、使用频率和小组件个数节流，实际刷新时刻可能比设定更晚；离线或省电模式下会更懒。
+            想立即取一次，用小组件右上角的刷新按钮。
+          </Text>
+        </Section>
+
         <Section header={<Text>导出</Text>}>
           <Button
             title="复制当前配置为 cch_endpoints"
@@ -227,6 +255,8 @@ function App() {
       onSave={(nextSites, nextOptions) => {
         writeSites(nextSites)
         writeOptions(nextOptions)
+        /* 站点或间隔变了就让下次时间线重新取数，而不是继续用旧缓存 */
+        clearPanelCache()
         try { Widget.reloadAll() } catch (_) {}
         finish()
       }}
