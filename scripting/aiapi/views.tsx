@@ -329,12 +329,13 @@ function ProviderCard({ row, width, height, rich }: {
 }) {
   const tall = height >= 58
   const wide = width >= 250
-  const nameSize = wide ? (tall ? 15 : height >= 48 ? 13.5 : height >= 38 ? 12 : 11) : 9.5
+  const nameSize = wide ? (tall ? 15 : height >= 48 ? 13.5 : height >= 38 ? 12 : 10.5) : 9.5
   /* 宽卡（大号单列）让金额占满右半边；窄的两列卡要和左侧名称 + 成功率共存于 ~146pt，
      按文字长度略降一号，保证名称和成功率都不被截断 */
   const narrowAmountBase = Math.min(20.5, Math.max(19, height * 0.5))
+  /* 中号里被拉成通栏的单张卡（高度小）跟旁边两列卡用同一字号，避免一行特别大 */
   const amountSize = wide
-    ? Math.min(38, Math.max(22, height * 0.7))
+    ? (height >= 44 ? Math.min(40, Math.max(22, height * 0.7)) : narrowAmountBase)
     : narrowAmountBase - (row.amountText.length >= 8 ? 1.5 : 0)
   const metaSize = tall ? 9.5 : height >= 38 ? 8.5 : 7.5
   const padY = tall ? 3 : height >= 38 ? 2 : 1.5
@@ -439,7 +440,74 @@ function ProviderCard({ row, width, height, rich }: {
     )
   }
 
+  /* 高窄卡（大号两列，卡高 ≥50）：上段名称 + 24h 成功率，下段大金额 + 首字延迟，
+     两段分居上下，把卡片高度用起来；否则内容全堆在中间，整张卡看起来空空荡荡 */
+  if (height >= 50) {
+    /* 金额按可用宽度和字符数缩放，占满整行，不被别的文字挤掉 */
+    const padX = 8
+    const base = Math.min(31, Math.max(23, height * 0.4))
+    const fit = (width - padX * 2) / (Math.max(4, row.amountText.length) * 0.66)
+    const tallAmount = Math.max(19, Math.min(base, fit)) - (row.amountText.length >= 8 ? 1 : 0)
+    const topMeta: any = row.failed
+      ? null
+      : row.health !== null
+        ? <HStack spacing={2} alignment="center">
+            <Text font={6.5} foregroundStyle={healthTone(row.health) as any}>●</Text>
+            <Text font={9} fontWeight="medium" monospacedDigit foregroundStyle={SOFT}>
+              {row.health >= 0.9999 ? "100%" : percent(row.health, 1)}
+            </Text>
+          </HStack>
+        : row.limits.length
+          ? <Text font={8} fontWeight="medium" monospacedDigit foregroundStyle={MUTED} lineLimit={1}>
+              {limitsSummary(row)}
+            </Text>
+          : null
+
+    return (
+      <VStack
+        alignment="leading"
+        spacing={0}
+        padding={{ horizontal: padX, vertical: 7 }}
+        frame={{ width, height, alignment: "leading" }}
+        background={bg}
+        clipShape={{ type: "rect", cornerRadius: radius }}
+      >
+        <HStack spacing={3} alignment="center" frame={{ maxWidth: 9999 }}>
+          <Text font={12} fontWeight="semibold" foregroundStyle={INK} lineLimit={1}>{row.name}</Text>
+          <Spacer />
+          {topMeta}
+          {row.ttftMs !== null && row.name.length <= 8
+            ? <Text font={8.5} monospacedDigit foregroundStyle={MUTED} lineLimit={1}>
+                {`· ${(row.ttftMs / 1000).toFixed(1)}s`}
+              </Text>
+            : null}
+        </HStack>
+        <Spacer />
+        <HStack spacing={4} alignment="center" frame={{ maxWidth: 9999 }}>
+          {row.failed
+            ? <Text font={10.5} fontWeight="semibold" foregroundStyle={RED} lineLimit={1}>取数失败</Text>
+            : row.amountText
+              ? <Text
+                  font={tallAmount}
+                  fontWeight="bold"
+                  fontDesign="rounded"
+                  monospacedDigit
+                  foregroundStyle={amountTone(row)}
+                  lineLimit={1}
+                  fixedSize={{ horizontal: true, vertical: false }}
+                >
+                  {row.amountText}
+                </Text>
+              : <Text font={9} fontWeight="medium" foregroundStyle={MUTED} lineLimit={1}>限额</Text>}
+          <Spacer />
+        </HStack>
+      </VStack>
+    )
+  }
+
   /* 窄卡：左列名称 + 成功率·响应时间，右侧大金额，两边各自垂直居中 */
+  /* 名称 + 金额本身就占满宽度时，延迟优先让位，避免成功率被截成「10...」 */
+  const tightNarrow = row.name.length + row.amountText.length >= 13
   const narrowMeta: any = row.failed || row.health === null
     ? meta
     : <HStack spacing={1.5} alignment="center">
@@ -447,7 +515,7 @@ function ProviderCard({ row, width, height, rich }: {
         <Text font={metaSize} fontWeight="medium" monospacedDigit foregroundStyle={SOFT} lineLimit={1}>
           {row.health >= 0.9999 ? "100%" : percent(row.health, 1)}
         </Text>
-        {row.ttftMs !== null
+        {row.ttftMs !== null && !tightNarrow
           ? <Text font={metaSize - 1} monospacedDigit foregroundStyle={MUTED} lineLimit={1}>
               {`· ${(row.ttftMs / 1000).toFixed(1)}s`}
             </Text>
@@ -609,7 +677,7 @@ export function PanelWidget({
   const heroH = hero
     ? heroPadY * 2 + heroRowH * Math.max(1, hero.limits.length) + heroGapY * Math.max(0, hero.limits.length - 1)
     : 0
-  const gapY = largeHero ? 6 : 3
+  const gapY = largeHero ? 7 : 3
   const gridAvail = Math.max(0, bodyAvail - (hero ? heroH + gapY : 0))
 
   const gapX = largeHero ? 8 : 6
@@ -619,7 +687,7 @@ export function PanelWidget({
   const cellW = (contentW - (cols - 1) * gapX) / cols
   const minRich = largeHero ? 34 : 26
   const minCompact = largeHero ? 21 : 18
-  const maxCell = single ? 64 : largeHero ? 84 : 50
+  const maxCell = single ? 66 : largeHero ? 72 : 50
   const wantedRows = Math.ceil(rest.length / cols)
 
   let rich = true
@@ -639,6 +707,15 @@ export function PanelWidget({
   const cards: any[] = []
   for (let i = 0; i < visibleRest.length; i += cols) {
     const pair = visibleRest.slice(i, i + cols)
+    /* 最后一行只有一张卡时拉成通栏，避免右下角留一大块空白 */
+    if (pair.length < cols) {
+      cards.push(
+        <HStack key={`g${i}`} spacing={gapX} alignment="top" frame={{ maxWidth: 9999 }}>
+          <ProviderCard row={pair[0]} width={contentW} height={cellH} rich={rich} />
+        </HStack>
+      )
+      continue
+    }
     cards.push(
       <HStack key={`g${i}`} spacing={gapX} alignment="top" frame={{ maxWidth: 9999 }}>
         {pair.map((row) => (
@@ -678,7 +755,9 @@ export function PanelWidget({
   } else {
     const gridH = gridRows * cellH + Math.max(0, gridRows - 1) * gapY
     const slack = Math.max(0, gridAvail - gridH)
-    if (slack > 0.5) body.push(<Rectangle key="padTop" fill="rgba(0,0,0,0)" frame={{ height: slack * 0.34, maxWidth: 9999 }} />)
+    /* 大号上下留白均分，看起来是刻意留白而不是内容没填满；中号仍是上少下多，别让最后一排贴底 */
+    const topShare = largeHero ? 0.5 : 0.34
+    if (slack > 0.5) body.push(<Rectangle key="padTop" fill="rgba(0,0,0,0)" frame={{ height: slack * topShare, maxWidth: 9999 }} />)
     if (hero) body.push(<LimitsHero key="hero" row={hero} width={contentW} large={largeHero} />)
     if (hero && cards.length && gapY > 0) {
       body.push(<Rectangle key="heroGap" fill="rgba(0,0,0,0)" frame={{ height: gapY, maxWidth: 9999 }} />)
@@ -690,7 +769,7 @@ export function PanelWidget({
         </VStack>
       )
     }
-    if (slack > 0.5) body.push(<Rectangle key="padBottom" fill="rgba(0,0,0,0)" frame={{ height: slack * 0.66, maxWidth: 9999 }} />)
+    if (slack > 0.5) body.push(<Rectangle key="padBottom" fill="rgba(0,0,0,0)" frame={{ height: slack * (1 - topShare), maxWidth: 9999 }} />)
   }
 
   return (

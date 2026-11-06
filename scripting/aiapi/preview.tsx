@@ -43,6 +43,15 @@ const packy = row({ key: "packy", name: "PackyCode", amountText: "$25.00", amoun
 const testRelay = row({ key: "test", name: "TestRelay", failed: true, site: "" })
 const miapi = row({ key: "miapi", name: "Miapi", amountText: "$42.50", amount: 42.5, health: 0.998, ttftMs: 2100 })
 
+/* 真机截图里的 6 个服务商场景 */
+const sources = row({ key: "sources", name: "SourcesData", site: "SourcesData", amountText: "$7.07", amount: 7.07, health: 0.995, ttftMs: 13900 })
+const nexintu = row({ key: "nexintu", name: "Nexintu", site: "Nexintu", amountText: "$29.97", amount: 29.97, health: 1, ttftMs: 9600 })
+const clouder2 = row({ key: "clouder", name: "Clouder", amountText: "$157.43", amount: 157.43, health: 1, ttftMs: 1900 })
+const kcne2 = row({ key: "kcne", name: "Kcne", site: "Luca", amountText: "$17.48", amount: 17.48 })
+const air2 = row({ key: "air", name: "Air", amountText: "$13.59", amount: 13.59, health: 0.991, ttftMs: 8200 })
+
+const six: Row[] = [commandCode, clouder2, kcne2, air2, sources, nexintu]
+
 const five: Row[] = [commandCode, clouder, kcne, air]
 const nine: Row[] = [commandCode, clouder, kcne, air, mirror, packy, testRelay, miapi]
 const twelve: Row[] = nine.concat([
@@ -96,6 +105,16 @@ export default function Preview(props: { variant?: string }) {
             <PanelWidget data={data(twelve)} widgetSizeHint="systemLarge" heightOverride={340} widthOverride={340} />
           </Card>
         </VStack>
+      ) : null}
+      {variant === "large6" ? (
+        <Card width={340} height={340}>
+          <PanelWidget data={data(six)} widgetSizeHint="systemLarge" heightOverride={340} widthOverride={340} />
+        </Card>
+      ) : null}
+      {variant === "large9" ? (
+        <Card width={340} height={340}>
+          <PanelWidget data={data(nine)} widgetSizeHint="systemLarge" heightOverride={340} widthOverride={340} />
+        </Card>
       ) : null}
       {variant === "small" ? (
         <Card width={158} height={158}>
