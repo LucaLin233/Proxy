@@ -216,7 +216,7 @@ CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:
 | `bilibili_cdn.sgmodule` | 拒绝哔哩哔哩的 PCDN / P2P 连接；其中 `DEST-PORT,3478` 和 `DOMAIN-KEYWORD,httpdns` 两条对所有 App 生效，会同时拦截所有发往 3478 端口的连接（常见的 STUN 端口）和域名含 httpdns 的请求 | 不需要 |
 | `block_startup.sgmodule` | 开屏与启动广告拦截（cuttlefish 2023-01 版本快照，不再跟随上游，部分规则已失效） | 不需要 |
 | `fuck_ad.sgmodule` | 常见 App 广告拦截（by ocd0711） | 不需要 |
-| `get_wskey.sgmodule` | 京东 wskey 抓取；使用时先杀掉京东 App 后台再打开。引用的 gist 脚本会把抓到的 wskey 通过 Telegram 推送到脚本里写死的 Bot 和账号，他人使用前请先阅读脚本，并在持久化存储里设置自己的 `TG_BOT_TOKEN` 和 `TG_USER_ID` | 不需要 |
+| `get_wskey.sgmodule` | 京东 wskey 抓取；使用时先杀掉京东 App 后台再打开。抓到的 wskey 会通过 Telegram 推送，他人使用前请先阅读脚本，并在持久化存储里设置自己的 `TG_BOT_TOKEN` 和 `TG_USER_ID` | 不需要 |
 | `tun_only.sgmodule` | 工作模式设为仅 VIF 接管（`compatibility-mode=3`，新版 Surge iOS 的默认值）；所有主机的 80 端口强制走 HTTP 引擎；拒绝阿里云 HTTPDNS（203.107.1.0/24），配合 B 站去广告重写使用 | 不需要 |
 | `panels.sgmodule.bak` | 旧版面板模块备份（节点详情、配置重载、刷新 DNS、流媒体检测），仅供参照 | 不需要 |
 
