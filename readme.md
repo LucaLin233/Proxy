@@ -12,7 +12,7 @@
 - **Sub-Store**：`substore/rename.js`，节点名称与地区文案规范化脚本（同目录附测试）；
 - **代理服务端**：`systemd/*.service` 单元模板（Snell、Hysteria2，Debian/Ubuntu）；
 - **面板脚本**：需要较新的 Surge 版本（模块参数 `#!arguments` 需 Surge 5 及以上）；CCH、AWS Lightsail、Peekabo 面板还需要各自服务的 API Key 或 Token，仅保存在 Surge 本地模块参数中；
-- 本仓库**不提供** Quantumult X 的完整配置文件，只提供重写与分流规则；
+- 本仓库**不提供** Quantumult X 的完整配置文件和分流规则，只提供重写；
 - 所有文件通过 `raw.githubusercontent.com` 直接引用，仓库不提供额外加速方式。
 
 ## 目录结构
@@ -45,7 +45,7 @@ Proxy/
 https://raw.githubusercontent.com/LucaLin233/Proxy/main/surge/modules/<模块名>.sgmodule
 ```
 
-`server`、`ai` 模块需要参数（API Key、Token、查询间隔等），安装时按提示填写；参数说明写在模块的
+`server`、`aiapi` 模块需要参数（API Key、Token、查询间隔等），安装时按提示填写；参数说明写在模块的
 `#!arguments-desc` 中，安装界面可直接看到。只需要其中一类面板时，改装对应的那一个模块即可。
 
 ### Surge 分流规则
@@ -60,6 +60,10 @@ RULE-SET,https://raw.githubusercontent.com/LucaLin233/Proxy/main/surge/rules/dir
 `proxy.list`、`direct.list`、`cdn.list` 由自建合并服务按上游规则定期更新并自动提交，**不要手工
 编辑**；其余 `.list` 为手工维护。
 
+`direct.list` 除了域名，还包含约 9 千条 IP-CIDR / IP-CIDR6 且没有 `no-resolve`。域名请求走到这一行时，
+如果规则集里的域名都没命中，Surge 会先做 DNS 解析再比对 IP。只想按域名匹配时，可以在 RULE-SET 行末尾
+加上 `,no-resolve`，这样 IP 段只对直接用 IP 访问的连接生效。
+
 ### Quantumult X
 
 ```text
@@ -68,16 +72,13 @@ JS 重写     https://raw.githubusercontent.com/LucaLin233/Proxy/main/quantumult
 
 JS 重写：在“重写 → 引用”中填入链接。
 
-![](https://github.com/LucaLin233/Proxy/blob/main/docs/qx_rewrite_guide.png)
+![Quantumult X 重写引用示意](docs/qx_rewrite_guide.png)
 
 使用前建议先掌握 Quantumult X 的配置导入方式：
 
 - [Quantumult X 教程](https://www.notion.so/Quantumult-X-1d32ddc6e61c4892ad2ec5ea47f00917)（懒人可直接看第五大点的配置导入）；
 - [@KOP-XIAO 的懒人配置](https://raw.githubusercontent.com/KOP-XIAO/QuantumultX/master/QuantumultX_Profiles.conf)；
-- [@limbopro 的节点筛选正则](https://limbopro.xyz/archives/11131.html)；
 - 分流规则推荐 [@blackmatrix7 的规则仓库](https://github.com/blackmatrix7/ios_rule_script)。
-
-上述 Cookie 类重写只用于自用抓取，请勿用于商业化或批量使用。
 
 ### Sub-Store
 
@@ -85,7 +86,9 @@ JS 重写：在“重写 → 引用”中填入链接。
 https://raw.githubusercontent.com/LucaLin233/Proxy/main/substore/rename.js
 ```
 
-脚本按国家/地区字典把节点名称统一为中文或英文短称，作为 Sub-Store 的“节点名称处理”脚本使用。
+脚本按国家/地区字典把节点名称统一为中文、英文全称或两位代码，并默认清理流量、到期、官网等信息节点。
+在 Sub-Store 的“脚本操作”里填入链接，参数用 `#` 接在链接后面，例如 `rename.js#format=compact&name=机场名`，
+完整参数表写在脚本头部注释里。
 
 ### 服务端 unit 模板
 
@@ -210,46 +213,50 @@ CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:
 | `server.sgmodule` | 服务器流量与到期（Lightsail + Peekabo 合并为一个面板） | 需要，见模块内 `#!arguments-desc` |
 | `aiapi.sgmodule` | CCH / CCHP 站点余额，按 CCHP 优先级排序（每轮实取，实时生效），Clouder 走 CCH | 需要，见模块内 `#!arguments-desc` |
 | `app_js.sgmodule` | APP JS 重写合集：Netflix 评分与单集评分、淘票票豆瓣评分、TestFlight 账户管理、彩云天气 SVIP | 不需要 |
-| `bilibili_cdn.sgmodule` | 哔哩哔哩 CDN 优化 | 不需要 |
-| `block_startup.sgmodule` | 开屏与启动广告拦截 | 不需要 |
+| `bilibili_cdn.sgmodule` | 拒绝哔哩哔哩的 PCDN / P2P 连接；其中 `DEST-PORT,3478` 和 `DOMAIN-KEYWORD,httpdns` 两条对所有 App 生效，会同时拦截所有发往 3478 端口的连接（常见的 STUN 端口）和域名含 httpdns 的请求 | 不需要 |
+| `block_startup.sgmodule` | 开屏与启动广告拦截（cuttlefish 2023-01 版本快照，不再跟随上游，部分规则已失效） | 不需要 |
 | `fuck_ad.sgmodule` | 常见 App 广告拦截（by ocd0711） | 不需要 |
-| `get_wskey.sgmodule` | 京东 wskey 抓取；使用时先杀掉京东 App 后台再打开 | 不需要 |
-| `tun_only.sgmodule` | 仅开启 TUN，便于配合其它工具调试 | 不需要 |
+| `get_wskey.sgmodule` | 京东 wskey 抓取；使用时先杀掉京东 App 后台再打开。引用的 gist 脚本会把抓到的 wskey 通过 Telegram 推送到脚本里写死的 Bot 和账号，他人使用前请先阅读脚本，并在持久化存储里设置自己的 `TG_BOT_TOKEN` 和 `TG_USER_ID` | 不需要 |
+| `tun_only.sgmodule` | 工作模式设为仅 VIF 接管（`compatibility-mode=3`，新版 Surge iOS 的默认值）；所有主机的 80 端口强制走 HTTP 引擎；拒绝阿里云 HTTPDNS（203.107.1.0/24），配合 B 站去广告重写使用 | 不需要 |
+| `panels.sgmodule.bak` | 旧版面板模块备份（节点详情、配置重载、刷新 DNS、流媒体检测），仅供参照 | 不需要 |
 
 ## 脚本一览
 
 | 脚本 | 用途 | 来源 |
 | --- | --- | --- |
 | `aiapi_relay.js` | 中转站面板：CCH / CCHP 站点余额，按 CCHP 优先级排序（每轮实取 keys/page，无优先级时退回固定行序），Clouder 走 CCH（CCH 的 admin 走 `/api/v1/providers/balances:batch` 列本站各上游，按厂商归并、名称取供应商名的品牌部分；user/cookie/login 走 `/api/v1/me/quota` 列账户余额；CCHP 的 cchp 走 `/api/account/orgs/{orgId}/providers` 取余额，每次刷新先按各 provider 的每把 active key 逐一调 `?refresh=true` 实时复查上游、再重取列表拿聚合值，并按 key 优先级排序），合并成一张表；同一脚本供 cron 日报推送同一列表 | 自建 |
-| `server_overview.js` | 服务器概览：AWS Lightsail 各实例流量（SigV4 直连 CloudWatch 指标）+ Peekabo 流量与到期，合并显示；同一脚本供 cron 日报 | 自建 |
+| `server_overview.js` | 服务器概览：AWS Lightsail 各实例流量（SigV4 直连 Lightsail `GetInstanceMetricData`）+ Peekabo 流量与到期，合并显示；同一脚本供 cron 日报 | 自建 |
 | `function.js` | Surge 运行时长与功能开关状态面板，点击重载配置 | 参考 chaizia/Profiles |
 | `ip_check.js` | 当前节点详情面板 | 感谢 @congcong |
-| `sub_info.js` | 订阅流量与到期信息面板 | 模板来自 @mieqq |
+| `sub_info.js` | 订阅流量面板：已用比例、剩余流量与重置天数（到期显示在脚本里已注释） | 模板来自 @mieqq |
 | `reload.js` | 配置重载面板 | Author: Pysta |
-| `rename.js` | 节点名称按地区字典规范化 | 感谢 @bluman / @qwerzl |
+| `rename.js` | 旧版节点重命名脚本，按地区字典规范化。它是 Sub-Store 脚本而不是 Surge 脚本，新配置请用 `substore/rename.js` | 感谢 @bluman / @qwerzl |
 | `stream_check.js` | 奈飞、油管解锁检测 | 上游通用脚本 |
-| `stream_all.js` | 流媒体全量解锁检测 | 上游通用脚本 |
+| `stream_all.js` | 流媒体全量解锁检测（YouTube、Netflix、Disney+） | 上游通用脚本 |
 
 `server.sgmodule` 引用 `server_overview.js`，`aiapi.sgmodule` 引用 `aiapi_relay.js`，`surge_status.sgmodule` 引用 `function.js`；单独引用脚本时请与对应模块二选一，避免同一面板重复。
+`ip_check.js`、`reload.js`、`stream_check.js`、`stream_all.js` 目前只被备份模块 `panels.sgmodule.bak` 引用，
+需要时请在自己的配置里单独引用；`sub_info.js` 的用法和参数写在脚本头部注释里。
 
 ## 分流规则一览
 
 | 规则 | 用途 | 维护方 |
 | --- | --- | --- |
 | `proxy.list` | 需要代理的域名合集（约 2 万条） | 合并服务自动提交 |
-| `direct.list` | 直连域名合集（约 14 万条） | 合并服务自动提交 |
+| `direct.list` | 直连合集（约 11 万条，其中约 9 千条为局域网与中国大陆 IP 段） | 合并服务自动提交 |
 | `cdn.list` | CDN 优化分组 | 合并服务自动提交 |
 | `telegram.list`、`telegram_ip.list`、`telegram_asn.list` | Telegram 分流（域名、IP、ASN） | 手工维护 |
 | `apple_proxy.list`、`apple_proxy_rough.list`、`apple_download.list` | Apple 服务代理与下载直连 | 手工维护 |
 | `emby_filter.list` | Emby 服务器分流（Surge 语法） | 手工维护 |
-| `uahp_allinone.list` | 去广告与跟踪域名合集（Unbreak 等上游） | 手工维护 |
+| `uahp_allinone.list` | 去广告、运营商劫持与隐私跟踪合集。注意开头的 Unbreak 段原本是"不要拦截"的白名单，合并进同一个规则集后会和其它条目套用同一个策略 | 手工维护 |
 | `stream.list` | 流媒体域名 | 手工维护 |
-| `lan.list`、`stun.list` | 局域网直连、STUN 协议 | 手工维护 |
+| `lan.list`、`stun.list` | 局域网直连（内容与 Surge 内置的 `RULE-SET,LAN` 相同）、STUN 协议 | 手工维护 |
 | `legacy/proxy.list`、`legacy/direct.list` | 2022 年遗留版本，仅存档 | 不再维护 |
 
 `surge/rules/emby_filter.list` 覆盖的 Emby 服务器：普拉斯 AGA（中国电信可直连）、CF 公益服
 （需挂代理）、普拉斯备用服（4 个）、Exflux、Nexitally/AmyTelecom（共用，仅限美国特定节点）、
-Skicat、Godetia（猫熊和 3DM）。
+Skicat、Godetia（猫熊和 3DM）。其中 Skicat 一条写成了 `DOMAIN,https://skicat.tv`，带协议头的写法
+不会匹配任何请求，目前并未生效。
 
 ## 图标与文档
 
@@ -270,7 +277,9 @@ Skicat、Godetia（猫熊和 3DM）。
 - 本仓库只搬运和整合，**不负责维护**上游脚本，也不保证任何脚本的可用性；
 - 面板脚本需要填写自己的 API Key / Token，这些参数仅保存在本地模块中，请勿提交到公开仓库；
 - 在 App 内抓取 Cookie 的重写仅限自用；账号、Cookie、Token、私钥一律不要粘贴到 issue 或仓库；
-- 规则由合并服务自动写回，手工编辑会被下次更新覆盖；
+- `proxy.list`、`direct.list`、`cdn.list` 由合并服务自动写回，手工编辑会被下次更新覆盖；
+- 去广告类模块（`block_startup`、`fuck_ad`）会对大量域名做 MITM 解密，其中包括部分银行和微信相关域名，
+  启用前请确认可以接受；
 - 部分脚本依赖 Surge 的 HTTP API 或系统版本，升级 Surge 后如有失效请以官方文档为准。
 
 ## 反馈与致谢
