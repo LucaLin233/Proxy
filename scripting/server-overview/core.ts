@@ -234,27 +234,10 @@ export function formatClock(ts: number): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-export function formatDate(ts: number): string {
-  const date = new Date(ts)
-  const pad = (value: number) => String(value).padStart(2, "0")
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-}
-
 export function formatMonthDay(ts: number): string {
   const date = new Date(ts)
   const pad = (value: number) => String(value).padStart(2, "0")
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-}
-
-export function formatRemaining(milliseconds: number): string {
-  if (milliseconds <= 0) return "已到期"
-  const totalMinutes = Math.floor(milliseconds / 60000)
-  const days = Math.floor(totalMinutes / 1440)
-  const hours = Math.floor((totalMinutes % 1440) / 60)
-  const minutes = totalMinutes % 60
-  if (days > 0) return `${days} 天 ${hours} 小时`
-  if (hours > 0) return `${hours} 小时 ${minutes} 分钟`
-  return `${Math.max(1, minutes)} 分钟`
 }
 
 export function daysLeft(expireAt: number): number {
@@ -919,19 +902,4 @@ export async function loadPanel(config: Config, maxAgeMs = 0): Promise<ServerDat
 
 export function countInstances(groups: GroupRow[]): number {
   return groups.reduce((total, group) => total + group.instances.length, 0)
-}
-
-export function totalTraffic(groups: GroupRow[]): { used: number; quota: number } {
-  return groups.reduce(
-    (total, group) => ({
-      used: total.used + group.usedBytes,
-      quota: total.quota + group.quotaBytes,
-    }),
-    { used: 0, quota: 0 }
-  )
-}
-
-/* 供预览 / 测试使用：把一组假数据灌进缓存，不碰真实配置 */
-export function peekCache(): ServerData | null {
-  return readSlot<ServerData>(STORE_CACHE)
 }

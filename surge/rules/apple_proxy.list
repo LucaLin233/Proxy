@@ -1,6 +1,4 @@
-# 单独规则
-DOMAIN,apps.apple.com
-# System
+# System（*.apple.com 子域名已由下方 DOMAIN-SUFFIX,apple.com 覆盖）
 USER-AGENT,*com.apple.mobileme.fmip1
 USER-AGENT,*WeatherFoundation*
 USER-AGENT,%E5%9C%B0%E5%9B%BE*
@@ -15,24 +13,8 @@ USER-AGENT,fmflocatord*
 USER-AGENT,geod*
 USER-AGENT,locationd*
 USER-AGENT,Maps*
-DOMAIN,api.smoot.apple.com
-DOMAIN,captive.apple.com
-DOMAIN,xp.apple.com
-DOMAIN,configuration.apple.com
-DOMAIN,guzzoni.apple.com
-DOMAIN,smp-device-content.apple.com
-DOMAIN-SUFFIX,ess.apple.com
 DOMAIN-SUFFIX,push-apple.com.akadns.net
-DOMAIN-SUFFIX,push.apple.com
-DOMAIN,aod.itunes.apple.com
-DOMAIN,mesu.apple.com
 DOMAIN,api.smoot.apple.cn
-DOMAIN,gs-loc.apple.com
-DOMAIN,mvod.itunes.apple.com
-DOMAIN,streamingaudio.itunes.apple.com
-DOMAIN-SUFFIX,lcdn-locator.apple.com
-DOMAIN-SUFFIX,lcdn-registration.apple.com
-DOMAIN-SUFFIX,ls.apple.com
 PROCESS-NAME,trustd
 # Mr.Liu编写规则
 DOMAIN-SUFFIX,cdn-apple.com
@@ -43,8 +25,6 @@ DOMAIN-SUFFIX,apple.com
 DOMAIN-SUFFIX,icloud-content.com
 DOMAIN-SUFFIX,icloud.com
 DOMAIN-SUFFIX,itunes.com
-DOMAIN-SUFFIX,itunes.apple.com
-DOMAIN-SUFFIX,lookup-api.apple.com // Dictionary
 DOMAIN-SUFFIX,me.com
 PROCESS-NAME,storedownloadd // Mac App Store
 USER-AGENT,com.apple.appstored* // iOS App Store

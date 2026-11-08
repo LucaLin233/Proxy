@@ -30,8 +30,6 @@ import type { Options, Site, SiteMode } from "./relay.core"
 
 const MUTED: any = { light: "#6B6B70", dark: "#9A9AA0" }
 
-declare const Clipboard: any
-
 function messageOf(error: any): string {
   if (!error) return "未知错误"
   if (typeof error === "string") return error
@@ -69,6 +67,8 @@ function SiteFields({
   onChange: (patch: Partial<Site>) => void
   onDelete: () => void
 }) {
+  /* 排序框单独保存文本，输入「1.」这类中间态时不会被立刻改写 */
+  const [priorityText, setPriorityText] = useState<string>(site.priority === null ? "" : String(site.priority))
   return (
     <Section header={<Text>{`站点 ${index + 1}${site.enabled ? "" : "（已停用）"}`}</Text>}>
       <TextField title="名称" value={site.name} onChanged={(value: string) => onChange({ name: value })} prompt="CCHP" />
@@ -89,12 +89,15 @@ function SiteFields({
       />
       <TextField
         title="排序"
-        value={site.priority === null ? "" : String(site.priority)}
+        value={priorityText}
         onChanged={(value: string) => {
+          setPriorityText(value)
           const text = value.trim()
-          onChange({ priority: text === "" ? null : Number(text.replace(/[^0-9.-]/g, "")) })
+          const parsed = Number(text)
+          if (text === "") onChange({ priority: null })
+          else if (Number.isFinite(parsed)) onChange({ priority: parsed })
         }}
-        prompt="可选，仅同一档位内生效"
+        prompt="可选，数值越小越靠前；留空按 CCHP 自动匹配"
       />
       <Toggle value={site.enabled} onChanged={(value: boolean) => onChange({ enabled: value })}>
         <Text>启用</Text>
@@ -144,8 +147,9 @@ function SettingsScreen({
             <Button
               title="保存"
               action={() => {
+                /* 新站点的默认地址是 "https://"，要求协议后面真的有主机名 */
                 const cleaned = list
-                  .filter((site) => /^https?:\/\//i.test(site.base) && site.credential.trim() !== "")
+                  .filter((site) => /^https?:\/\/[^\/\s]+/i.test(site.base.trim()) && site.credential.trim() !== "")
                   .map((site) => ({ ...site, name: site.name.trim() || site.base }))
                 onSave(cleaned, opts)
               }}
@@ -216,10 +220,14 @@ function SettingsScreen({
         <Section header={<Text>导出</Text>}>
           <Button
             title="复制当前配置为 cch_endpoints"
-            action={() => {
+            action={async () => {
+              /* 内容含凭据：只留在本机剪贴板（不经接力同步），10 分钟后系统自动清除 */
               try {
-                Clipboard.copyText(sitesToEndpoints(list))
-                setHint("已复制，可以粘回 Surge 模块")
+                await Pasteboard.setItems(
+                  [{ "public.plain-text": sitesToEndpoints(list) } as Pasteboard.Item],
+                  { localOnly: true, expirationDate: new Date(Date.now() + 10 * 60 * 1000) }
+                )
+                setHint("已复制（含凭据，10 分钟后自动从剪贴板清除），可以粘回 Surge 模块")
               } catch (_) {
                 setHint("复制失败")
               }

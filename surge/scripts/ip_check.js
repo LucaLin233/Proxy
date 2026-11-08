@@ -12,17 +12,24 @@
 
 let url = "http://ip-api.com/json/?lang=zh-CN"
 
-$httpClient.get(url, function(error, response, data){
+$httpClient.get({ url, timeout: 2 }, function(error, response, data){
+  let body = {
+    title: "节点详情",
+    content: "检测失败，请刷新面板",
+    icon: "globe.asia.australia.fill"
+  }
+  // 请求失败或返回内容无法解析时也要调用 $done，否则面板会一直等到脚本超时
+  try {
+    if (error) throw error
     let jsonData = JSON.parse(data)
     let country = jsonData.country
     let emoji = getFlagEmoji(jsonData.countryCode)
     let city = jsonData.city
     let isp = jsonData.isp
     let ip = jsonData.query
-  body = {
-    title: "节点详情",
-    content: `IP信息：${ip}\n运营商：${isp}\n所在地：${emoji}${country} - ${city}`,
-    icon: "globe.asia.australia.fill"
+    body.content = `IP信息：${ip}\n运营商：${isp}\n所在地：${emoji}${country} - ${city}`
+  } catch (e) {
+    console.log("ip_check: " + e)
   }
   $done(body);
 });

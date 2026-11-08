@@ -30,8 +30,6 @@ import type { Config, IpMode } from "./core"
 
 const MUTED: any = { light: "#6B6B70", dark: "#9A9AA0" }
 
-declare const Clipboard: any
-
 const IP_LABELS: [IpMode, string][] = [
   ["mask", "脱敏"],
   ["full", "完整"],
@@ -107,27 +105,27 @@ function SettingsScreen({
             <Text font={12} fontWeight="medium" foregroundStyle={MUTED}>Access Key</Text>
             <TextField
               label={<Text>Access Key</Text>}
-            value={draft.awsKeyId}
-            onChanged={(value: string) => patch({ awsKeyId: value })}
-            prompt="AKIA…"
+              value={draft.awsKeyId}
+              onChanged={(value: string) => patch({ awsKeyId: value })}
+              prompt="AKIA…"
             />
           </VStack>
           <VStack alignment="leading" spacing={4}>
             <Text font={12} fontWeight="medium" foregroundStyle={MUTED}>Secret Key</Text>
             <SecureField
               label={<Text>Secret Key</Text>}
-            value={draft.awsSecret}
-            onChanged={(value: string) => patch({ awsSecret: value })}
-            prompt="AWS 访问密钥的 Secret"
+              value={draft.awsSecret}
+              onChanged={(value: string) => patch({ awsSecret: value })}
+              prompt="AWS 访问密钥的 Secret"
             />
           </VStack>
           <VStack alignment="leading" spacing={4}>
             <Text font={12} fontWeight="medium" foregroundStyle={MUTED}>区域</Text>
             <TextField
               label={<Text>区域</Text>}
-            value={draft.regions}
-            onChanged={(value: string) => patch({ regions: value })}
-            prompt="ap-east-1|ap-northeast-1"
+              value={draft.regions}
+              onChanged={(value: string) => patch({ regions: value })}
+              prompt="ap-east-1|ap-northeast-1"
             />
           </VStack>
         </Section>
@@ -140,18 +138,18 @@ function SettingsScreen({
             <Text font={12} fontWeight="medium" foregroundStyle={MUTED}>Server ID</Text>
             <TextField
               label={<Text>Server ID</Text>}
-            value={draft.peekaboId}
-            onChanged={(value: string) => patch({ peekaboId: value })}
-            prompt="控制面板 /server/ 后面的 ID"
+              value={draft.peekaboId}
+              onChanged={(value: string) => patch({ peekaboId: value })}
+              prompt="控制面板 /server/ 后面的 ID"
             />
           </VStack>
           <VStack alignment="leading" spacing={4}>
             <Text font={12} fontWeight="medium" foregroundStyle={MUTED}>API Token</Text>
             <SecureField
               label={<Text>API Token</Text>}
-            value={draft.peekaboToken}
-            onChanged={(value: string) => patch({ peekaboToken: value })}
-            prompt="Peekabo 账户 → API"
+              value={draft.peekaboToken}
+              onChanged={(value: string) => patch({ peekaboToken: value })}
+              prompt="Peekabo 账户 → API"
             />
           </VStack>
         </Section>
@@ -188,9 +186,9 @@ function SettingsScreen({
             <Text font={12} fontWeight="medium" foregroundStyle={MUTED}>argument</Text>
             <TextField
               label={<Text>argument</Text>}
-            value={bulk}
-            onChanged={(value: string) => setBulk(value)}
-            prompt="lightsail_ak=…&lightsail_sk=…"
+              value={bulk}
+              onChanged={(value: string) => setBulk(value)}
+              prompt="lightsail_ak=…&lightsail_sk=…"
             />
           </VStack>
           <Button title="解析并填入上方" action={doImport} />
@@ -204,9 +202,13 @@ function SettingsScreen({
           <Button
             title="复制当前配置为 Surge 参数"
             action={async () => {
+              /* 内容含密钥：只留在本机剪贴板（不经接力同步），10 分钟后系统自动清除 */
               try {
-                await Clipboard.copyText(surgeArgumentsOf(draft))
-                setHint("已复制，可以粘回 Surge 模块")
+                await Pasteboard.setItems(
+                  [{ "public.plain-text": surgeArgumentsOf(draft) } as Pasteboard.Item],
+                  { localOnly: true, expirationDate: new Date(Date.now() + 10 * 60 * 1000) }
+                )
+                setHint("已复制（含密钥，10 分钟后自动从剪贴板清除），可以粘回 Surge 模块")
               } catch (_) {
                 setHint("复制失败")
               }

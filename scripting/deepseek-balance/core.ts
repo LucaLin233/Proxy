@@ -7,6 +7,7 @@ import {
   loadConfig,
   loadUsage,
   markFailure,
+  pickPrimary,
   saveConfig,
 } from "./config"
 import type { DeepSeekConfig } from "./config"
@@ -42,12 +43,6 @@ export function startOfDay(t: number): number {
   const d = new Date(t)
   d.setHours(0, 0, 0, 0)
   return d.getTime()
-}
-
-function pickPrimary(infos: BalanceInfo[]): BalanceInfo | null {
-  if (!infos.length) return null
-  const cny = infos.find((item) => item.currency === "CNY")
-  return cny || infos[0]
 }
 
 function infoFromConfig(config: DeepSeekConfig): BalanceInfo {
@@ -154,16 +149,8 @@ export async function loadPanel(force: boolean, cacheMs: number = CACHE_TTL): Pr
   const result = await fetchBalance(config.apiKey)
 
   if (result.ok) {
-    const primary = pickPrimary(result.infos)
-    if (!primary) {
-      const message = "响应里没有余额数据"
-      config = markFailure(config, message, now)
-      saveConfig(config)
-      const panel = makePanel(config, infoFromConfig(config), [], "offline", message, config.lastOk, now, true)
-      writeCache(panel)
-      return panel
-    }
-
+    /* api.ts 只在 infos 非空时返回 ok */
+    const primary = pickPrimary(result.infos) as BalanceInfo
     config = applyBalance(config, result.infos, now)
     saveConfig(config)
     const extra = result.infos.filter((item) => item !== primary)
@@ -249,11 +236,6 @@ export function formatDate(t: number): string {
   const mm = String(d.getMonth() + 1).padStart(2, "0")
   const dd = String(d.getDate()).padStart(2, "0")
   return `${d.getFullYear()}-${mm}-${dd}`
-}
-
-export function percentText(ratio: number | null, digits: number = 1): string {
-  if (ratio === null) return "--"
-  return `${(clamp01(ratio) * 100).toFixed(digits)}%`
 }
 
 /** 占比文案：非零但不足 1% 显示 <1%，超过 99% 但未满显示 >99%，避免出现「0% / 100%」的误导。 */

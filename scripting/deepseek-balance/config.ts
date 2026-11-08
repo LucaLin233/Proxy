@@ -114,9 +114,6 @@ export function saveConfig(config: DeepSeekConfig) {
   FileManager.writeAsStringSync(configPath, JSON.stringify(config, null, 2))
 }
 
-/** 语义别名：App / 文档里用 writeConfig 更顺口 */
-export const writeConfig = saveConfig
-
 export function loadUsage(): UsageEntry[] {
   try {
     const raw = FileManager.readAsStringSync(usagePath)
@@ -160,7 +157,8 @@ export function clearUsage() {
   } catch (_) {}
 }
 
-function pickPrimary(infos: BalanceInfo[]): BalanceInfo | null {
+/** 主币种：优先 CNY，否则取第一个 */
+export function pickPrimary(infos: BalanceInfo[]): BalanceInfo | null {
   if (!infos.length) return null
   const cny = infos.find((item) => item.currency.toUpperCase() === "CNY")
   return cny || infos[0]
