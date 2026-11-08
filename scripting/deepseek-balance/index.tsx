@@ -31,7 +31,7 @@ import {
   symbolOf,
 } from "./core"
 import type { PanelData } from "./core"
-import { REFRESH_CHOICES, clampRefreshMinutes, clearUsage, loadConfig, loadUsage, refreshLabel, writeConfig } from "./config"
+import { REFRESH_CHOICES, clampRefreshMinutes, clearUsage, loadConfig, loadUsage, refreshLabel, saveConfig } from "./config"
 import type { DeepSeekConfig } from "./config"
 import { clearPanelCache, initialPanel, loadPanel } from "./core"
 
@@ -363,7 +363,7 @@ function App() {
   }, [])
 
   const save = (next: DeepSeekConfig) => {
-    writeConfig(next)
+    saveConfig(next)
     clearPanelCache()
     setConfig(next)
     setScreen("panel")
