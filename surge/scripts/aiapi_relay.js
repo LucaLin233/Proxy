@@ -269,7 +269,8 @@ function normalizeBaseUrl(value) {
 
 function request(method, url, headers, body) {
   return new Promise((resolve, reject) => {
-    const options = { url, headers, timeout: 15000 };
+    /* Surge 的 timeout 以秒计 */
+    const options = { url, headers, timeout: 15 };
     if (body !== undefined) {
       headers["Content-Type"] = "application/json";
       options.body = JSON.stringify(body);
@@ -566,13 +567,14 @@ async function fetchCchAdminSite(site, headers) {
 }
 
 /* 自动登录：用 API Key 换取会话 Cookie */
-function sessionStoreKey(base) {
-  return `cch_session_${hashString(base)}`;
+/* 按「站点 + 凭据指纹」分区：换 Key 后不会沿用上一账户的会话 */
+function sessionStoreKey(site) {
+  return `cch_session_${sha256Hex(`${site.base}|${String(site.credential || "")}`).slice(0, 32)}`;
 }
 
-function readSession(base) {
+function readSession(site) {
   try {
-    const raw = $persistentStore.read(sessionStoreKey(base));
+    const raw = $persistentStore.read(sessionStoreKey(site));
     if (!raw) return "";
     const cache = JSON.parse(raw);
     if (!cache || cache.version !== 1 || typeof cache.token !== "string") return "";
@@ -580,13 +582,13 @@ function readSession(base) {
   } catch (_) { return ""; }
 }
 
-function writeSession(base, token, maxAgeSeconds) {
+function writeSession(site, token, maxAgeSeconds) {
   /* Cookie 未给 Max-Age 时按 6 天保守缓存，留出余量 */
   const ttl = Number.isFinite(maxAgeSeconds) && maxAgeSeconds > 0 ? maxAgeSeconds : 6 * 24 * 3600;
   try {
     $persistentStore.write(
       JSON.stringify({ version: 1, token, expiresAt: Date.now() + ttl * 1000 }),
-      sessionStoreKey(base)
+      sessionStoreKey(site)
     );
   } catch (_) {}
 }
@@ -617,7 +619,7 @@ async function loginWithKey(base, credential) {
 }
 
 async function fetchCchLoginSite(site) {
-  const cached = readSession(site.base);
+  const cached = readSession(site);
   if (cached) {
     try {
       return await fetchCchUserSite(site, { Accept: "application/json", Cookie: `auth-token=${cached}` });
@@ -625,7 +627,7 @@ async function fetchCchLoginSite(site) {
     }
   }
   const session = await loginWithKey(site.base, site.credential);
-  writeSession(site.base, session.token, session.maxAge);
+  writeSession(site, session.token, session.maxAge);
   return fetchCchUserSite(site, { Accept: "application/json", Cookie: `auth-token=${session.token}` });
 }
 
@@ -2043,8 +2045,7 @@ function cmdcodePercent(ratio) {
 }
 
 /* 限额字段：limited=false 写「不限」；M 有上限写百分比，否则写剩余金额 */
-function cchLimitFields(data, label) {
-  const name = String(label || (data.site && data.site.name) || "CommandCode");
+function cchLimitFields(data) {
   const unlimited = data.limited === false;
   const windows = [];
   for (const window of Array.isArray(data.windows) ? data.windows : []) {
@@ -2061,7 +2062,7 @@ function cchLimitFields(data, label) {
   let month = null;
   if (ratio !== null) month = cmdcodePercent(ratio);
   else if (remaining !== null) month = cchLimitMoney(remaining);
-  return { name, windows, month };
+  return { windows, month };
 }
 
 /* 四种排法：完整 · 紧凑 · 紧凑空格 · 无分隔 */
@@ -2072,55 +2073,6 @@ function cchLimitMetrics(fields, spaced, separator) {
   }
   if (fields.month !== null) items.push(spaced ? `M ${fields.month}` : `M${fields.month}`);
   return items.join(separator);
-}
-
-/* 站名 + 指标：放不下只截短站名；截完只剩省略号（或剩余不足 1 列）返回 null，
-   由调用方整段去掉站名。返回前再量一次，绝不超宽（省略号本身按 2 列计） */
-function cchLimitNamed(name, metrics, budget) {
-  const line = `${name} · ${metrics}`;
-  if (measure(line) <= budget) return line;
-  const room = budget - measure(metrics) - 3;
-  if (room < 1) return null;
-  const short = truncateToWidth(name, room);
-  if (!short || short === "…") return null;
-  const truncated = `${short} · ${metrics}`;
-  return measure(truncated) <= budget ? truncated : null;
-}
-
-/* 限额行：先压指标排法、再截短站名、最后才去掉站名——三项指标在能放下时一个不丢。
-   百分比固定两位小数后完整排法要 45 列，默认 38 列改用「紧凑空格」保住完整站名：
-   `CommandCode · 5H68.00% W59.00% M57.14%`（38 列）。
-   通用 fitRowWidth 会从尾部丢字段（20–22 宽会丢月度），这里不交给它。
-   金额已是紧凑档（$12345678 → $12.3M）；最紧排法仍超宽时截短收尾，
-   绝不返回超过 budget 的行（cch_row_width 下限 20） */
-function cchLimitRowParts(data, label, budget) {
-  const width = Math.max(20, Number(budget) || 0);
-  const fields = cchLimitFields(data, label);
-  const wide = cchLimitMetrics(fields, true, " · ");
-  /* 一个可展示字段都没有：返回空数组，不占行（由面板图标提示异常） */
-  if (!wide) return [];
-  const variants = [
-    wide,
-    cchLimitMetrics(fields, false, " · "),
-    cchLimitMetrics(fields, false, " "),
-    cchLimitMetrics(fields, false, ""),
-  ];
-  /* 完整站名优先：只压指标排法 */
-  for (const metrics of variants) {
-    const line = `${fields.name} · ${metrics}`;
-    if (measure(line) <= width) return [line];
-  }
-  /* 站名确实放不下才截短（截完只剩省略号时返回 null） */
-  for (const metrics of variants) {
-    const line = cchLimitNamed(fields.name, metrics, width);
-    if (line) return [line];
-  }
-  /* 站名连 1 列都放不下：整段去掉，指标仍从宽到窄挑第一种放得下的 */
-  for (const metrics of variants) {
-    if (measure(metrics) <= width) return [metrics];
-  }
-  /* 比最紧的排法还窄：只截短空格分隔的最紧排法，保证 measure(line) <= width */
-  return [truncateToWidth(variants[2], width)];
 }
 
 /* 两行显示的第 2 行：从宽到窄取第一种放得下的排法，都放不下就截短最紧排法 */
@@ -2175,7 +2127,7 @@ async function fetchCchResults() {
 
 async function runPanel() {
   const cchResults = await fetchCchResults();
-  if (!cchResults.length) return finish("未配置", PANEL_ICON, "8E8E93");
+  if (!cchResults.length) return finish("未配置", PANEL_ICON, "#8E8E93");
 
   const lines = cchBalanceLines(cchResults, true);
   const usage = cchpUsageLines(cchResults);
