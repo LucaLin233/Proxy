@@ -95,7 +95,13 @@ async function check_netflix() {
         }
 
         if (response.status === 200) {
-          let url = response.headers['x-originating-url']
+          // 缺少该响应头时直接按检测失败处理，避免 url.split 抛错导致面板一直等到超时
+          let key = Object.keys(response.headers || {}).find((k) => k.toLowerCase() === 'x-originating-url')
+          let url = key ? response.headers[key] : ''
+          if (!url) {
+            reject('Error')
+            return
+          }
           let region = url.split('/')[3]
           region = region.split('-')[0]
           if (region == 'title') {

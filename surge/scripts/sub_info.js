@@ -32,7 +32,7 @@ Sub_info = script-name=Sub_info,update-interval=86400
 (async () => {
   let args = getArgs();
   let info = await getDataInfo(args.url);
-  if (!info) $done();
+  if (!info) return $done();
   let resetDayLeft = getRmainingDays(parseInt(args["reset_day"]));
   
   let used = info.download + info.upload;
@@ -58,7 +58,8 @@ Sub_info = script-name=Sub_info,update-interval=86400
   minutes = minutes > 9 ? minutes : "0" + minutes;
 
   $done({
-    title: `${args.title}` + `｜Reset : ` + `${resetDayLeft} Days`,
+    // 未传 reset_day 时不显示重置天数，与上方参数说明一致
+    title: (args.title || "Sub Info") + (resetDayLeft ? `｜Reset : ${resetDayLeft} Days` : ""),
     content: content.join("\n"),
     icon: args.icon || "airplane.circle",
     "icon-color": args.color || "#007aff",
@@ -67,7 +68,7 @@ Sub_info = script-name=Sub_info,update-interval=86400
 
 function getArgs() {
   return Object.fromEntries(
-    $argument
+    (typeof $argument === "string" ? $argument : "")
       .split("&")
       .map((item) => item.split("="))
       .map(([k, v]) => [k, decodeURIComponent(v)])
