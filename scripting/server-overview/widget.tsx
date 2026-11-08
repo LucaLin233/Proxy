@@ -32,8 +32,10 @@ async function run() {
     const refreshMs = clampRefreshMinutes(config.refreshMinutes) * 60 * 1000
     const cacheMs = Math.max(60 * 1000, refreshMs - 60 * 1000)
     const data = await loadPanel(config, cacheMs)
-    /* 下一次时间线以「数据时间 + 间隔」为锚点：系统提前唤醒时不会把节奏拖后 */
-    const next = Math.max(Date.now() + 60 * 1000, data.updatedAt + refreshMs)
+    /* 下一次时间线以「数据时间 + 间隔」为锚点，系统提前唤醒时不会把节奏拖后。
+       两侧都失败、退回旧缓存（stale）时改按本次尝试时间计，否则旧数据的时间会让小组件每分钟重取一次 */
+    const anchor = data.stale ? Date.now() : data.updatedAt
+    const next = Math.max(Date.now() + 60 * 1000, anchor + refreshMs)
     Widget.present(
       <ServerWidget data={data} config={config} widgetSizeHint={family} />,
       { policy: "after", date: new Date(next) }

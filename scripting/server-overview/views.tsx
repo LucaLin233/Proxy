@@ -1,4 +1,4 @@
-// 服务器监控 · 小组件视图（widget.tsx 与 preview.tsx 共用）
+// 服务器监控 · 小组件视图（widget.tsx 使用）
 // 视觉参考「中转站看板」：暖色渐变底 + 圆角卡片块。
 // 中号：单列卡片；大号：最紧张的一项做成通栏主卡，其余按 2 列网格排列；
 // 小号：保持紧凑列表，避免 158pt 见方被卡片挤碎。
@@ -23,10 +23,8 @@ const GREEN_FILL: [string, string] = ["#67E39A", "#2FB45A"]
 const AMBER_FILL: [string, string] = ["#FFC15C", "#FF9F0A"]
 const RED_FILL: [string, string] = ["#FF7C6E", "#FF453A"]
 const GREY_FILL: [string, string] = ["#BDB5A8", "#8E8E93"]
-const GREEN = "#30D158"
 const AMBER = "#FF9F0A"
 const RED = "#FF453A"
-const GREY = "#8E8E93"
 
 /* 卡片：中性半透明圆角底 + 很轻的纵向渐变，颜色只留给主卡和进度条 */
 const CARD_BG: any = {
