@@ -4,7 +4,7 @@
 #!system=ios
 
 #!arguments=server_query_interval:21600,server_daily_notify:true,server_icon:cloud,server_icon_color:FF9900,lightsail_ak,lightsail_sk,lightsail_region:ap-east-1|ap-northeast-1,lightsail_notify_percent:80,lightsail_ip_mode:mask,peekabo_id,peekabo_token,peekabo_notify_days:3
-#!arguments-desc=AWS Lightsail:\n    ├ 密钥：AWS 控制台 → IAM → 只读策略（lightsail:GetInstances / GetBundles / GetInstanceMetricData）→ 创建访问密钥\n    └ 区域默认 ap-east-1|ap-northeast-1，多个用竖线分隔\n\nPeekabo:\n    ├ Server ID：控制面板服务器页面 URL 中 /server/ 后的内容\n    └ API Token：Account → API\n\n其余参数:\n    ├ 面板刷新间隔默认 21600 秒（6 小时）\n    ├ 日报默认开启；每天 23:55 推送一条，含 Lightsail 与 Peekabo 两段\n    ├ 提醒阈值、通知天数填 0 即关闭\n    └ 图标使用 SF Symbol 名称与六位 HEX 颜色
+#!arguments-desc=AWS Lightsail:\n    ├ 密钥：AWS 控制台 → IAM → 只读策略（lightsail:GetInstances / GetBundles / GetInstanceMetricData）→ 创建访问密钥\n    ├ 区域默认 ap-east-1|ap-northeast-1，多个用竖线分隔\n    └ IP 显示（lightsail_ip_mode）：mask 脱敏（默认）| full 完整 | hide 隐藏\n\nPeekabo:\n    ├ Server ID：控制面板服务器页面 URL 中 /server/ 后的内容\n    └ API Token：Account → API\n\n其余参数:\n    ├ 面板刷新间隔默认 21600 秒（6 小时）\n    ├ 日报默认开启；每天 23:55 推送一条，含 Lightsail 与 Peekabo 两段\n    ├ 提醒阈值、通知天数填 0 即关闭\n    └ 图标使用 SF Symbol 名称与六位 HEX 颜色
 
 [Panel]
 服务器概览 = title="服务器概览",content="正在获取...",style=info,script-name=server-overview-panel,update-interval={{{server_query_interval}}}

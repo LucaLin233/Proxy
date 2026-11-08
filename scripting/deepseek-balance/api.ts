@@ -46,6 +46,8 @@ export async function fetchBalance(apiKey: string): Promise<BalanceResult> {
         Authorization: `Bearer ${key}`,
         Accept: "application/json",
       },
+      /* 秒；小组件扩展的运行时间有限，接口挂起时要尽快落到失败分支 */
+      timeout: 15,
     })
     if (!resp.ok) return { ok: false, error: messageOf(resp.status) }
 

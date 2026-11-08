@@ -63,7 +63,6 @@ const CHIP_BG: any = {
   light: { color: "#0A0A14", opacity: 0.065 },
   dark: { color: "#FFFFFF", opacity: 0.12 },
 }
-const SHARE_TONE: [string, string] = ["#8FA2FF", "#4D6BFE"]
 const GRANT_TONE: [string, string] = ["#9DB4FF", "#4D6BFE"]
 const TOPUP_TONE: [string, string] = ["#7FE7FF", "#22B8E6"]
 

@@ -727,9 +727,6 @@ export function PanelWidget({
             rich={rich}
           />
         ))}
-        {pair.length < cols
-          ? <Rectangle fill="rgba(0,0,0,0)" frame={{ width: cellW, height: cellH }} />
-          : null}
       </HStack>
     )
   }

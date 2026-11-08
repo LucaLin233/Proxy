@@ -1,7 +1,6 @@
 /* 中转站看板 · 数据层
-   从 Surge 模块 aiapi_relay.js 移植：CCH / CCHP / CommandCode 三种取数方式，
-   归一成一张按优先级排序的余额表，供 index.tsx / widget.tsx / intent.tsx 共用。
-
+   手工移植自 Surge 脚本 surge/scripts/aiapi_relay.js（两边各自维护，规则改动需同步）：
+   CCH / CCHP / CommandCode 三种取数方式，归一成一张按优先级排序的余额表。
    Storage 是运行时全局（本脚本私有域），不需要 import。 */
 
 import { fetch } from "scripting"
@@ -23,8 +22,6 @@ export type Site = {
 export type Options = {
   /* CommandCode 套餐月度上限（USD），默认 70 */
   monthCap: number
-  /* App 内最多显示多少行 */
-  maxRows: number
   /* 小组件多久重取一次余额（分钟），默认 15 */
   refreshMinutes: number
 }
@@ -40,11 +37,11 @@ export type Row = {
   key: string
   name: string
   site: string
-  /* 归一成 USD 的金额，仅用于合计与排序；查不到为 null */
+  /* USD 金额，用于低余额标红；查不到或非 USD 时为 null */
   amount: number | null
   currency: string
   amountText: string
-  /* 详细指标：健康、限额、今日用量等，按重要度排序 */
+  /* 小号行第二行的说明文字（健康度、限额等） */
   metrics: string[]
   detail: string
   /* 剩余比例 0–1，用于着色；没有额度概念时为 null */
@@ -62,16 +59,8 @@ export type Row = {
   failed: boolean
 }
 
-export type Usage = {
-  site: string
-  requests: number
-  successRate: number | null
-  ttftMs: number | null
-}
-
 export type PanelData = {
   rows: Row[]
-  usage: Usage[]
   notices: string[]
   errors: { site: string; message: string }[]
   updatedAt: number
@@ -84,7 +73,6 @@ type PriorityHint = { host: string; names: string[]; priority: number }
 
 type Outcome = {
   rows: Row[]
-  usage: Usage | null
   notices: string[]
   error: string | null
   hints?: PriorityHint[]
@@ -108,7 +96,7 @@ const STORE_SITES = "relay.sites.v2"
 const STORE_OPTS = "relay.opts.v1"
 const STORE_CACHE = "relay.panel.v1"
 
-const DEFAULT_OPTIONS: Options = { monthCap: 70, maxRows: 10, refreshMinutes: 15 }
+export const DEFAULT_OPTIONS: Options = { monthCap: 70, refreshMinutes: 15 }
 
 /* 刷新间隔可选值（分钟）：iOS 对小组件刷新有节流，最短给到 15 分钟 */
 export const REFRESH_CHOICES: number[] = [15, 30, 60, 120, 180, 360, 720]
@@ -121,9 +109,8 @@ export function clampRefreshMinutes(value: any): number {
   return Math.min(REFRESH_MAX, Math.max(REFRESH_MIN, Math.round(minutes)))
 }
 
-/* 兜底展示顺序：有 CCHP 优先级（priority）时按优先级排，只有优先级相同或缺失才用这张表。
-   与 Surge 模块 surge/scripts/aiapi_relay.js 的 PANEL_ROW_ORDER 保持一致。
-   按名称前缀匹配（Kcne-Astra → Kcne）；不在表里的行排到最后。 */
+/* 兜底展示顺序：只在优先级相同或缺失时使用，与 Surge 脚本的 PANEL_ROW_ORDER 保持一致；
+   按名称前缀匹配（Kcne-Astra → Kcne），不在表里的行排到最后。 */
 const ROW_ORDER = ["commandcode", "clouder", "kcne", "air"]
 
 const MODES: SiteMode[] = ["cchp", "admin", "user", "login", "cookie", "cmdcode"]
@@ -181,10 +168,8 @@ export function readOptions(): Options {
     const parsed = typeof stored === "string" ? JSON.parse(stored) : stored
     if (parsed && typeof parsed === "object") {
       const monthCap = numeric(parsed.monthCap)
-      const maxRows = numeric(parsed.maxRows)
       return {
         monthCap: monthCap !== null && monthCap > 0 ? monthCap : DEFAULT_OPTIONS.monthCap,
-        maxRows: maxRows !== null ? Math.min(20, Math.max(3, Math.round(maxRows))) : DEFAULT_OPTIONS.maxRows,
         refreshMinutes: clampRefreshMinutes(parsed.refreshMinutes),
       }
     }
@@ -581,7 +566,6 @@ async function fetchCchQuota(
         ttftMs: health ? health.ttftMs : null,
         priority: site.priority,
       })],
-      usage: null,
       notices: [],
       error: null,
     }
@@ -601,7 +585,6 @@ async function fetchCchQuota(
       ttftMs: health ? health.ttftMs : null,
       priority: site.priority,
     })],
-    usage: null,
     notices: [],
     error: null,
   }
@@ -614,14 +597,15 @@ function cookieHeader(value: string): Record<string, string> {
   return { Accept: "application/json", Cookie: AUTH_COOKIE + "=" + value }
 }
 
-/* login 模式：Key 换会话 Cookie，缓存到 Storage，被拒时重登一次 */
-function sessionSlot(base: string): string {
-  return `relay.session.${hash(base)}`
+/* login 模式：Key 换会话 Cookie，缓存到 Storage，被拒时重登一次。
+   按「地址 + 凭据」分区：换 Key 后不会沿用上一账户的会话 */
+function sessionSlot(site: Site): string {
+  return `relay.session.${hash(`${site.base}|${site.credential}`)}`
 }
 
-function readSession(base: string): string {
+function readSession(site: Site): string {
   try {
-    const raw = Storage.get<any>(sessionSlot(base))
+    const raw = Storage.get<any>(sessionSlot(site))
     const store: Session | null = typeof raw === "string" ? JSON.parse(raw) : raw
     if (!store || typeof store.value !== "string") return ""
     return Number(store.expiresAt || 0) > Date.now() ? store.value : ""
@@ -630,10 +614,9 @@ function readSession(base: string): string {
   }
 }
 
-function writeSession(base: string, value: string, maxAge: number | null): void {
-  const ttl = maxAge !== null && maxAge > 0 ? maxAge : 6 * 24 * 3600
+function writeSession(site: Site, session: Session): void {
   try {
-    Storage.set(sessionSlot(base), JSON.stringify({ value, expiresAt: Date.now() + ttl * 1000 }))
+    Storage.set(sessionSlot(site), JSON.stringify(session))
   } catch (_) {}
 }
 
@@ -653,19 +636,20 @@ async function loginWithKey(base: string, credential: string): Promise<Session> 
 
   const match = new RegExp(AUTH_COOKIE + "=([^;,\\s]+)").exec(raw)
   if (!match) throw new Error("登录成功但未取到会话 Cookie")
+  /* 没有 Max-Age 时按 6 天保守缓存 */
   const ttl = /max-age=(\d+)/i.exec(raw)
   return { value: match[1], expiresAt: Date.now() + (ttl ? Number(ttl[1]) : 6 * 24 * 3600) * 1000 }
 }
 
 async function fetchCchLogin(site: Site): Promise<Outcome> {
-  const cached = readSession(site.base)
+  const cached = readSession(site)
   if (cached) {
     try {
       return await fetchCchQuota(site, cookieHeader(cached), "会话", 12000)
     } catch (_) {}
   }
   const session = await loginWithKey(site.base, site.credential)
-  writeSession(site.base, session.value, null)
+  writeSession(site, session)
   return fetchCchQuota(site, cookieHeader(session.value), "会话", 12000)
 }
 
@@ -823,7 +807,7 @@ async function fetchCchAdmin(site: Site, budget: Budget): Promise<Outcome> {
     }
   }
 
-  return { rows, usage: null, notices, error: null, hints }
+  return { rows, notices, error: null, hints }
 }
 
 /* ── CommandCode：余额查不到，只能读 5H / 周 / 月额度 ── */
@@ -954,7 +938,6 @@ async function fetchCommandCode(site: Site, options: Options, budget: Budget): P
       priority: site.priority,
       kind: "limit",
     })],
-    usage: null,
     notices: [],
     error: null,
   }
@@ -984,8 +967,7 @@ function activeKeyIds(keys: any): string[] {
     .map((item) => String(item.id))
 }
 
-/* 新版面板已去掉 /providers/{id}/keys（404），但 provider.balance.keys 同样带 key_id。
-   用它兜底选代表 key，否则多账户时没有代表 key，整行会被判为「单账户余额不可用」而消失。 */
+/* provider.balance.keys 也带 key_id：keys/page 取不到 keyIds 时用它兜底挑代表 key */
 function balanceKeyIds(balance: any): string[] {
   const keys = balance && Array.isArray(balance.keys) ? balance.keys : []
   const ids: string[] = []
@@ -1094,23 +1076,6 @@ function amountParts(balance: any): string[] {
   return parts
 }
 
-async function fetchCchpSummary(site: Site, headers: Record<string, string>, timeoutMs: number): Promise<Usage | null> {
-  try {
-    const result = await request("GET", `${site.base}/api/account/usage/summary`, headers, undefined, timeoutMs)
-    if (result.status !== 200) return null
-    const today = result.body ? result.body.today : null
-    if (!today || typeof today !== "object") return null
-    return {
-      site: site.name,
-      requests: num(today.requests),
-      successRate: numeric(today.successRate),
-      ttftMs: numeric(today.avgTtftMs),
-    }
-  } catch (_) {
-    return null
-  }
-}
-
 async function fetchCchpHealth(
   site: Site,
   headers: Record<string, string>,
@@ -1141,8 +1106,8 @@ async function fetchCchpHealth(
   return map
 }
 
-/* 新版面板：一次取全组织的 key（旧 /providers/{id}/keys 已 404）。
-   有 nextCursor 时续页；partial / preparing 视为本轮失败，不写缓存。 */
+/* 一次取全组织的 key（旧 /providers/{id}/keys 已 404）：有 nextCursor 时续页，
+   partial / preparing 或页数用满都算本轮取数不完整。 */
 async function fetchProviderKeys(
   site: Site,
   orgId: string,
@@ -1195,13 +1160,14 @@ function prioritiesFromKeys(keys: any[], providers: CchpProvider[]): CchpPriorit
   })
 }
 
-async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<Outcome> {
+async function fetchCchp(site: Site, budget: Budget): Promise<Outcome> {
   const headers: Record<string, string> = { Accept: "application/json", Authorization: `Bearer ${site.credential}` }
   const slice = (max = 15000) => Math.min(max, Math.max(3000, budgetLeft(budget)))
   const notices: string[] = []
   let timedOut = false
 
-  const orgSlot = `relay.cchp.org.${hash(site.base)}`
+  /* 组织 ID 按「地址 + 令牌」缓存：换成别的组织的令牌不会沿用旧 ID */
+  const orgSlot = `relay.cchp.org.${hash(`${site.base}|${site.credential}`)}`
   let orgId = readSlot<string>(orgSlot, 24 * 3600 * 1000) || ""
   if (!orgId) {
     const result = await request("GET", `${site.base}/api/account/org-tree`, headers, undefined, slice())
@@ -1238,10 +1204,7 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
 
   let providers: CchpProvider[] = rawProviders.filter((item) => !cchpHidden(item)).map(cchpProvider)
 
-  /* key 优先级与可见性：新版面板一次返回整个组织的 key（旧 /providers/{id}/keys 已 404）。
-     每轮都实取（分页取全），不做缓存，停用或新增 key 当轮生效；
-     active key 的最小 priority 作为 provider 优先级，activeKeyIds 既用来挑代表 key，
-     也用来判断该 provider 是否还有启用的 key。取数不完整时两者都不可用。 */
+  /* key 优先级与可见性每轮实取 keys/page（分页取全），不缓存，停用或新增 key 当轮生效 */
   let keysComplete = false
   let priorityMissing = false
   let priorities: CchpPriority[] | null = null
@@ -1261,9 +1224,8 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
   const prioById = new Map<string, CchpPriority>()
   for (const item of priorities || []) prioById.set(item.id, item)
 
-  /* 可见性：keys/page 取全时，没有任何 active key 的 provider（key 全停用或没建 key）不出行。
-     keys/page 失败、超时、partial/preparing 或页数用满时一律不隐藏，只丢排序与 keyIds，
-     行序退回 ROW_ORDER 兜底。Clouder 的余额由 CCH 站点提供，不参与这条判据。 */
+  /* 可见性：keys/page 取全时，没有任何 active key 的 provider 不出行；取不全时一律不隐藏，
+     只丢排序与 keyIds、按 ROW_ORDER 兜底。Clouder 的余额由 CCH 站点提供，不参与这条判据。 */
   const hiddenIds = new Set<string>()
   if (keysComplete) {
     for (const provider of providers) {
@@ -1273,8 +1235,7 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
     }
   }
 
-  /* 代表 key：优先用本轮 keys/page 的 active keyIds；取不到时改用 balance.keys 里的 key_id，
-     保证多账户 provider 仍能选中一个账户。balance.keys 只用来挑代表 key，不用于判可见性 */
+  /* 代表 key：优先用本轮 keys/page 的 active keyIds，取不到时用 balance.keys 兜底（只用于挑代表 key，不用于判可见性） */
   const repKeyById = new Map<string, string>()
   for (const provider of providers) {
     if (hiddenIds.has(provider.id)) continue
@@ -1284,10 +1245,12 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
     if (keyId) repKeyById.set(provider.id, keyId)
   }
 
-  /* 余额实时化：每个可见 provider 只刷代表 key，刷完重取一次聚合列表 */
+  /* 余额实时化：每个可见 provider 只刷代表 key，刷完重取一次聚合列表。
+     balance.status=unsupported（如 CommandCode）上游不支持查余额，与 Surge 版一样不刷 */
   const targets: { id: string; keyId: string }[] = []
   for (const provider of providers) {
     if (hiddenIds.has(provider.id) || isClouder(provider.name)) continue
+    if (String(provider.balance && provider.balance.status || "").toLowerCase() === "unsupported") continue
     const keyId = repKeyById.get(provider.id) || ""
     if (keyId) targets.push({ id: provider.id, keyId })
   }
@@ -1329,18 +1292,9 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
     notices.push("⚠️ 余额未刷新，来自服务端缓存")
   }
 
-  /* 今日用量与供应商健康：失败只丢这一块，不影响余额行 */
-  let usage: Usage | null = null
+  /* 供应商健康：失败只丢这一块，不影响余额行 */
   let health = new Map<string, { successRate: number | null; ttftMs: number | null; requests: number | null }>()
-  if (budgetLeft(budget) > 2500) {
-    const timeout = slice(9000)
-    const pair = await Promise.all([
-      fetchCchpSummary(site, headers, timeout),
-      fetchCchpHealth(site, headers, timeout),
-    ])
-    usage = pair[0]
-    health = pair[1]
-  }
+  if (budgetLeft(budget) > 2500) health = await fetchCchpHealth(site, headers, slice(9000))
 
   const rows: Row[] = []
   const hints: PriorityHint[] = []
@@ -1395,7 +1349,7 @@ async function fetchCchp(site: Site, options: Options, budget: Budget): Promise<
   if (timedOut) notices.push("⚠️ 部分请求超时")
   else if (priorityMissing) notices.push("⚠️ 部分排序信息缺失")
 
-  return { rows, usage, notices, error: null, hints }
+  return { rows, notices, error: null, hints }
 }
 
 /* ── 汇总 ── */
@@ -1404,7 +1358,7 @@ async function fetchSite(site: Site, options: Options): Promise<Outcome> {
   const budget = beginBudget(24000)
   if (site.mode === "admin") return fetchCchAdmin(site, budget)
   if (site.mode === "cmdcode") return fetchCommandCode(site, options, budget)
-  if (site.mode === "cchp") return fetchCchp(site, options, budget)
+  if (site.mode === "cchp") return fetchCchp(site, budget)
   if (site.mode === "login") return fetchCchLogin(site)
   if (site.mode === "cookie") return fetchCchQuota(site, cookieHeader(site.credential), "会话", 15000)
   return fetchCchQuota(site, { Accept: "application/json", "X-API-Key": site.credential }, "Key", 15000)
@@ -1451,7 +1405,7 @@ function messageOf(error: any): string {
 
 export function emptyPanel(): PanelData {
   return {
-    rows: [], usage: [], notices: [], errors: [],
+    rows: [], notices: [], errors: [],
     updatedAt: Date.now(), elapsedMs: 0, fromCache: false,
   }
 }
@@ -1496,7 +1450,6 @@ export async function loadPanel(sites: Site[], options: Options, maxAgeMs = 0): 
   }))
 
   const rows: Row[] = []
-  const usage: Usage[] = []
   const notices: string[] = []
   const errors: { site: string; message: string }[] = []
   const hints: PriorityHint[] = []
@@ -1518,7 +1471,6 @@ export async function loadPanel(sites: Site[], options: Options, maxAgeMs = 0): 
     }
     siteById.set(item.site.id, item.site)
     for (const row of item.outcome.rows) rows.push({ ...row })
-    if (item.outcome.usage) usage.push(item.outcome.usage)
     for (const note of item.outcome.notices) if (notices.indexOf(note) < 0) notices.push(note)
     for (const hint of item.outcome.hints || []) hints.push(hint)
   }
@@ -1557,26 +1509,11 @@ export async function loadPanel(sites: Site[], options: Options, maxAgeMs = 0): 
     if (namePriority.has(name)) row.priority = namePriority.get(name) as number
   }
 
-  /* 某次取数没拿到优先级（超时/接口失败）时，沿用上次已知值，避免顺序前后跳 */
-  const rowPrioSlot = "relay.rowprio.v1"
-  const knownPriority = readSlot<Record<string, number>>(rowPrioSlot, 30 * 24 * 3600 * 1000) || {}
-  for (const row of rows) {
-    const saved = knownPriority[row.key]
-    if (row.priority === null && typeof saved === "number") row.priority = saved
-  }
-
   rows.forEach((row, index) => { row.seq = index })
   rows.sort(compareRows)
 
-  const nextPriority: Record<string, number> = {}
-  for (const row of rows) {
-    if (row.priority !== null) nextPriority[row.key] = row.priority
-  }
-  writeSlot(rowPrioSlot, nextPriority)
-
   const data: PanelData = {
     rows,
-    usage,
     notices,
     errors,
     updatedAt: Date.now(),

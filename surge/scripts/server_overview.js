@@ -25,7 +25,6 @@ const TARGET_PREFIX = "Lightsail_20161128.";
 const BYTES_PER_GB = 1024 ** 3;
 const BUNDLE_CACHE_KEY = "lightsail_bundle_cache";
 const BUNDLE_CACHE_TTL = 24 * 3600 * 1000;
-const GEO_CACHE_TTL = 24 * 3600 * 1000;
 
 /* Lightsail 区域中文名（未收录的区域回退显示区域代码） */
 const REGION_NAMES = {
@@ -101,7 +100,7 @@ function formatBytes(bytes) {
 
 function httpGet(url, headers) {
   return new Promise((resolve, reject) => {
-    $httpClient.get({ url, headers, timeout: 10000 }, (error, response, data) => {
+    $httpClient.get({ url, headers, timeout: 10 }, (error, response, data) => {
       if (error) return reject(new Error(error));
       resolve({ status: response.status, body: data });
     });
@@ -110,7 +109,7 @@ function httpGet(url, headers) {
 
 function httpPost(url, headers, body) {
   return new Promise((resolve, reject) => {
-    $httpClient.post({ url, headers, body, timeout: 15000 }, (error, response, data) => {
+    $httpClient.post({ url, headers, body, timeout: 15 }, (error, response, data) => {
       if (error) return reject(new Error(error));
       resolve({ status: response.status, body: data || "" });
     });
@@ -376,7 +375,6 @@ function buildGroups(entries, bundleMap) {
     group.instances.push({
       name: instance.name,
       ip: String(instance.publicIpAddress || "").trim(),
-      geo: null,
       usedBytes: entry.inBytes + entry.outBytes,
     });
   });
@@ -437,7 +435,7 @@ function renderPanel(groups) {
     const single = group.instances.length === 1 ? group.instances[0] : null;
     const region = regionLabel(group.region);
 
-    /* 首行放地区与 IP，第二行放流量；型号与 geo 不再重复展示 */
+    /* 首行放地区与 IP，第二行放流量 */
     if (single) {
       const head = [`地区 ${region}`];
       if (single.ip && IP_MODE !== "hide") {
@@ -519,10 +517,8 @@ async function fetchPeekabo() {
   }
 }
 
-/* 每个服务商一段：首行是服务商标题，与 Lightsail 段结构保持一致 */
-/* 取数预算：单个服务商卡住时不再拖累另一个
-   （Surge 的 timeout 是整个脚本的上限，撞到它脚本会被直接掐掉、面板不更新，
-     所以这里要保证在 timeout 之前无论如何都回一个结果） */
+/* 取数预算：单个服务商卡住时不拖累另一个。模块 timeout（10 秒）是整个脚本的上限，
+   撞到会被直接掐掉、面板不更新，所以要在它之前无论如何回一个结果 */
 const LIGHTSAIL_BUDGET_MS = 8000;
 const PEEKABO_BUDGET_MS = 5000;
 
@@ -549,6 +545,7 @@ function withBudget(run, ms, timeoutError) {
   });
 }
 
+/* 每个服务商一段：首行是服务商标题，与 Lightsail 段结构保持一致 */
 function peekaboLines(result) {
   if (!result.ok) return ["Peekabo", `❌ ${result.error}`];
   const percent = (result.used / result.total) * 100;
@@ -581,13 +578,6 @@ function notifyPeekaboExpiring(result) {
 
 /* ===== 每日日报 ===== */
 
-function dailySubtitle(groups) {
-  const used = groups.reduce((total, group) => total + group.usedBytes, 0);
-  const quota = groups.reduce((total, group) => total + group.quotaBytes, 0);
-  const percent = quota > 0 ? `（${((used / quota) * 100).toFixed(2)}%）` : "";
-  return `当月 ${formatBytes(used)} / ${formatBytes(quota)}${percent}`;
-}
-
 function renderDaily(groups) {
   if (!groups.length) return "未找到 Lightsail 实例";
 
@@ -602,78 +592,6 @@ function renderDaily(groups) {
     lines.push(`今日：${formatBytes(group.todayBytes)}`);
   });
   return lines.join("\n");
-}
-
-function composeRegion(country, regionName, city) {
-  const parts = [];
-  if (country) parts.push(country);
-  if (regionName && regionName !== country && !parts.includes(regionName)) parts.push(regionName);
-  if (city && !parts.includes(city)) parts.push(city);
-  return parts.join(" ") || null;
-}
-
-/* zxinc 返回「国家–省州–城市」，取前两段并统一为空格分隔 */
-function cleanGeo(text) {
-  const parts = String(text || "")
-    .split(/[–—]|-(?=\S)/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return parts.slice(0, 2).join(" ") || null;
-}
-
-async function getGeo(ip) {
-  const key = `lightsail_geo_${ip}`;
-  const cached = readCache(key);
-  if (cached && Date.now() - cached.ts < GEO_CACHE_TTL) return cached.region;
-
-  let region = null;
-
-  /* 主接口: zxinc（中文，对 AWS 机房 IP 较准） */
-  try {
-    const response = await httpGet(
-      `https://ip.zxinc.org/api.php?type=json&ip=${encodeURIComponent(ip)}`,
-      { Accept: "application/json" }
-    );
-    if (response.status === 200) {
-      const geo = JSON.parse(response.body);
-      if (geo && geo.code === 0 && geo.data) region = cleanGeo(geo.data.country);
-    }
-  } catch (_) {}
-
-  /* 备接口: ip-api.com 中文（国家/城市中文，州省可能为英文） */
-  if (!region) {
-    try {
-      const response = await httpGet(
-        `http://ip-api.com/json/${encodeURIComponent(ip)}?lang=zh-CN&fields=status,country,regionName,city`,
-        { Accept: "application/json" }
-      );
-      if (response.status === 200) {
-        const geo = JSON.parse(response.body);
-        if (geo && geo.status === "success") region = composeRegion(geo.country, geo.regionName, geo.city);
-      }
-    } catch (_) {}
-  }
-
-  /* 末接口: ipwho.is（英文兜底） */
-  if (!region) {
-    try {
-      const response = await httpGet(`https://ipwho.is/${encodeURIComponent(ip)}`, { Accept: "application/json" });
-      if (response.status === 200) {
-        const geo = JSON.parse(response.body);
-        if (geo && geo.success) region = composeRegion(geo.country, geo.region, geo.city);
-      }
-    } catch (_) {}
-  }
-
-  try { $persistentStore.write(JSON.stringify({ region, ts: Date.now() }), key); } catch (_) {}
-  return region;
-}
-
-async function fillGeo(groups) {
-  await Promise.all(groups.map((group) => Promise.all(group.instances.map(async (instance) => {
-    if (!instance.ip) return;
-    try { instance.geo = await getGeo(instance.ip); } catch (_) { instance.geo = null; }
-  }))));
 }
 
 function notifyOveruse(groups) {
@@ -702,7 +620,7 @@ function notifyOveruse(groups) {
   try {
     if (!lightsailReady && !peekaboReady) {
       if (isDaily) return $done(); // 未配置时日报静默跳过，避免每日骚扰
-      return finish("未配置", PANEL_ICON, "8E8E93");
+      return finish("未配置", PANEL_ICON, "#8E8E93");
     }
     const dailyFlag = String(ARGS.server_daily_notify || "true").trim().toLowerCase();
     if (isDaily && (dailyFlag === "false" || dailyFlag === "0" || dailyFlag === "no" || dailyFlag === "off")) {
@@ -751,7 +669,6 @@ function notifyOveruse(groups) {
       return $done();
     }
 
-    if (lightsailReady && lightResult.ok && IP_MODE !== "hide") await fillGeo(groups);
     if (lightsailReady && lightResult.ok) notifyOveruse(groups);
     notifyPeekaboExpiring(peekabo);
 
