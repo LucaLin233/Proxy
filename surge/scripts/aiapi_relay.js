@@ -1,10 +1,6 @@
-/* AI 中转站面板与日报：
-   - 面板（mode=panel，默认）：各 CCH / CCHP 站点的余额，合并成一个列表
-   - 日报（mode=daily）：每天 23:50 推送同一条列表
-   余额从两处取：CCH 的 admin 模式一次拿到本站各上游余额（CCH 用各上游自己的密钥查），
-   user/cookie/login 模式取该站账户余额；CCHP 的 cchp 模式按组织取各 provider 余额，
-   并用其 key 优先级排序（Clouder 的余额仍由 CCH 站点提供）。面板与日报显示余额、今日用量与供应商健康。
-   参数用 cch_*，模块级用 aiapi_* */
+/* AI 中转站面板（mode=panel，默认）与日报（mode=daily，每天 23:50 推送同一列表）。
+   CCH admin 列本站各上游余额，user/cookie/login 取账户余额，CCHP 按组织取 provider 余额并按 key 优先级排序，
+   cmdcode 读 CommandCode 限额。参数用 cch_*，模块级用 aiapi_* */
 
 const ARGS = parseArgs($argument || "");
 const IS_DAILY = String(ARGS.mode || "panel").trim().toLowerCase() === "daily";
@@ -23,12 +19,12 @@ const CCH_ADMIN_MAX = intArg(ARGS.cch_admin_max, 8, 1, 20);
 const CCH_ROW_WIDTH = intArg(ARGS.cch_row_width, 38, 20, 60);
 /* 额度缓存秒数：模块默认传 600；直接调用脚本且未传 cch_quota_interval 时回退 300 */
 const CCH_QUOTA_CACHE_SECONDS = intArg(ARGS.cch_quota_interval, 300, 60, 3600);
-/* 月度额度上限（USD）：官方 GOAT 套餐每月 70；填非法值（≤0/非数字）时 M 段回退成剩余金额 */
+/* 月度额度上限（USD），默认 70；填非法值时 M 段回退成剩余金额 */
 const CMDCODE_MONTH_CAP = monthCapArg(ARGS.cch_cmdcode_month_cap, 70);
-/* 供应商限额（5 小时/日/周/月用量）与上游余额是两回事，默认只展示余额 */
+/* 供应商限额（5 小时/日/周/月）默认不展示 */
 const CCH_SHOW_LIMITS = boolArg(ARGS.cch_show_limits, false);
-/* 用户拓扑是一个 provider 一个上游账户；CCHP 的 balance.accounts 按真实账户分行，
-   同一账户读数不一致时会被拆成两条、totals 相加双计，默认只刷一把代表 key、只显示单账户金额 */
+/* 一个 provider 对应一个上游账户：默认只刷代表 key、只显示该账户金额，
+   避免同一账户被拆成两条后 totals 双计 */
 const CCHP_SINGLE_ACCOUNT = boolArg(ARGS.aiapi_cchp_single_account, true);
 
 function intArg(value, fallback, min, max) {
@@ -39,7 +35,6 @@ function intArg(value, fallback, min, max) {
   return Math.min(max, Math.max(min, Math.round(parsed)));
 }
 
-/* 开关参数：留空用默认值，只有明确的真/假写法才覆盖 */
 function boolArg(value, fallback) {
   const text = String(value === undefined || value === null ? "" : value).trim().toLowerCase();
   if (text === "") return fallback;
@@ -48,7 +43,6 @@ function boolArg(value, fallback) {
   return fallback;
 }
 
-/* 月度上限参数：留空按默认套餐价；明确填了非法值（≤0/非数字）时返回 null，让 M 段回退成剩余金额 */
 function monthCapArg(value, fallback) {
   const text = String(value === undefined || value === null ? "" : value).trim();
   if (text === "") return fallback;
@@ -99,7 +93,7 @@ function money(value) {
   return `$${formatAmount(value)}`;
 }
 
-/* CCH 上游余额按上游原生币种展示，不做汇率换算（换算需要实时汇率，会对不上上游账单） */
+/* 按上游原币种展示，不做汇率换算 */
 function cchMoney(currency, value) {
   const code = String(currency || "").trim().toUpperCase();
   const symbol = currencySymbol(code);
@@ -121,7 +115,6 @@ function measure(text) {
   return width;
 }
 
-/* 按宽度拼行，放不下的片段自动另起一行 */
 function layoutRows(parts, budget) {
   const rows = [];
   let row = "";
@@ -138,7 +131,6 @@ function layoutRows(parts, budget) {
   return rows;
 }
 
-/* 截短到指定显示宽度，末尾加省略号；已经放得下就原样返回 */
 function truncateToWidth(text, budget) {
   const source = String(text);
   if (budget <= 0) return "";
@@ -154,15 +146,13 @@ function truncateToWidth(text, budget) {
   return `${out}…`;
 }
 
-/* 单行收尾：各变体都放不下时按剩余宽度截短首字段（名称），必要时从尾部舍弃字段，
-   保证 measure(join(" · ")) <= budget；连一个字段都放不下时硬截断 */
+/* 单行收尾：先从尾部舍字段并截短名称，保证 measure(join(" · ")) <= budget */
 function fitRowWidth(parts, budget) {
   const list = parts.map((part) => String(part === undefined || part === null ? "" : part))
     .filter((part) => part !== "");
   if (!list.length) return [];
   if (measure(list.join(" · ")) <= budget) return list;
   const name = list[0];
-  /* 从尾部逐项舍弃，尽量保留名称与靠前的金额字段 */
   for (let count = list.length - 1; count >= 1; count--) {
     const rest = list.slice(1, count + 1);
     const room = budget - measure(rest.join(" · ")) - 3;
@@ -180,9 +170,8 @@ function hashString(value) {
   return (hash >>> 0).toString(16);
 }
 
-/* ── 凭据指纹：SHA-256（纯 JS，无外部依赖） ──
-   FNV-1a 32bit 只有 32 位，不同凭据会撞到同一指纹（换 key 却读到上一账户的限额），
-   指纹改用 SHA-256；调用方只取前 32 个十六进制字符（128 bit）。原始凭据只参与哈希，不落盘 */
+/* ── 凭据指纹：SHA-256（纯 JS）。FNV-1a 只有 32 位，可能让不同凭据撞到同一缓存键；
+   调用方取前 32 位十六进制，原始凭据不落盘 ── */
 const SHA256_K = [
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -200,7 +189,6 @@ function rotr(value, bits) {
   return (value >>> bits) | (value << (32 - bits));
 }
 
-/* 字符串按 UTF-8 编码：凭据里可能有邮箱、中文备注 */
 function utf8Bytes(text) {
   const bytes = [];
   for (const char of String(text)) {
@@ -316,7 +304,7 @@ function fail(message) {
   finish(`❌ ${message}`, ERROR_ICON, PANEL_DANGER_COLOR);
 }
 
-/* 诊断日志：只在异常路径记录摘要，正常刷新不刷屏；Surge 里可用 script-log 查看 */
+/* 诊断日志只在异常路径打一行摘要 */
 function cchpLog(message) {
   try {
     if (typeof console !== "undefined" && console.log) console.log(`[aiapi] ${message}`);
@@ -326,7 +314,6 @@ function cchpLog(message) {
 /* ── CCH：各上游余额（限额可选） ── */
 
 const CCH_MODES = ["user", "cookie", "admin", "login", "cchp", "cmdcode"];
-/* CCH 单次批量查询余额的供应商上限 */
 const CCH_BALANCE_MAX_IDS = 50;
 const CCH_WINDOWS = [
   ["cost5h", "5 小时"],
@@ -336,7 +323,7 @@ const CCH_WINDOWS = [
   ["limitTotalUsd", "总额"],
 ];
 
-/* 取出 CCH problem+json 里的 errorCode，便于区分“没带凭据”与“凭据无效” */
+/* problem+json 的 errorCode 能区分「没带凭据」与「凭据无效」 */
 function problemCode(body) {
   try {
     const json = JSON.parse(body);
@@ -364,7 +351,7 @@ function checkStatus(response, label) {
   return response;
 }
 
-/* 站点写法：名称@地址=凭据[:模式]，多个站点用竖线分隔；模式省略即 user */
+/* 站点写法：名称@地址=凭据[:模式][:优先级]，竖线分隔；模式省略即 user */
 function parseCchSites(input) {
   const list = [];
   for (const chunk of String(input).split("|")) {
@@ -376,7 +363,6 @@ function parseCchSites(input) {
     let right = item.slice(eq + 1).trim();
     if (!left || !right) continue;
     let mode = "user";
-    /* 末尾可选的优先级：名称@地址=凭据:模式:优先级，用于把该站排进上游列表的正确位置 */
     let priority = null;
     let colon = right.lastIndexOf(":");
     if (colon > 0) {
@@ -389,7 +375,7 @@ function parseCchSites(input) {
 
     colon = right.lastIndexOf(":");
     if (colon > 0) {
-      /* 容错：模式写成 :admin，也接受文档里表示可选的方括号（[:admin]、:admin]） */
+      /* 也接受文档里表示可选的方括号（[:admin]、:admin]） */
       const suffix = right.slice(colon + 1).replace(/[\s\[\]]/g, "").toLowerCase();
       if (CCH_MODES.indexOf(suffix) >= 0) {
         mode = suffix;
@@ -470,7 +456,6 @@ function writeQuotaCache(base, payload) {
   return cache;
 }
 
-/* 供应商清单：余额要按 id 查询，故每次刷新都取（CCH 侧只是一次数据库查询） */
 async function fetchCchProviderList(site, headers) {
   const response = await request("get", `${site.base}/api/v1/providers`, headers);
   checkStatus(response, "管理员令牌");
@@ -503,8 +488,8 @@ function writeBalanceCache(base, ids, items) {
   return items;
 }
 
-/* 上游余额：CCH 用各上游自己保存的密钥查询，面板只读结果，不接触上游密钥。
-   失败返回 null（区别于“查到了但没有余额”），调用方据此区分展示。 */
+/* CCH 用各上游自己保存的密钥查询，面板不接触上游密钥。
+   失败返回 null，以区别于「查到了但没有余额」 */
 async function fetchCchBalances(site, headers, list) {
   const ids = list
     .map((item) => Number(item.id))
@@ -534,7 +519,7 @@ async function fetchCchAdminQuota(site, headers, list) {
     return { data: cache, stale: false };
   }
   try {
-    /* 额度用量是独立端点，失败时降级为“未设置限额”，不影响余额与监控展示 */
+    /* 用量端点失败只降级为未设置限额 */
     const usageMap = new Map();
     const ids = list.map((item) => Number(item.id)).filter((id) => Number.isFinite(id));
     if (ids.length) {
@@ -567,7 +552,6 @@ async function fetchCchAdminQuota(site, headers, list) {
 
 async function fetchCchAdminSite(site, headers) {
   const list = await fetchCchProviderList(site, headers);
-  /* 限额表默认不展示，也就没必要为它多打一次接口 */
   const quota = CCH_SHOW_LIMITS ? await fetchCchAdminQuota(site, headers, list) : null;
   const vendors = await fetchCchVendors(site, headers);
   const balances = await fetchCchBalances(site, headers, cchBalanceProviders(list, vendors));
@@ -632,14 +616,12 @@ async function loginWithKey(base, credential) {
   return session;
 }
 
-/* 优先用缓存会话，失效时用 Key 重新登录一次 */
 async function fetchCchLoginSite(site) {
   const cached = readSession(site.base);
   if (cached) {
     try {
       return await fetchCchUserSite(site, { Accept: "application/json", Cookie: `auth-token=${cached}` });
     } catch (_) {
-      /* 会话可能已过期，落到下面重新登录 */
     }
   }
   const session = await loginWithKey(site.base, site.credential);
@@ -660,21 +642,19 @@ async function fetchCchSite(site) {
   return fetchCchUserSite(site, headers);
 }
 
-/* 使用率保留一位小数，便于看出 68.2% 与 68% 的差别 */
 function formatUsagePercent(ratio) {
   const value = Number(ratio);
   if (!Number.isFinite(value)) return "-";
   return `${(value * 100).toFixed(1)}%`;
 }
 
-/* 上游地址：同一站点常有多把密钥、对应多个供应商条目，按地址归并才不重复 */
+/* 同一上游常有多个供应商条目，按地址归并 */
 function providerHost(url) {
   const text = String(url || "").trim();
   const match = /^(?:https?:\/\/)?([^/?#]+)/i.exec(text);
   return (match ? match[1] : text).toLowerCase();
 }
 
-/* 上游厂商：CCH 按官网地址归并供应商，名称（Kcne、Clouder 等）取自这里 */
 async function fetchCchVendors(site, headers) {
   try {
     const response = await request("get", `${site.base}/api/v1/provider-vendors`, headers);
@@ -695,7 +675,6 @@ async function fetchCchVendors(site, headers) {
   }
 }
 
-/* 归并键：优先用厂商，没有厂商信息时退回官网地址 */
 function providerGroupKey(provider) {
   const vendorId = Number(provider.providerVendorId);
   return Number.isFinite(vendorId) ? `v${vendorId}` : `h${providerHost(provider.url)}`;
@@ -713,7 +692,7 @@ function providerBrand(name) {
   return cut || text;
 }
 
-/* 只查启用上游的余额；Clouder 已单独查询，Miapi 不限余额，均不从主 CCH 获取。 */
+/* 只查启用上游；Clouder 单独查询、Miapi 不限余额，都不从主 CCH 取 */
 function cchBalanceProviders(providers, vendors) {
   const ignoredBrands = ["clouder", "miapi"];
   return providers.filter((provider) => {
@@ -724,8 +703,7 @@ function cchBalanceProviders(providers, vendors) {
   });
 }
 
-/* 上游显示名取该厂商下各供应商名称的品牌；名称不一致时才退回 CCH 厂商名 */
-/* 厂商分组信息：显示名取供应商名的品牌部分，优先级取组内最小值（CCH 里数值越小越优先） */
+/* 厂商分组：显示名取供应商名的品牌部分，名称不一致才用厂商名；优先级取组内最小值 */
 function cchGroupInfo(providers, vendors) {
   const groups = new Map();
   for (const provider of providers) {
@@ -754,38 +732,31 @@ function cchGroupInfo(providers, vendors) {
   return info;
 }
 
-/* 兜底展示顺序：只在行拿不到 CCH 优先级时使用（CCH user 站点、独立站点且未写 `:优先级`）。
-   名称与 Scripting 版（scripting/aiapi/relay.core.ts 的 ROW_ORDER）一致，便于两边兜底结果相同。
-   按名称前缀归类（Kcne-Astra → Kcne）；不在表里的行排最后。 */
+/* 兜底行序：只在行没有优先级时使用，与 scripting/aiapi/relay.core.ts 的 ROW_ORDER 保持一致；
+   按名称前缀归类（Kcne-Astra → Kcne），不在表里的排最后 */
 const PANEL_ROW_ORDER = ["commandcode", "clouder", "kcne", "air"];
 
-/* 名称在固定顺序里的档位；不在表里返回表长（排最后） */
 function rowOrderRank(name) {
   const text = String(name || "").trim().toLowerCase();
   if (!text) return PANEL_ROW_ORDER.length;
   for (let index = 0; index < PANEL_ROW_ORDER.length; index += 1) {
     const token = PANEL_ROW_ORDER[index];
     if (text === token) return index;
-    /* Kcne-Astra 这类同品牌的子项归到同一档 */
     if (text.startsWith(token) && /^[-_\s·]/.test(text.slice(token.length))) return index;
   }
   return PANEL_ROW_ORDER.length;
 }
 
-/* 排序：先按 CCH 优先级升序（数值越小越优先）；没有优先级的行（CCH user 站点、独立站点
-   且未写 `:优先级`）一律排在有优先级的行之后，其间按写死的展示顺序兜底
-   （CommandCode → Clouder → Kcne → Air；SD 等不在表里的行排最后）；再按显示名（大小写不敏感）、插入序号。
-   金额只用于展示，不参与排序——余额变化不会让行序跳动 */
+/* 排序：优先级升序，没有优先级的排在后面并按 PANEL_ROW_ORDER 兜底；再按名称、插入序号。
+   金额不参与排序，余额变化不会让行序跳动 */
 function compareRows(a, b) {
   const leftPriority = numeric(a.priority);
   const rightPriority = numeric(b.priority);
   if (leftPriority !== null && rightPriority !== null) {
     if (leftPriority !== rightPriority) return leftPriority - rightPriority;
   } else if (leftPriority !== rightPriority) {
-    /* 只有一边有优先级：有优先级的排前面 */
     return leftPriority === null ? 1 : -1;
   } else {
-    /* 两边都没有优先级：PANEL_ROW_ORDER 兜底 */
     const leftRank = rowOrderRank(a.name);
     const rightRank = rowOrderRank(b.name);
     if (leftRank !== rightRank) return leftRank - rightRank;
@@ -794,7 +765,7 @@ function compareRows(a, b) {
   const leftName = String(a.name || "").toLowerCase();
   const rightName = String(b.name || "").toLowerCase();
   if (leftName !== rightName) {
-    /* localeCompare 可用时按本地排序；它把不同字符串判成相等（返回 0）时再用码位兜底 */
+    /* localeCompare 判等时用码位兜底 */
     let order = 0;
     if (typeof leftName.localeCompare === "function") order = leftName.localeCompare(rightName);
     if (order) return order < 0 ? -1 : 1;
@@ -806,7 +777,7 @@ function compareRows(a, b) {
   return leftSeq - rightSeq;
 }
 
-/* 上游余额行：按厂商归并，余额取该厂商最低值 */
+/* 上游余额行：按厂商归并，取该厂商最低余额 */
 function cchUpstreamRows(providers, balances, vendors) {
   providers = cchBalanceProviders(providers, vendors);
   const byId = new Map(providers.map((item) => [Number(item.id), item]));
@@ -814,7 +785,6 @@ function cchUpstreamRows(providers, balances, vendors) {
   const groups = new Map();
 
   for (const snapshot of Array.isArray(balances) ? balances : []) {
-    /* 查不到余额的上游按原有方式单独配置，不在这里占行 */
     if (snapshot.status !== "ok") continue;
     const provider = byId.get(Number(snapshot.providerId));
     if (!provider) continue;
@@ -841,7 +811,7 @@ function cchUpstreamRows(providers, balances, vendors) {
     if (amount !== null && (group.amount === null || amount < group.amount)) group.amount = amount;
   }
 
-  /* 同名厂商（同一家在两个域名各有一条）用官网地址区分，避免看起来重复 */
+  /* 同名厂商用官网地址区分 */
   const labelCount = new Map();
   for (const group of groups.values()) {
     labelCount.set(group.label, (labelCount.get(group.label) || 0) + 1);
@@ -863,17 +833,15 @@ function cchUpstreamRows(providers, balances, vendors) {
 
 /* ── CCHP：按 key 优先级排序的站点余额（Clouder 仍由 CCH 站点提供） ── */
 
-/* 刷新余额时逐把 key 复查，最多 5 个请求在途 */
 const CCHP_KEY_CONCURRENCY = 5;
 
-/* keys/page 的单页上限；页数上限防止服务端游标不前进时卡在循环里 */
+/* 页数上限防止服务端游标不前进时死循环 */
 const CCHP_KEY_PAGE_LIMIT = 100;
 const CCHP_KEY_PAGE_MAX = 10;
 
-/* 模块 timeout=30 秒，而 CCHP 要串行跑 org-tree → providers → keys 分页，刷新阶段再逐把 key 复查、
-   请求数按 key 放大，只限制派发仍可能在多轮在途请求上等满 30 秒
-   （11 把 key × 12 秒、并发 5 约 36 秒）。$httpClient 没有超时参数、已发出的请求无法取消，
-   所以 27 秒总预算同时限制派发与等待：到点停止等待并降级，晚到的响应丢弃。 */
+/* CCHP 要串行请求 org-tree → providers → keys 分页 → 逐把 key 复查，请求数随 key 放大。
+   已发出的请求无法取消，所以 27 秒总预算（模块 timeout=30）同时限制派发与等待：
+   到点即降级，晚到的响应丢弃 */
 const CCHP_BUDGET_MS = 27000;
 let cchpDeadlineAt = 0;
 
@@ -882,7 +850,6 @@ function cchpBeginBudget() {
   return cchpDeadlineAt;
 }
 
-/* 每次派发请求前调用：预算耗尽就不发，调用方降级处理 */
 function cchpBudgetSpent() {
   return cchpDeadlineAt > 0 && Date.now() >= cchpDeadlineAt;
 }
@@ -897,7 +864,7 @@ function cchpCacheKey(kind, base, orgId) {
   return `cchp_${kind}_${hashString(`${base}|${orgId}`)}`;
 }
 
-/* allowStale=true 时忽略时效，用于请求失败后回退旧值（目前只有 provider 列表快照这么用） */
+/* allowStale：请求失败后回退旧值 */
 function readCchpCache(kind, base, orgId, allowStale) {
   try {
     const raw = $persistentStore.read(cchpCacheKey(kind, base, orgId));
@@ -967,27 +934,25 @@ function cchpHidden(provider) {
   return String(provider.slug || "").trim().toLowerCase().includes("miapi");
 }
 
-/* 只发一次 providers 列表请求；失败时由调用方决定是否回退上次快照 */
 async function fetchCchpProviderList(site, orgId, headers) {
   const response = await cchpRequest("get", `${site.base}/api/account/orgs/${orgId}/providers`, headers);
   checkStatus(response, "管理令牌");
   const list = parseBody(response).providers;
-  /* 200 但结构不对（网关错误页、字段改名）时不能当成空数组写缓存，否则会盖掉旧值 */
+  /* 200 但结构不对（网关错误页、字段改名）不能当空数组写缓存，否则会盖掉旧值 */
   if (!Array.isArray(list)) throw new Error("返回缺少 providers");
   return list.map((item) => ({
     id: String(item.id || ""),
     name: String(item.name || ""),
-    /* 上游仓库名（如 miapi-ds）：判断是否需要展示 */
+    /* 上游仓库名（如 miapi-ds） */
     slug: String(item.slug || ""),
-    /* 官网地址：CCH 站点按域名匹配优先级时用 */
+    /* 官网地址：CCH 站点按域名匹配优先级 */
     host: String(item.website_url || ""),
     /* balance.accounts 会按 key 重复计数，只用 totals / total_usd */
     balance: item.balance && typeof item.balance === "object" ? item.balance : null,
   })).filter((provider) => !cchpHidden(provider));
 }
 
-/* 余额不再按 cch_quota_interval 缓存：每次刷新都请求列表，
-   上次的列表快照只在这条请求本身失败时用来兜底（stale=true） */
+/* 每次刷新都请求列表；上次快照只在列表请求本身失败时兜底（stale=true） */
 async function fetchCchpProviders(site, orgId, headers) {
   try {
     if (cchpBudgetSpent()) throw cchpTimeoutError();
@@ -1007,7 +972,7 @@ async function fetchCchpProviders(site, orgId, headers) {
   }
 }
 
-/* 优先级：active key 的最小值；没有 active key 时取全部 key 的最小值（仅作排序元数据） */
+/* 优先级取 active key 最小值；没有 active key 时取全部 key */
 function cchpKeyPriority(keys) {
   const list = Array.isArray(keys) ? keys : [];
   const active = list.filter((key) => String(key.status || "").toLowerCase() === "active");
@@ -1020,16 +985,14 @@ function cchpKeyPriority(keys) {
   return best;
 }
 
-/* 关闭单账户模式时实时刷新用全部 active key：同一上游账户常挂多把 key，只刷一把会让另一把停在旧值，
-   CCHP 据此把同一账户拆成两条并重复计入总额 */
+/* 关闭单账户模式时刷新全部 active key（原因见 refreshCchpBalances） */
 function cchpKeyIds(keys) {
   const list = Array.isArray(keys) ? keys : [];
   return list.filter((key) => String(key.status || "").toLowerCase() === "active"
     && String(key.id || "").trim()).map((key) => String(key.id));
 }
 
-/* 单账户模式的代表 key：active keyIds 去重后按字符串升序取第一；
-   换 provider 开新账户的拓扑下，同一 provider 的其余 key 属于同一账户的重复读数 */
+/* 代表 key：active keyIds 去重后按字符串升序取第一 */
 function cchpRepresentativeKey(keyIds) {
   const unique = new Set();
   for (const id of Array.isArray(keyIds) ? keyIds : []) {
@@ -1040,7 +1003,6 @@ function cchpRepresentativeKey(keyIds) {
   return sorted.length ? sorted[0] : "";
 }
 
-/* provider 可能不少，逐个查 key 时限制同时进行的请求数 */
 async function mapLimit(items, limit, worker) {
   const results = new Array(items.length);
   let cursor = 0;
@@ -1056,13 +1018,12 @@ async function mapLimit(items, limit, worker) {
   return results;
 }
 
-/* CCHP 1.0.12 起 /providers/{id}/keys 已移除（404）：改为一次分页接口取全量 key 再按 provider 分组。
-   分页字段是 nextCursor（请求侧 after）；partial/preparing 表示服务端还没备齐，按「取数不完整」处理。 */
+/* CCHP 1.0.12 起 /providers/{id}/keys 已 404：改用分页接口取全量 key（nextCursor / after）；
+   partial/preparing 表示服务端还没备齐，按取数不完整处理 */
 async function fetchCchpKeyPages(site, orgId, headers) {
   const keys = [];
   let cursor = "";
-  /* 游标必须前进：服务端回同一个游标（相邻重复）或游标成环时，翻页永远到不了终点。
-     这类分页结果不可信，按「取数不完整」返回，行不据此隐藏、也不保留部分优先级 */
+  /* 游标重复或成环时结果不可信，按取数不完整处理 */
   const seen = new Set();
   for (let page = 0; page < CCHP_KEY_PAGE_MAX; page += 1) {
     if (cchpBudgetSpent()) throw cchpTimeoutError();
@@ -1075,7 +1036,7 @@ async function fetchCchpKeyPages(site, orgId, headers) {
     if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
     const body = parseBody(response);
     const list = body.keys;
-    /* 200 但结构不对（网关错误页、字段改名）不能当成没有 key，否则会把优先级刷成 null */
+    /* 200 但缺 keys 不能当成没有 key */
     if (!Array.isArray(list)) throw new Error("返回缺少 keys");
     for (const key of list) keys.push(key);
     if (body.partial === true || body.preparing === true) return { keys, complete: false };
@@ -1088,12 +1049,9 @@ async function fetchCchpKeyPages(site, orgId, headers) {
     seen.add(next);
     cursor = next;
   }
-  /* 页数用满还有游标：按不完整处理，避免游标不前进时死循环 */
   return { keys, complete: false };
 }
 
-/* 按 provider_id 分组，套用既有的 active 规则：priority 取 active key 最小值（无 active 取全部），
-   keyIds 是全部 active key（单账户模式的代表 key 由 cchpRepresentativeKey 从这里挑） */
 function cchpPriorityItems(providers, keys) {
   const groups = new Map();
   for (const key of Array.isArray(keys) ? keys : []) {
@@ -1109,11 +1067,8 @@ function cchpPriorityItems(providers, keys) {
   });
 }
 
-/* 优先级与 keyIds 每轮都实取 keys/page：key 的启停与优先级随时会变，缓存会让停用/新增的 key
-   拖到过期才生效（可见性判据与实时刷新目标都依赖它）。
-   分页取全（nextCursor 走完）才算「取数完整」：只有取全时才敢按「无 active key」隐藏行。
-   取数失败或服务端返回 partial/preparing 时不隐藏任何行，priority 留空退回固定行序
-   （由 compareRows 用 PANEL_ROW_ORDER 兜底），并保留「部分排序信息缺失」提示。 */
+/* key 优先级与 keyIds 每轮实取，启停当轮生效。只有分页取全时才按「无 active key」隐藏行；
+   取不全时不隐藏任何行，priority 留空、按 PANEL_ROW_ORDER 兜底，并提示「部分排序信息缺失」 */
 async function fetchCchpPriorities(site, orgId, providers, headers) {
   let timedOut = false;
   try {
@@ -1130,7 +1085,6 @@ async function fetchCchpPriorities(site, orgId, providers, headers) {
     cchpLog("keys/page 未就绪（partial/preparing 或页数用满），本轮不据 key 隐藏行");
   } catch (error) {
     if (error && error.code === "cchp_timeout") timedOut = true;
-    /* 取不到 keys 只丢排序与 keyIds：余额行照常显示，也不会把 provider 当成已停用 */
     cchpLog(`keys/page 请求失败，本轮不据 key 隐藏行: ${(error && error.message) || error}`);
   }
   const items = providers.map((provider) => ({ id: provider.id, priority: null, keyIds: [] }));
@@ -1142,7 +1096,7 @@ async function fetchCchpPriorities(site, orgId, providers, headers) {
   };
 }
 
-/* 今日用量与供应商健康：只用于展示，失败或预算耗尽都静默降级，不写缓存 */
+/* 今日用量与供应商健康只用于展示，失败或预算耗尽静默降级 */
 async function fetchCchpSummary(site, headers) {
   const response = await request("get", `${site.base}/api/account/usage/summary`, headers);
   checkStatus(response, "管理令牌");
@@ -1163,7 +1117,7 @@ async function fetchCchpHealth(site, headers) {
   );
   checkStatus(response, "管理令牌");
   const rows = parseBody(response).rows;
-  /* 200 但结构不对时按失败处理，避免把空表当成“没有请求” */
+  /* 200 但缺 rows 按失败处理，避免把空表当成没有请求 */
   if (!Array.isArray(rows)) throw new Error("返回缺少 rows");
   const map = new Map();
   for (const row of rows) {
@@ -1178,8 +1132,7 @@ async function fetchCchpHealth(site, headers) {
   return map;
 }
 
-/* 单个请求与剩余预算赛跑：超时（或失败）返回 null 并清掉 timer，
-   另一项先返回的成功值照常保留 */
+/* 与剩余预算赛跑：超时或失败返回 null */
 function cchpWithin(leftMs, promise) {
   if (!(leftMs > 0)) return Promise.resolve(null);
   let timer = 0;
@@ -1196,8 +1149,7 @@ function cchpWithin(leftMs, promise) {
   });
 }
 
-/* 带预算的请求包装：派发前看剩余预算，等待期与预算赛跑，到点抛 cchp_timeout 交给既有降级分支；
-   原始错误原样抛出。已发出的请求无法取消，晚到的响应由这里的 then 接住丢弃，不会变成未捕获异常。 */
+/* 带预算的请求：到点抛 cchp_timeout 交给降级分支；晚到的响应在这里被接住丢弃，不会变成未捕获异常 */
 async function cchpRequest(method, url, headers) {
   const left = cchpDeadlineAt - Date.now();
   if (!(left > 0)) throw cchpTimeoutError();
@@ -1210,7 +1162,6 @@ async function cchpRequest(method, url, headers) {
   return settled.value;
 }
 
-/* 两个端点互不依赖：并发取，各自受剩余预算封顶，任一失败或超时只丢该项 */
 async function fetchCchpUsage(site, headers) {
   const left = cchpDeadlineAt - Date.now();
   if (cchpBudgetSpent() || !(left > 0)) return { summary: null, health: null };
@@ -1221,22 +1172,12 @@ async function fetchCchpUsage(site, headers) {
   return { summary: results[0], health: results[1] };
 }
 
-/* 余额实时化：关闭单账户模式时按 provider 的每把 active key 各触发一次上游复查（?refresh=true）。
-   providers 由调用方附上 keyIds（来自 fetchCchpPriorities 的 key 列表）。
-   同一上游账户常挂多把 key，只刷一把会让另一把停在旧值，CCHP 据此把同一账户拆成两条并
-   重复计入总额，所以每把 key 都要刷，同一账户的读数才会一致。
-   上游复查成功后服务端聚合（列表里的 total_usd / checked_at）会同步更新，调用方需再取一次列表。
-   余额接口有频率限制：一次刷新对每把 active key 只发一次、失败不重试；Clouder 不刷新
-   （它的余额由 CCH 站点提供），Mi 已在列表阶段排除。全部失败只降级，不抛错。
-   total 是刷新目标数 + 没有 key 的可见 provider 数，ok 是成功刷新的目标数，ok < total 即刷新不全。
-   CCHP_SINGLE_ACCOUNT 打开时一个 provider 只刷代表 key，total/ok 改为按 provider 计：
-   其余 key 是主动跳过，不算部分刷新失败。 */
+/* 余额实时化：对目标 key 调 ?refresh=true，成功后调用方要再取一次列表拿服务端聚合值。
+   关闭单账户模式时每把 active key 都刷：同一账户只刷一把，另一把会停在旧值，CCHP 会把它拆成两条并重复计入总额。
+   余额接口有频率限制：每把 key 只发一次、失败不重试。ok < total 即刷新不全；单账户模式按 provider 计数 */
 async function refreshCchpBalances(site, orgId, providers, headers) {
-  /* Clouder 行由 CCH 提供，不算刷新目标；keys 取不全时没有 keyIds 的 provider 无法刷新，
-     但按 provider 计入 total，由调用方按 ok < total 提示，而不是静默沿用旧值。
-     已停用（无 active key）的 provider 不出行，也不再计未刷新目标 */
-  /* unsupported（如 CommandCode）是「上游不支持查余额」，不是刷新失败：既没有账户也没有可刷的目标，
-     计进 total 只会把正常状态算成未刷新，限额改由 cmdcode 站点展示 */
+  /* Clouder 由 CCH 站点提供、unsupported 不支持查余额、无 active key 的不出行，三者都不算刷新目标；
+     缺 keyIds 的可见 provider 仍计入 total，由调用方提示未刷新 */
   const visible = providers.filter((provider) => !cchpIsClouder(provider.name)
     && !cchpUnsupported(provider.status)
     && !provider.noActiveKey);
@@ -1245,7 +1186,6 @@ async function refreshCchpBalances(site, orgId, providers, headers) {
   for (const provider of visible) {
     const keyIds = Array.isArray(provider.keyIds) ? provider.keyIds : [];
     if (CCHP_SINGLE_ACCOUNT) {
-      /* 每个可见 provider 固定 1 个目标：有代表 key 才发请求，没有也计未完成 */
       total += 1;
       const keyId = cchpRepresentativeKey(keyIds);
       if (keyId) targets.push({ id: provider.id, keyId });
@@ -1258,14 +1198,11 @@ async function refreshCchpBalances(site, orgId, providers, headers) {
     total += keyIds.length;
     for (const keyId of keyIds) targets.push({ id: provider.id, keyId });
   }
-  /* 没有可刷新的目标（如只有 Clouder 或都缺 keyIds）：不必提示超时 */
   if (!targets.length) return { ok: 0, total, timedOut: false };
-  /* 进入刷新阶段前先看预算：已被 keys 吃完就跳过，沿用首次列表值 */
   if (cchpBudgetSpent()) return { ok: 0, total, timedOut: true };
   let ok = 0;
   let timedOut = false;
   await mapLimit(targets, CCHP_KEY_CONCURRENCY, async (target) => {
-    /* 刷新阶段每个请求派发前同样检查预算，剩下的 key 留给下一轮 */
     if (cchpBudgetSpent()) {
       timedOut = true;
       return;
@@ -1275,12 +1212,10 @@ async function refreshCchpBalances(site, orgId, providers, headers) {
         + `/keys/${encodeURIComponent(target.keyId)}/balance?refresh=true`;
       const response = await cchpRequest("get", url, headers);
       if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
-      /* 只关心是否成功；上游返回的明细不进面板，也不落缓存 */
       const body = parseBody(response);
       if (body && body.error) throw new Error("上游查询失败");
       ok += 1;
-    } catch (error) { /* 单把 key 失败不影响其它 key；由调用方按 ok < total 标记降级 */
-      /* 等待期撞上预算：和其它失败一样只降级，但要让调用方知道是超时不是拒绝 */
+    } catch (error) { /* 单把 key 失败只降级；超时单独标记 */
       if (error && error.code === "cchp_timeout") timedOut = true;
     }
   });
@@ -1288,7 +1223,6 @@ async function refreshCchpBalances(site, orgId, providers, headers) {
 }
 
 async function fetchCchpSite(site, headers) {
-  /* 从进入 CCHP 开始记总预算，后续每个请求派发前都检查 */
   cchpBeginBudget();
   const orgId = await fetchCchpOrgId(site, headers);
   const snapshot = await fetchCchpProviders(site, orgId, headers);
@@ -1298,18 +1232,15 @@ async function fetchCchpSite(site, headers) {
   const keyIdsById = new Map(
     priorities.items.map((item) => [String(item.id), Array.isArray(item.keyIds) ? item.keyIds : []])
   );
-  /* keys/page 取全，而该 provider 一把 active key 都没有（全部停用，或压根没建 key）：按已停用处理，不出行。
-     Clouder 的余额由 CCH 站点提供，不受这条判据影响；keys/page 取不全时一律不隐藏任何行 */
+  /* keys/page 取全且一把 active key 都没有：按已停用处理，不出行（Clouder 除外） */
   const noActiveKeyOf = (provider) => Boolean(priorities.keysComplete)
     && !(keyIdsById.get(String(provider.id)) || []).length
     && !cchpIsClouder(provider.name);
-  /* 余额实时：先逐把 key 触发上游复查，再取一次聚合列表。
-     列表本身失败回退旧快照时不再刷新；刷新不全（部分失败/缺 keyIds/被预算跳过）沿用首次列表值并标 balanceStale */
+  /* 列表回退旧快照时不再刷新；刷新不全时沿用首次列表值并标 balanceStale */
   let current = providers;
   let balanceStale = false;
   let balancePartial = false;
   let balanceTimedOut = false;
-  /* 刷新本身不全且重取超时：超时提示已解释未刷新，不再重复 */
   let balanceSuppressStale = false;
   if (!snapshot.stale && providers.length) {
     const refresh = await refreshCchpBalances(
@@ -1317,7 +1248,6 @@ async function fetchCchpSite(site, headers) {
       orgId,
       providers.map((provider) => ({ id: provider.id, name: provider.name,
         status: provider.balance ? provider.balance.status : null,
-        /* 已停用（无 active key）的 provider 不出行，也不再计未刷新目标 */
         noActiveKey: noActiveKeyOf(provider),
         keyIds: keyIdsById.get(String(provider.id)) || [] })),
       headers
@@ -1325,38 +1255,33 @@ async function fetchCchpSite(site, headers) {
     if (refresh.timedOut) balanceTimedOut = true;
     if (refresh.ok < refresh.total) {
       balanceStale = true;
-      /* 有成功也有失败：只提示「部分未刷新」，不谎称整块都来自缓存 */
+      /* 部分成功只提示「部分未刷新」 */
       balancePartial = refresh.ok > 0;
     }
-    /* 只要有成功就重取列表：部分失败时也要拿刷新后的聚合值 */
+    /* 只要有成功就重取列表，拿刷新后的聚合值 */
     if (refresh.ok > 0) {
       try {
         if (cchpBudgetSpent()) throw cchpTimeoutError();
         current = await fetchCchpProviderList(site, orgId, headers);
       } catch (error) {
-        /* 重取失败：服务端聚合没拿到，仍显示首次列表值；预算耗尽也算超时 */
         if (error && error.code === "cchp_timeout") {
           balanceTimedOut = true;
-          /* 刷新本身不全时，超时提示已解释；刷新全成功但重取失败仍要提示未刷新 */
+          /* 刷新本身不全时超时提示已能解释，不再重复「未刷新」 */
           balanceSuppressStale = refresh.ok < refresh.total;
         }
         balanceStale = true;
-        /* 重取失败意味着所有行都是首次列表值，不能再说「部分未刷新」 */
         balancePartial = false;
       }
     }
     writeCchpCache("balance", site.base, orgId, current);
   }
-  /* 余额与优先级之后再取今日用量：失败或超预算只丢这块，不影响余额行 */
   const usage = await fetchCchpUsage(site, headers);
-  /* 单账户视图只投影展示返回值，缓存里仍是原始快照；开关来回切换互不影响 */
+  /* 单账户投影只作用于展示，缓存里仍是原始快照 */
   let singleAccountUnavailable = false;
   const displayProviders = current.map((provider) => {
     const noActiveKey = noActiveKeyOf(provider);
     let balance = provider.balance;
-    /* Clouder 的余额行由 CCH 站点提供，投影会误判不可用；保持原样。
-       unsupported 的 provider 本来就没有账户，投影只会造出「单账户余额不可用」；
-       已停用（无 active key）的 provider 不出行，也不用再投影 */
+    /* Clouder、unsupported、无 active key 的 provider 不投影 */
     if (!noActiveKey && CCHP_SINGLE_ACCOUNT && !cchpIsClouder(provider.name)
       && !cchpUnsupported(provider.balance && provider.balance.status)) {
       const view = cchpSingleAccountView(
@@ -1371,7 +1296,6 @@ async function fetchCchpSite(site, headers) {
       name: provider.name,
       host: provider.host,
       priority: priorityById.has(provider.id) ? priorityById.get(provider.id) : null,
-      /* 无 active key：cchpRows 跳过该行 */
       noActiveKey,
       balance,
     };
@@ -1379,38 +1303,31 @@ async function fetchCchpSite(site, headers) {
   return {
     kind: "cchp",
     stale: snapshot.stale,
-    /* 单账户模式有 provider 找不到唯一账户：不显示金额，由调用方提示 */
     singleAccountUnavailable: Boolean(singleAccountUnavailable),
-    /* 余额没刷新全：显示的是服务端缓存（聚合列表）里的值 */
     balanceStale: Boolean(balanceStale),
-    /* 只有一部分 provider 刷新成功：提示部分未刷新，而不是整块未刷新 */
     balancePartial: Boolean(balancePartial),
-    /* 刷新不全且重取超时：超时提示已解释，不再重复「余额未刷新」 */
+    /* 刷新不全且重取超时：只出超时提示 */
     balanceSuppressStale: Boolean(balanceSuppressStale),
-    /* 部分请求因总预算耗尽被跳过（含刷新阶段与重取列表）；priority 取不全时按没有优先级处理 */
     timedOut: Boolean(snapshot.timedOut || priorities.timedOut || balanceTimedOut),
     priorityMissing: Boolean(priorities.missing),
-    /* 今日用量（today）与按 providerId 的健康数据；取不到为 null */
     summary: usage.summary,
     health: usage.health,
-    /* 保留 id/name/host/priority：id 用于关联健康数据，其余供 cchSitePriorities 排序 */
+    /* id 关联健康数据，name/host/priority 供 cchSitePriorities 匹配 */
     providers: displayProviders,
   };
 }
 
-/* 品牌取名称第一段：Clouder-Astra → Clouder */
 function cchpIsClouder(name) {
   return providerBrand(name).toLowerCase() === "clouder";
 }
 
-/* 上游自报「不支持查余额」（CCHP 的 balance.status=unsupported）：不是刷新失败，也不该投影成单账户 */
+/* unsupported：上游不支持查余额，不是刷新失败 */
 function cchpUnsupported(status) {
   return String(status === undefined || status === null ? "" : status).trim().toLowerCase() === "unsupported";
 }
 
-/* 单账户展示投影：按代表 key 找 account，找不到再退回唯一的 account；
-   多账户且无匹配即不可用，禁止回退 totals/total_usd 聚合值（那会把同一账户的重复读数相加）。
-   只用于展示返回值，不写回 cchp_balance_* 缓存。 */
+/* 单账户投影：按代表 key 找 account，否则退回唯一 account；多账户且无匹配即不可用，
+   不回退 totals（会把同一账户的重复读数相加） */
 function cchpSingleAccountView(balance, representativeKey) {
   const source = balance && typeof balance === "object" ? balance : {};
   const accounts = Array.isArray(source.accounts) ? source.accounts : [];
@@ -1442,7 +1359,7 @@ function cchpSingleAccountView(balance, representativeKey) {
   };
 }
 
-/* totals 可能同时给多个币种，也可能同币种多条：各自按原单位拼接，不做汇率换算 */
+/* 多币种各按原单位拼接，不做汇率换算 */
 function cchpAmountParts(balance) {
   const totals = Array.isArray(balance && balance.totals) ? balance.totals : [];
   const parts = [];
@@ -1455,7 +1372,7 @@ function cchpAmountParts(balance) {
   return parts;
 }
 
-/* 成功率一位小数、TTFT P50 一位小数秒；缺行或 requests=0 不追加，单个字段缺失只省该段 */
+/* 成功率一位小数、TTFT P50 一位小数秒；没有请求或缺成功率时不追加 */
 function cchpHealthParts(data, provider) {
   const health = data.health && provider.id ? data.health.get(String(provider.id)) : null;
   if (!health) return [];
@@ -1464,15 +1381,13 @@ function cchpHealthParts(data, provider) {
   const parts = [];
   const rate = numeric(health.successRate);
   const ttft = numeric(health.ttftP50Ms);
-  /* 成功率是锚点：缺失时不追加（裸一个秒数看不出是什么），TTFT 缺失只加成功率 */
   if (rate === null) return parts;
   parts.push(`${(rate * 100).toFixed(1)}%`);
   if (ttft !== null) parts.push(`${(ttft / 1000).toFixed(1)}s`);
   return parts;
 }
 
-/* 域名比对键：小写，去协议、用户信息、路径、查询、片段、端口，再剥掉开头的 www. / api.；
-   CCHP provider 的 website_url 与 CommandCode 站点地址写法不同，统一到这里再比 */
+/* 域名比对键：去协议、用户信息、路径、端口与开头的 www./api.，让 website_url 与站点地址可比 */
 function cchHostKey(value) {
   let text = String(value === undefined || value === null ? "" : value).trim().toLowerCase();
   if (!text) return "";
@@ -1486,8 +1401,7 @@ function cchHostKey(value) {
   return text.replace(/^(?:www\.|api\.)+/, "");
 }
 
-/* 限额行第 1 行的成功率/TTFT：按域名把本站对到 CCHP 的 provider，再取同一套健康数值。
-   找不到 CCHP 结果、provider 或健康数据都返回空数组（只显示站名，不影响余额行） */
+/* 限额行第 1 行的成功率/TTFT：按域名对到 CCHP provider，取不到只显示站名 */
 function cchpSiteHealthParts(site, results) {
   if (!site) return [];
   const key = cchHostKey(site.base);
@@ -1502,7 +1416,7 @@ function cchpSiteHealthParts(site, results) {
   return [];
 }
 
-/* 供应商行必须一行内显示：超宽时依次省掉「余额」二字、舍弃 TTFT，最后只留余额 */
+/* 超宽时依次省掉「余额」二字、舍弃 TTFT，最后截短名称 */
 function cchpRowParts(label, text, amountText, healthParts) {
   const full = healthParts;
   const rateOnly = healthParts.slice(0, 1);
@@ -1520,22 +1434,18 @@ function cchpRowParts(label, text, amountText, healthParts) {
   for (const parts of variants) {
     if (measure(parts.join(" · ")) <= CCH_ROW_WIDTH) return parts;
   }
-  /* 收尾：仍超宽就截短供应商名，保证单行 */
   return fitRowWidth([label, amountText], CCH_ROW_WIDTH);
 }
 
-/* 余额行：只显示 status=ok、有 active key（keys/page 取全时）且有数值（或 unlimited）的 provider；
-   Clouder 由 CCH 站点提供 */
+/* 余额行：status=ok、未停用、有金额或不限量才出行；Clouder 由 CCH 站点提供 */
 function cchpRows(data) {
   const rows = [];
   for (const provider of data.providers || []) {
     if (cchpIsClouder(provider.name)) continue;
-    /* 已停用：keys/page 取全且该 provider 一把 active key 都没有（全部停用或未建 key） */
     if (provider.noActiveKey) continue;
     const balance = provider.balance || {};
     if (String(balance.status || "").toLowerCase() !== "ok") continue;
     const unlimited = balance.unlimited === true;
-    /* total_usd 只用于金额展示与出行判断：不同币种的原值不能直接比较，金额不参与排序 */
     const totalUsd = numeric(balance.total_usd);
     const totals = cchpAmountParts(balance);
     if (!unlimited && !totals.length && totalUsd === null) continue;
@@ -1555,8 +1465,7 @@ function cchpRows(data) {
   return rows;
 }
 
-/* 今日用量：summary 缺失或 requests=0 不占行；超宽时先截短/去掉站名前缀，
-   再依次省首字、百分比，保证单行 */
+/* 今日用量：requests=0 不占行；超宽时依次截短站名前缀、省首字与百分比 */
 function cchpUsageLine(summary, prefix) {
   const requests = numeric(summary && summary.requests);
   if (requests === null || requests <= 0) return "";
@@ -1571,7 +1480,6 @@ function cchpUsageLine(summary, prefix) {
   for (let count = extras.length; count >= 0; count--) {
     tails.push([body].concat(extras.slice(0, count)).join(" · "));
   }
-  /* 带站名：前缀按剩余宽度截短；放不下时去掉站名，最后只留次数 */
   if (name) {
     for (const tail of tails) {
       const room = CCH_ROW_WIDTH - measure(tail) - 3;
@@ -1586,7 +1494,7 @@ function cchpUsageLine(summary, prefix) {
   return truncateToWidth(body, CCH_ROW_WIDTH);
 }
 
-/* 多个 CCHP 站点时前缀站名，避免分不清是哪家的用量 */
+/* 多个 CCHP 站点时前缀站名 */
 function cchpUsageLines(results) {
   const sites = results.filter((item) => item.site && item.site.mode === "cchp");
   const lines = [];
@@ -1598,8 +1506,7 @@ function cchpUsageLines(results) {
   return lines;
 }
 
-/* 行不显示时用警告色提示：状态非 ok，或既无金额也无不限量；
-   上游自报 unsupported（如 CommandCode）是「查不了」而非「查坏了」，不据此提高风险 */
+/* 行不显示时给警告色；unsupported 是「查不了」而非「查坏了」，不算异常 */
 function cchpAbnormal(data) {
   for (const provider of data.providers || []) {
     if (cchpIsClouder(provider.name)) continue;
@@ -1625,8 +1532,7 @@ function cchpOld(data) {
   return false;
 }
 
-/* 站点优先级：配置里显式写了就用它，否则按域名（其次名称）匹配主 CCH 里的厂商，
-   取该厂商各供应商的最小优先级——查不到余额的站点靠这一步排进正确位置 */
+/* 站点优先级：显式写了就用；否则按域名、再按名称匹配 CCHP provider 或 CCH 厂商的最小优先级 */
 function cchSitePriorities(results) {
   const byDomain = new Map();
   const byName = new Map();
@@ -1634,7 +1540,6 @@ function cchSitePriorities(results) {
   for (const item of results) {
     if (!item.data) continue;
 
-    /* CCHP 的 provider 自带 key 优先级：Clouder 的 CCH 站点靠这里排回 1 */
     if (item.data.kind === "cchp") {
       for (const provider of item.data.providers || []) {
         const priority = numeric(provider.priority);
@@ -1684,8 +1589,7 @@ function cchSitePriority(site, priorities) {
   return null;
 }
 
-/* CCH / CCHP 各站余额合成一张表：admin 站点展开各上游，CCHP 站点展开各 provider，
-   user/cookie/login 站点是该站账户余额 */
+/* 各站余额合成一张表 */
 function cchBalanceLines(results, wrap) {
   const lines = [];
   const rows = [];
@@ -1704,12 +1608,10 @@ function cchBalanceLines(results, wrap) {
       for (const row of cchpRows(item.data)) rows.push(row);
       continue;
     }
-    /* 余额查不到的供应商按限额占一行；amount 留空只用于展示，不参与排序 */
     if (item.data.kind === "limits") {
-      /* 第 2 行只放限额指标：没有可展示字段就整行不占位（由图标提示异常） */
+      /* 限额行分两行：第 1 行站名 + 健康数据，第 2 行只放指标；没有指标就不占行 */
       const metrics = cchLimitMetricsText(item.data, CCH_ROW_WIDTH);
       if (!metrics) continue;
-      /* 第 1 行 = 站名 + CCHP 健康数据（按域名匹配不到就只显示站名） */
       rows.push({
         amount: null,
         priority: cchSitePriority(item.site, priorities),
@@ -1725,7 +1627,6 @@ function cchBalanceLines(results, wrap) {
       amount,
       priority: cchSitePriority(item.site, priorities),
       name: item.site.name,
-      /* 与 CCHP 行同一收尾：窄宽度下截短站名，不折行 */
       parts: fitRowWidth(
         [item.site.name, total ? `余额 ${money(amount)}` : "余额 未设置"],
         CCH_ROW_WIDTH
@@ -1733,14 +1634,12 @@ function cchBalanceLines(results, wrap) {
     });
   }
 
-  /* 每行按收集顺序记插入序号：同优先级、同名的行靠它收尾，
-     不依赖 Array.prototype.sort 对相等元素的稳定性 */
+  /* 插入序号兜底，不依赖 sort 的稳定性 */
   rows.forEach((row, index) => { row.seq = index; });
   rows.sort(compareRows);
 
   if (rows.length) {
-    /* 站名与金额固定同一行；金额放不下时自动落到下一行。
-       限额行（kind=limits）有两行：row.extra 是只含指标的追加行 */
+    /* 限额行的 row.extra 是追加的指标行 */
     for (const row of rows.slice(0, CCH_ADMIN_MAX)) {
       if (wrap) {
         for (const line of layoutRows(row.parts, CCH_ROW_WIDTH)) lines.push(line);
@@ -1757,7 +1656,7 @@ function cchBalanceLines(results, wrap) {
     lines.push("未获取到余额");
   }
 
-  /* 限额取自 admin 站点，多个 admin 站点时带站名区分；与余额之间空一行 */
+  /* 供应商限额：多个 admin 站点时带站名 */
   const details = [];
   const admins = results.filter((item) => item.data && item.data.kind === "admin");
   for (const item of admins) {
@@ -1770,23 +1669,18 @@ function cchBalanceLines(results, wrap) {
     for (const line of details) lines.push(line);
   }
 
-  /* CCHP 的余额可能来自旧缓存（列表请求本身失败），或实时刷新失败后仍是服务端缓存值，
-     或上游太久没复查，底部给出提示 */
   const notices = [];
   const cchpItems = results.filter((item) => item.data && item.data.kind === "cchp");
-  /* 超时会连带造成 priority 缺失，两者只提示一次；整站超时也要提示 */
+  /* 超时会连带造成 priority 缺失，两者只提示一次 */
   const cchpTimedOut = cchpItems.some((item) => item.data.timedOut)
     || results.some((item) => item.error && item.error.code === "cchp_timeout");
   if (cchpItems.some((item) => item.data.stale)) notices.push("⚠️ CCHP 余额来自缓存");
   else if (cchpItems.some((item) => item.data.balancePartial && !item.data.timedOut)) {
-    /* 只有部分 provider 没刷到；这部分若已被超时提示解释，就不再重复 */
     notices.push("⚠️ 部分余额未刷新");
   } else if (cchpItems.some((item) => item.data.balanceStale && !item.data.balancePartial && !item.data.balanceSuppressStale)) {
     notices.push("⚠️ 余额未刷新，来自服务端缓存");
   }
-  /* 单账户模式找不到唯一 account：该 provider 不显示金额，与余额刷新提示并列只出现一次 */
   if (cchpItems.some((item) => item.data.singleAccountUnavailable)) notices.push("⚠️ 单账户余额不可用");
-  /* 限额站点取数失败时显示的是上次缓存，与余额缓存提示分开 */
   if (results.some((item) => item.data && item.data.kind === "limits" && item.data.stale)) {
     notices.push("⚠️ 限额来自缓存");
   }
@@ -1800,11 +1694,10 @@ function cchBalanceLines(results, wrap) {
   return lines;
 }
 
-/* 供应商限额（5 小时/日/周/月用量），默认不展示 */
+/* 供应商限额（cch_show_limits），按使用率从高到低 */
 function cchLimitLines(data) {
   const lines = [];
   const providers = Array.isArray(data.quota && data.quota.providers) ? data.quota.providers : [];
-  /* 只列设了限额的供应商，按使用率从高到低 */
   const limited = providers
     .filter((provider) => provider.quota)
     .sort((a, b) => {
@@ -1836,7 +1729,6 @@ function cchRisk(data) {
     return 0;
   }
 
-  /* CCHP：余额状态异常（行不显示）或用了旧缓存时给提示色 */
   if (data.kind === "cchp") {
     let risk = 0;
     if (data.stale) risk = 1;
@@ -1845,9 +1737,7 @@ function cchRisk(data) {
     return risk;
   }
 
-  /* 限额站点：窗口与月度都按剩余比例着色——剩余 ≤5% 红、≤20% 黄（stale 至少黄）。
-     1e-9 是给 3.5/70、14/70 这类边界值的浮点余量，避免算出来的 5.0000000000001% 被判成非红。
-     limited=false 时窗口比率已在 cmdcodeWindow 里置空（不限量），但月度比率照常参与 */
+  /* 限额站点：剩余 ≤5% 红、≤20% 黄（stale 至少黄）；1e-9 是边界值（如 3.5/70）的浮点余量 */
   if (data.kind === "limits") {
     const ratios = (Array.isArray(data.windows) ? data.windows : []).map((window) => window.ratio);
     ratios.push(data.monthly && typeof data.monthly === "object" ? numeric(data.monthly.ratio) : null);
@@ -1862,7 +1752,7 @@ function cchRisk(data) {
   }
 
   let risk = 0;
-  /* 余额一条都查不到时给个提示色：上游可能都换了密钥或都不可达 */
+  /* 上游余额一条都查不到时给提示色 */
   if (Array.isArray(data.balances) && data.balances.length
     && data.balances.every((item) => item.status !== "ok")) {
     risk = Math.max(risk, 1);
@@ -1880,31 +1770,24 @@ function cchRisk(data) {
 
 /* ── CommandCode：余额查不到、只能读限额的站点 ── */
 
-/* 上游契约（据 command-code CLI 1.88.0 反查）：/alpha/whoami?limits=1 取 org.id，
-   再按 orgId 取 credits.windowLimits 与月度额度；金额单位为 USD，面板不做汇率换算。
-   orgId 为 null（个人账户）时 credits 不带 orgId 参数。
-   线上还见过 windowLimits 挂在 body 顶层、下划线命名、窗口键与 used/cap 换名：都按别名兼容，
-   但 canonical 字段存在即不再回退别名（值非法按缺失处理），取不到时不影响原有结果。 */
+/* 上游契约（据 command-code CLI 1.88.0）：whoami?limits=1 取 org.id，再按 orgId 取 credits
+   （个人账户不带 orgId），金额 USD。字段按线上见过的写法兼容别名，但 canonical 字段存在即不回退别名 */
 const CMDCODE_WINDOWS = [
   ["fiveHour", "5H", ["fiveHour", "five_hour", "five_hours", "5h"]],
   ["weekly", "W", ["weekly", "week", "sevenDay", "7d"]],
 ];
-/* windowLimits 的两种写法，按顺序在 credits、body 上各找一遍 */
 const CMDCODE_LIMIT_HOLDERS = ["windowLimits", "window_limits"];
 const CMDCODE_USED_KEYS = ["used", "current", "spent"];
 const CMDCODE_CAP_KEYS = ["cap", "limit", "max", "total"];
-/* 诊断每轮运行最多一条：多个 cmdcode 站点同时缺窗口时不重复刷屏 */
+/* 诊断每轮最多一条 */
 let cmdcodeMissingLogged = false;
 
-/* 缓存按「站点地址 + 凭据指纹」分区：换 key 不会读到上一账户的限额。
-   指纹取 SHA-256(`base|credential`) 的前 32 个十六进制字符（128 bit，生日界约 2^64，
-   足够抗碰撞又不让键名冗长）；原始凭据只参与哈希，不落盘 */
+/* 缓存按「站点 + 凭据指纹」分区：换 key 不会读到上一账户的限额 */
 function cmdcodeCacheKey(site) {
   return `cch_limits_v2_${sha256Hex(`${site.base}|${String(site.credential || "")}`).slice(0, 32)}`;
 }
 
-/* 缓存只存原始额度：cap 与 ratio 依赖运行参数 cch_cmdcode_month_cap，
-   存进缓存后改上限会一直显示旧比例；读取时按当前参数重算，且不改写缓存对象 */
+/* 缓存只存原始额度：cap/ratio 读取时按当前 cch_cmdcode_month_cap 重算 */
 function cmdcodeCacheData(limits) {
   const monthly = limits.monthly && typeof limits.monthly === "object" ? limits.monthly : {};
   return {
@@ -1915,15 +1798,12 @@ function cmdcodeCacheData(limits) {
     windows: (Array.isArray(limits.windows) ? limits.windows : []).map((window) => ({
       key: window.key, label: window.label, used: window.used, cap: window.cap,
     })),
-    /* remaining 只由三项原始额度相加得到，与 cap 无关，随缓存一起保存 */
     monthly: { monthly: monthly.monthly, purchased: monthly.purchased, free: monthly.free,
       remaining: monthly.remaining },
     stale: false,
   };
 }
 
-/* 读到缓存后按当前 CMDCODE_MONTH_CAP 重新投影：窗口比率也由原始 used/cap 重算，
-   返回新对象（缓存里的 data 保持原样） */
 function cmdcodeProject(data) {
   const source = data && typeof data === "object" ? data : {};
   const monthly = source.monthly && typeof source.monthly === "object" ? source.monthly : {};
@@ -1941,14 +1821,13 @@ function cmdcodeProject(data) {
   };
 }
 
-/* 有效期与其它额度缓存一致：模块默认 600 秒；直接调用脚本且未传 cch_quota_interval 时回退 300 秒。
-   过期缓存仍返回，由调用方决定是否回退；fresh 与 stale 两条路径都走同一套重投影 */
+/* 过期缓存也返回，由调用方决定是否回退 */
 function readCmdcodeCache(site) {
   try {
     const raw = $persistentStore.read(cmdcodeCacheKey(site));
     if (!raw) return null;
     const cache = JSON.parse(raw);
-    /* v1 是上一版缓存：同样带原始额度，只是多了已算好的 cap/ratio；一并重投影，升级不丢缓存 */
+    /* v1 也带原始额度，一并重投影 */
     if (!cache || (cache.version !== 2 && cache.version !== 1) || !cache.data) return null;
     const fresh = Date.now() - Number(cache.updatedAt || 0) < CCH_QUOTA_CACHE_SECONDS * 1000;
     return { data: cmdcodeProject(cache.data), fresh };
@@ -1963,7 +1842,7 @@ function writeCmdcodeCache(site, data) {
   return data;
 }
 
-/* 非 200 与传输失败一律抛错：由调用方回退缓存，或让该站点不占行（不写半截数据） */
+/* 非 200 一律抛错，不写半截数据 */
 async function cmdcodeGet(site, path, headers) {
   const response = await request("get", `${site.base}${path}`, headers);
   if (response.status !== 200) {
@@ -1973,9 +1852,7 @@ async function cmdcodeGet(site, path, headers) {
   return parseBody(response);
 }
 
-/* 三个指标统一显示「剩余」百分比：值 = 剩余 / 上限 = 100% − 已用%，clamp 到 0–1。
-   limited=false 是不限量：历史 used/cap 不再代表当前用量，比率置空（窗口仍写「不限」）；
-   上限缺失或为 0 时没有使用率可言，同样不能当成 100% */
+/* 剩余比例 = (cap − used) / cap；不限量或 cap 缺失/为 0 时为 null */
 function cmdcodeWindow(key, label, raw, unlimited) {
   const source = raw && typeof raw === "object" ? raw : {};
   const used = cmdcodePick(source, CMDCODE_USED_KEYS);
@@ -1986,8 +1863,7 @@ function cmdcodeWindow(key, label, raw, unlimited) {
   return { key, label, used, cap, ratio };
 }
 
-/* 字段别名取值：canonical 字段只要存在就定了结果——值必须是有限 number，否则按缺失处理，
-   不再回退后面的别名（数组/对象/布尔/空串/数字字符串都不是数值） */
+/* canonical 字段存在即定案：值不是有限 number 就按缺失处理，不回退别名 */
 function cmdcodePick(source, keys) {
   for (const key of keys) {
     if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
@@ -1997,8 +1873,6 @@ function cmdcodePick(source, keys) {
   return null;
 }
 
-/* 窗口对象：按属性存在性取第一个出现的键，值与类型都留给调用方判断（诊断要报原始类型）；
-   存在即定案，值非法也不回退后面的别名 */
 function cmdcodeFindWindow(source, aliases) {
   for (const alias of aliases) {
     if (Object.prototype.hasOwnProperty.call(source, alias)) return { alias, value: source[alias] };
@@ -2006,7 +1880,6 @@ function cmdcodeFindWindow(source, aliases) {
   return { alias: null, value: undefined };
 }
 
-/* limited 归一：布尔原样，字符串 "true"/"false"（大小写与空白不敏感）也认，其它值按缺失处理 */
 function cmdcodeLimited(value) {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
@@ -2017,8 +1890,7 @@ function cmdcodeLimited(value) {
   return null;
 }
 
-/* limited=false 是「不限量」：上游没给窗口数据时也照样写「不限」；
-   limited=true 或缺失时只保留真给了窗口对象的窗口，缺的窗口整段省略 */
+/* 不限量时没有窗口数据也写「不限」；否则只保留真给了窗口对象的窗口 */
 function cmdcodeWindows(windowLimits, limited) {
   const source = windowLimits && typeof windowLimits === "object" ? windowLimits : {};
   const flag = limited === undefined ? cmdcodeLimited(source.limited) : limited;
@@ -2033,8 +1905,7 @@ function cmdcodeWindows(windowLimits, limited) {
   return windows;
 }
 
-/* windowLimits 的落点：credits.windowLimits → credits.window_limits → body.windowLimits → body.window_limits，
-   按属性存在性取第一个命中的层：命中即定案（值是 null/非对象就给空对象），不再往低优先级找 */
+/* 依次找 credits/body 上的 windowLimits/window_limits，命中即定案 */
 function cmdcodeWindowLimits(credits, body) {
   for (const holder of [credits, body]) {
     if (!holder || typeof holder !== "object") continue;
@@ -2047,11 +1918,8 @@ function cmdcodeWindowLimits(credits, body) {
   return {};
 }
 
-/* 月度：剩余金额 = 计划内额度 + 已购 + 赠送；三项全缺才算未知（缺其中一项按 0 计，不能凭空少算）。
-   剩余百分比按套餐上限折算：M% = clamp(monthlyCredits / cap, 0, 1)，即 100% − 已用%；
-   接口不返回本月已用，只能用「套餐价 - 计划内剩余额度」反推，所以分子只取计划内额度，
-   已购/赠送只进「剩余金额」、不由它们抬高剩余比例。monthlyCredits 缺失或 cap 非法
-   （≤0/非数字）时不给比率，行内回退成剩余金额。 */
+/* 月度：剩余金额 = 计划内 + 已购 + 赠送（三项全缺才算未知）。接口不返回本月已用，
+   剩余比例只能按 monthlyCredits / cap 反推；cap 非法时回退成剩余金额 */
 function cmdcodeMonthly(credits) {
   const monthly = numeric(credits.monthlyCredits);
   const purchased = numeric(credits.purchasedCredits);
@@ -2073,14 +1941,12 @@ function cmdcodeTypeName(value) {
   return typeof value;
 }
 
-/* 键名列表（对象才有意义）：[a,b]；非对象/数组/空对象统一给 - 或 [] */
 function cmdcodeKeyList(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return "-";
   const keys = Object.keys(value);
   return keys.length ? `[${keys.join(",")}]` : "[]";
 }
 
-/* 第一个「存在该属性」的原始值（只看存在性，不看类型）：诊断只报它的类型，不报值 */
 function cmdcodeFirstRaw(holders, name) {
   for (const holder of holders) {
     if (!holder || typeof holder !== "object") continue;
@@ -2089,9 +1955,7 @@ function cmdcodeFirstRaw(holders, name) {
   return undefined;
 }
 
-/* limited 不为 false 却一个窗口都取不到时打一行：上游换了字段名、层级或命名风格，靠这行定位。
-   只含字段名与类型名（plan/limited 也只报 number/string/object/null/undefined），
-   不写任何响应值、金额与凭据；整轮运行最多一条（多个站点同时缺窗口不刷屏） */
+/* limited 不为 false 却取不到任何窗口时记一行诊断：只含字段名与类型 */
 function cmdcodeLogMissingWindows(limits, credits, body, windowLimits) {
   const windows = Array.isArray(limits && limits.windows) ? limits.windows : [];
   if (windows.length || (limits && limits.limited === false)) return;
@@ -2122,17 +1986,14 @@ async function fetchCommandCodeLimits(site, headers) {
   );
   /* 契约是 { credits: {...} }；直接给扁平对象时也认 */
   const credits = body && body.credits && typeof body.credits === "object" ? body.credits : (body || {});
-  /* windowLimits 可能挂在 credits 或 body 上（驼峰/下划线两种写法都见过） */
   const windowLimits = cmdcodeWindowLimits(credits, body);
   const planId = String(credits.planId || (body && body.planId) || "").trim();
-  /* limited 可能写在 windowLimits 里，也可能在 credits/body 顶层；"false"/"true" 字符串同样归一 */
   let limited = cmdcodeLimited(windowLimits.limited);
   if (limited === null) limited = cmdcodeLimited(credits.limited);
   if (limited === null && body && body !== credits) limited = cmdcodeLimited(body.limited);
   const limits = {
     kind: "limits",
     site: { name: site.name },
-    /* 上游 planId 原样保留：面板不展示，不猜套餐名映射 */
     plan: planId || null,
     limited,
     windows: cmdcodeWindows(windowLimits, limited),
@@ -2140,13 +2001,11 @@ async function fetchCommandCodeLimits(site, headers) {
     stale: false,
   };
   cmdcodeLogMissingWindows(limits, credits, body, windowLimits);
-  /* 200 但一个可展示字段都没有（credits 缺失/空对象/字段全缺）：当成取数失败，
-     不能拿空响应覆盖上次有效缓存 */
+  /* 200 但没有可展示字段：当成失败，不能覆盖上次有效缓存 */
   if (!cmdcodeDisplayable(limits)) throw new Error("credits 里没有任何可展示字段");
   return limits;
 }
 
-/* 至少一个能写进限额行的字段：不限量的窗口，或带比率/金额的窗口与月度 */
 function cmdcodeDisplayable(limits) {
   if (numeric(limits && limits.monthly && limits.monthly.remaining) !== null) return true;
   if (limits && limits.limited === false) return true;
@@ -2154,7 +2013,7 @@ function cmdcodeDisplayable(limits) {
     .some((window) => window.ratio !== null);
 }
 
-/* 缓存有效期内不发请求；取数失败回退上次缓存并标 stale，没有缓存才抛错（该站点不占行，由面板图标提示） */
+/* 缓存有效期内不发请求；失败回退缓存并标 stale，没有缓存才抛错 */
 async function fetchCommandCodeSite(site, headers) {
   const cached = readCmdcodeCache(site);
   if (cached && cached.fresh) return Object.assign({}, cached.data, { stale: false });
@@ -2167,8 +2026,7 @@ async function fetchCommandCodeSite(site, headers) {
   }
 }
 
-/* 金额：≥1e6 用 M（12345678 → $12.3M）、≥1e4 用 k（12345 → $12k），
-   ≥100 取整（$1234），其余一位小数并去掉尾部 .0（56.0 → $56）；不用 cchMoney，它会固定两位小数 */
+/* 紧凑金额：$12.3M / $12k / $1234 / $56 */
 function cchLimitMoney(value) {
   const amount = numeric(value);
   if (amount === null) return "-";
@@ -2179,14 +2037,12 @@ function cchLimitMoney(value) {
   return `$${amount.toFixed(1).replace(/\.0$/, "")}`;
 }
 
-/* 百分比固定两位小数，与余额两位小数同一口径（0.8577 → 85.77%，满额 100.00%、清零 0.00%）。
-   只影响显示精度，风险色仍按原始 ratio 判断（见 cchRisk） */
+/* 百分比固定两位小数；风险色按原始 ratio */
 function cmdcodePercent(ratio) {
   return `${(Number(ratio) * 100).toFixed(2)}%`;
 }
 
-/* 限额行字段：只写 5H / W / 月度的剩余百分比，不出现「余额」二字；limited=false 时该窗口写「不限」。
-   M 有可用上限时写剩余百分比，上限缺失/非法才回退成剩余金额 */
+/* 限额字段：limited=false 写「不限」；M 有上限写百分比，否则写剩余金额 */
 function cchLimitFields(data, label) {
   const name = String(label || (data.site && data.site.name) || "CommandCode");
   const unlimited = data.limited === false;
@@ -2208,7 +2064,7 @@ function cchLimitFields(data, label) {
   return { name, windows, month };
 }
 
-/* 三项指标（两个窗口 + 月度）的四种排法：完整 · 紧凑 · 紧凑空格 · 无分隔（最窄一档） */
+/* 四种排法：完整 · 紧凑 · 紧凑空格 · 无分隔 */
 function cchLimitMetrics(fields, spaced, separator) {
   const items = [];
   for (const window of fields.windows) {
@@ -2267,8 +2123,7 @@ function cchLimitRowParts(data, label, budget) {
   return [truncateToWidth(variants[2], width)];
 }
 
-/* 只输出指标、不含站名（两行显示的第 2 行）：同一套四种排法从宽到窄取第一种放得下的，
-   都放不下时截短最紧排法；一个可展示字段都没有时返回空串，调用方整行不占位 */
+/* 两行显示的第 2 行：从宽到窄取第一种放得下的排法，都放不下就截短最紧排法 */
 function cchLimitMetricsText(data, budget) {
   const width = Math.max(20, Number(budget) || 0);
   const fields = cchLimitFields(data);
@@ -2304,7 +2159,7 @@ function collectCchSites() {
   return sites;
 }
 
-/* 每个站点各自取数，一个站点失败只影响它自己那行 */
+/* 一个站点失败只影响它自己那行 */
 async function fetchCchResults() {
   const sites = collectCchSites();
   return Promise.all(sites.map((site) => fetchCchSite(site).then(
@@ -2331,7 +2186,7 @@ async function runPanel() {
   lines.push("");
   lines.push(`更新 ${formatTime()}`);
 
-  /* 风险色取各站点最高值：站点取数失败或余额整体查不到都会变色 */
+  /* 风险色取各站点最高值 */
   let risk = 0;
   for (const item of cchResults) {
     if (item.error) risk = Math.max(risk, 1);
