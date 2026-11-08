@@ -12,7 +12,7 @@
 
 let url = "http://ip-api.com/json/?lang=zh-CN"
 
-$httpClient.get(url, function(error, response, data){
+$httpClient.get({ url, timeout: 2 }, function(error, response, data){
   let body = {
     title: "节点详情",
     content: "检测失败，请刷新面板",

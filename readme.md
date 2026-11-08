@@ -62,8 +62,7 @@ RULE-SET,https://raw.githubusercontent.com/LucaLin233/Proxy/main/surge/rules/dir
 编辑**；其余 `.list` 为手工维护。
 
 `direct.list` 除了域名，还包含约 9 千条 IP-CIDR / IP-CIDR6 且没有 `no-resolve`。域名请求走到这一行时，
-如果规则集里的域名都没命中，Surge 会先做 DNS 解析再比对 IP。只想按域名匹配时，可以在 RULE-SET 行末尾
-加上 `,no-resolve`，这样 IP 段只对直接用 IP 访问的连接生效。
+若想避免该规则集为匹配 IP 而主动解析域名，可在 RULE-SET 行末添加 `,no-resolve`。尚未解析的域名会跳过 IP 子规则；直接 IP 请求及已有解析结果的域名仍可匹配。它不等价于纯域名规则集。
 
 ### Quantumult X
 
