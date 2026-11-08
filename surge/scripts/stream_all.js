@@ -43,6 +43,9 @@ const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (
         disney_result="Disney+: 未支持 🚫 "
       } else if (status==STATUS_TIMEOUT) {
         disney_result="Disney+: 检测超时 🚦"
+      } else {
+        // STATUS_ERROR 原来没有分支，面板会多出一行空白
+        disney_result="Disney+: 检测失败，请刷新面板"
       }
 result.push(disney_result)
 console.log(result)
@@ -129,7 +132,13 @@ panel_result['content'] = content
           }
   
           if (response.status === 200) {
-            let url = response.headers['x-originating-url']
+            // 缺少该响应头时直接按检测失败处理，避免 url.split 抛错导致面板一直等到超时
+            let key = Object.keys(response.headers || {}).find((k) => k.toLowerCase() === 'x-originating-url')
+            let url = key ? response.headers[key] : ''
+            if (!url) {
+              reject('Error')
+              return
+            }
             let region = url.split('/')[3]
             region = region.split('-')[0]
             if (region == 'title') {
