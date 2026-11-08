@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-11-05T14:00:02Z
-# Total:   20247
+# Updated: 2026-11-08T14:00:02Z
+# Total:   20249
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -28,6 +28,7 @@ DOMAIN,gitlab-assets.oss-cn-hongkong.aliyuncs.com
 DOMAIN,gog-cdn-lumen.secure2.footprint.net
 DOMAIN,hb4bbbbb.pmhcjk.com
 DOMAIN,hpstore.corpmerchandise.com
+DOMAIN,http-intake.logs.us5.datadoghq.com
 DOMAIN,hub.slarker.me
 DOMAIN,i.jeded.com
 DOMAIN,imperial.insendi.com
@@ -7964,6 +7965,7 @@ DOMAIN-SUFFIX,greenvpn.net
 DOMAIN-SUFFIX,greginhollywood.com
 DOMAIN-SUFFIX,grindr.com
 DOMAIN-SUFFIX,grok.com
+DOMAIN-SUFFIX,grokbot.com
 DOMAIN-SUFFIX,grokipedia.com
 DOMAIN-SUFFIX,grooby.com
 DOMAIN-SUFFIX,groq.com
