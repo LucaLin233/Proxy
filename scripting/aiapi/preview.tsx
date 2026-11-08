@@ -61,7 +61,7 @@ const twelve: Row[] = nine.concat([
 ])
 
 function data(list: Row[]): PanelData {
-  return { rows: list, usage: [], notices: [], errors: [], updatedAt: Date.now(), elapsedMs: 0, fromCache: false }
+  return { rows: list, notices: [], errors: [], updatedAt: Date.now(), elapsedMs: 0, fromCache: false }
 }
 
 function Card({ width, height, children }: { width: number; height: number; children: any }) {

@@ -1,7 +1,6 @@
 // 中转站看板 · 桌面小组件入口
 import { Widget } from "scripting"
 import { loadPanel, readOptions, readSites } from "./relay.core"
-import type { Options, Site } from "./relay.core"
 import { PanelWidget } from "./views"
 
 function familyOf(): string {
@@ -22,12 +21,8 @@ function messageOf(error: any): string {
 async function run() {
   const family = familyOf()
 
-  let sites: Site[] = []
-  let options: Options = { monthCap: 70, maxRows: 10, refreshMinutes: 15 }
-  try {
-    sites = readSites()
-    options = readOptions()
-  } catch (_) {}
+  const sites = readSites()
+  const options = readOptions()
 
   if (!sites.length) {
     Widget.present(<PanelWidget data={null} widgetSizeHint={family} message="未配置站点：打开脚本添加" />)
