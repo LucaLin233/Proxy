@@ -203,7 +203,7 @@ function SettingsScreen({
             title="复制当前配置为 Surge 参数"
             action={async () => {
               try {
-                await Pasteboard.setString(surgeArgumentsOf(draft))
+                await Pasteboard.setItems([{ "public.plain-text": surgeArgumentsOf(draft) } as Pasteboard.Item])
                 setHint("已复制，可以粘回 Surge 模块")
               } catch (_) {
                 setHint("复制失败")

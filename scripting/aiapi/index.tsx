@@ -220,7 +220,7 @@ function SettingsScreen({
             title="复制当前配置为 cch_endpoints"
             action={async () => {
               try {
-                await Pasteboard.setString(sitesToEndpoints(list))
+                await Pasteboard.setItems([{ "public.plain-text": sitesToEndpoints(list) } as Pasteboard.Item])
                 setHint("已复制，可以粘回 Surge 模块")
               } catch (_) {
                 setHint("复制失败")
