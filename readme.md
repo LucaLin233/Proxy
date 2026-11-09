@@ -61,8 +61,7 @@ RULE-SET,https://raw.githubusercontent.com/LucaLin233/Proxy/main/surge/rules/dir
 `proxy.list`、`direct.list`、`cdn.list` 由自建合并服务按上游规则定期更新并自动提交，**不要手工
 编辑**；其余 `.list` 为手工维护。
 
-`direct.list` 除了域名，还包含约 9 千条 IP-CIDR / IP-CIDR6 且没有 `no-resolve`。域名请求走到这一行时，
-若想避免该规则集为匹配 IP 而主动解析域名，可在 RULE-SET 行末添加 `,no-resolve`。尚未解析的域名会跳过 IP 子规则；直接 IP 请求及已有解析结果的域名仍可匹配。它不等价于纯域名规则集。
+`direct.list` 含约 9 千条不带 `no-resolve` 的 IP 段；不想让它为匹配 IP 而解析域名时，在 RULE-SET 行末加 `,no-resolve`。
 
 ### Quantumult X
 
@@ -110,12 +109,8 @@ sudo systemctl daemon-reload && sudo systemctl enable --now snell
 CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:user
 ```
 
-- 余额默认每个 provider 只刷新一把代表 key，并只显示它关联的单个账户（`aiapi_cchp_single_account` 默认开启）；
-  一个 provider 挂多个上游账户时会少算，需要合计时把它设为 `false`。
-- 行序先按 CCHP 的 key 优先级，取不到时退回脚本里写死的兜底顺序；站点末尾手写的 `:优先级` 优先。
-- 面板底部的「⚠️」提示表示余额来自缓存、部分请求超时或排序信息缺失，已拿到的数据照常显示。
-
-排序、刷新预算、CommandCode 限额行的格式与宽度、缓存和失败回退的完整规则见 [docs/aiapi-panel.md](docs/aiapi-panel.md)。
+余额默认每个 provider 只显示一个账户（`aiapi_cchp_single_account`），一个 provider 挂多个上游账户时设为 `false` 才会合计。
+模式、排序、CommandCode 两行的读法和各条「⚠️」提示见 [docs/aiapi-panel.md](docs/aiapi-panel.md)。
 
 ### Scripting 小组件
 
@@ -135,10 +130,10 @@ CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:
 | `server.sgmodule` | 服务器流量与到期（Lightsail + Peekabo 合并为一个面板） | 需要，见模块内 `#!arguments-desc` |
 | `aiapi.sgmodule` | CCH / CCHP 站点余额，按 CCHP 优先级排序（每轮实取，实时生效），Clouder 走 CCH | 需要，见模块内 `#!arguments-desc` |
 | `app_js.sgmodule` | APP JS 重写合集：Netflix 评分与单集评分、淘票票豆瓣评分、TestFlight 账户管理、彩云天气 SVIP | 不需要 |
-| `bilibili_cdn.sgmodule` | 拒绝哔哩哔哩的 PCDN / P2P 连接；其中 `DEST-PORT,3478` 和 `DOMAIN-KEYWORD,httpdns` 两条对所有 App 生效，会同时拦截所有发往 3478 端口的连接（常见的 STUN 端口）和域名含 httpdns 的请求 | 不需要 |
-| `block_startup.sgmodule` | 开屏与启动广告拦截（cuttlefish 2023-01 版本快照，不再跟随上游，部分规则已失效） | 不需要 |
+| `bilibili_cdn.sgmodule` | 拒绝哔哩哔哩的 PCDN / P2P 连接（其中 3478 端口与 httpdns 关键字两条对所有 App 生效） | 不需要 |
+| `block_startup.sgmodule` | 开屏与启动广告拦截（cuttlefish 2023-01 快照） | 不需要 |
 | `fuck_ad.sgmodule` | 常见 App 广告拦截（by ocd0711） | 不需要 |
-| `get_wskey.sgmodule` | 京东 wskey 抓取；使用时先杀掉京东 App 后台再打开。抓到的 wskey 会通过 Telegram 推送，他人使用前请先阅读脚本，并在持久化存储里设置自己的 `TG_BOT_TOKEN` 和 `TG_USER_ID` | 不需要 |
+| `get_wskey.sgmodule` | 京东 wskey 抓取，结果经 Telegram 推送（持久化存储里设置 `TG_BOT_TOKEN`、`TG_USER_ID`）；使用时先杀掉京东 App 后台再打开 | 不需要 |
 | `tun_only.sgmodule` | 工作模式设为仅 VIF 接管（`compatibility-mode=3`，新版 Surge iOS 的默认值）；所有主机的 80 端口强制走 HTTP 引擎；拒绝阿里云 HTTPDNS（203.107.1.0/24），配合 B 站去广告重写使用 | 不需要 |
 | `panels.sgmodule.bak` | 旧版面板模块备份（节点详情、配置重载、刷新 DNS、流媒体检测），仅供参照 | 不需要 |
 
@@ -170,20 +165,19 @@ CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:
 | `telegram.list`、`telegram_ip.list`、`telegram_asn.list` | Telegram 分流（域名、IP、ASN） | 手工维护 |
 | `apple_proxy.list`、`apple_proxy_rough.list`、`apple_download.list` | Apple 服务代理与下载直连 | 手工维护 |
 | `emby_filter.list` | Emby 服务器分流（Surge 语法） | 手工维护 |
-| `uahp_allinone.list` | 去广告、运营商劫持与隐私跟踪合集。注意开头的 Unbreak 段原本是"不要拦截"的白名单，合并进同一个规则集后会和其它条目套用同一个策略 | 手工维护 |
+| `uahp_allinone.list` | 去广告、运营商劫持与隐私跟踪合集（开头的 Unbreak 段与其余条目同属一个策略） | 手工维护 |
 | `stream.list` | 流媒体域名 | 手工维护 |
 | `lan.list`、`stun.list` | 局域网直连（内容与 Surge 内置的 `RULE-SET,LAN` 相同）、STUN 协议 | 手工维护 |
 | `legacy/proxy.list`、`legacy/direct.list` | 2022 年遗留版本，仅存档 | 不再维护 |
 
 `surge/rules/emby_filter.list` 覆盖的 Emby 服务器：普拉斯 AGA（中国电信可直连）、CF 公益服
 （需挂代理）、普拉斯备用服（4 个）、Exflux、Nexitally/AmyTelecom（共用，仅限美国特定节点）、
-Skicat、Godetia（猫熊和 3DM）。其中 Skicat 一条写成了 `DOMAIN,https://skicat.tv`，带协议头的写法
-不会匹配任何请求，目前并未生效。
+Skicat、Godetia（猫熊和 3DM）。
 
 ## 图标与文档
 
 - `icons/`：策略组图标，可直接作为 `icon-url` 引用；
-- `docs/`：README 引用的 Quantumult X 操作截图，`other/` 内为其它图片。
+- `docs/`：Quantumult X 操作截图与 aiapi 面板说明，`other/` 内为其它图片。
 
 ## 功能重叠与选择
 
@@ -200,8 +194,7 @@ Skicat、Godetia（猫熊和 3DM）。其中 Skicat 一条写成了 `DOMAIN,http
 - 面板脚本需要填写自己的 API Key / Token，这些参数仅保存在本地模块中，请勿提交到公开仓库；
 - 在 App 内抓取 Cookie 的重写仅限自用；账号、Cookie、Token、私钥一律不要粘贴到 issue 或仓库；
 - `proxy.list`、`direct.list`、`cdn.list` 由合并服务自动写回，手工编辑会被下次更新覆盖；
-- 去广告类模块（`block_startup`、`fuck_ad`）会对大量域名做 MITM 解密，其中包括部分银行和微信相关域名，
-  启用前请确认可以接受；
+- `block_startup` 的 MITM 主机名包含部分银行与微信域名；
 - 部分脚本依赖 Surge 的 HTTP API 或系统版本，升级 Surge 后如有失效请以官方文档为准。
 
 ## 反馈与致谢

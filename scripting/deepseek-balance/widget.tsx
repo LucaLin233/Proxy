@@ -34,8 +34,7 @@ async function run() {
     const refreshMs = Math.max(1, minutes) * 60 * 1000
     const cacheMs = Math.max(60 * 1000, refreshMs - 60 * 1000)
     const data = await loadPanel(false, cacheMs)
-    /* 下一次时间线锚在「本次检查时间 + 间隔」，系统提前唤醒不会把节奏拖后。
-       不能用 updatedAt（最近一次成功时间）：取数一直失败时它停在旧值，小组件会每分钟重载一次 */
+    /* 下一次时间线锚在「本次检查时间 + 间隔」，系统提前唤醒不会把节奏拖后 */
     const next = Math.max(Date.now() + 60 * 1000, data.checkedAt + refreshMs)
     Widget.present(
       <DeepSeekWidget data={data} widgetSizeHint={family} />,

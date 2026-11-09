@@ -21,7 +21,6 @@ DOMAIN-KEYWORD,telegram
 DOMAIN-KEYWORD,nicegram
 # DC5
 IP-CIDR,91.108.16.0/22,no-resolve
-# 91.108.56.0/23 已包含在 DC4 的 91.108.56.0/22 中
 IP-CIDR,149.154.168.0/22,no-resolve
 # DC4
 IP-CIDR,91.108.4.0/22,no-resolve

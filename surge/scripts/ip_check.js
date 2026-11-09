@@ -18,7 +18,6 @@ $httpClient.get({ url, timeout: 2 }, function(error, response, data){
     content: "检测失败，请刷新面板",
     icon: "globe.asia.australia.fill"
   }
-  // 请求失败或返回内容无法解析时也要调用 $done，否则面板会一直等到脚本超时
   try {
     if (error) throw error
     let jsonData = JSON.parse(data)

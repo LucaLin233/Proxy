@@ -269,7 +269,6 @@ function normalizeBaseUrl(value) {
 
 function request(method, url, headers, body) {
   return new Promise((resolve, reject) => {
-    /* Surge 的 timeout 以秒计 */
     const options = { url, headers, timeout: 15 };
     if (body !== undefined) {
       headers["Content-Type"] = "application/json";

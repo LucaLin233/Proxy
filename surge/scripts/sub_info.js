@@ -58,7 +58,6 @@ Sub_info = script-name=Sub_info,update-interval=86400
   minutes = minutes > 9 ? minutes : "0" + minutes;
 
   $done({
-    // 未传 reset_day 时不显示重置天数，与上方参数说明一致
     title: (args.title || "Sub Info") + (resetDayLeft ? `｜Reset : ${resetDayLeft} Days` : ""),
     content: content.join("\n"),
     icon: args.icon || "airplane.circle",
@@ -68,7 +67,7 @@ Sub_info = script-name=Sub_info,update-interval=86400
 
 function getArgs() {
   return Object.fromEntries(
-    (typeof $argument === "string" ? $argument : "")
+    $argument
       .split("&")
       .map((item) => item.split("="))
       .map(([k, v]) => [k, decodeURIComponent(v)])
