@@ -203,8 +203,11 @@ function SettingsScreen({
             title="复制当前配置为 Surge 参数"
             action={async () => {
               try {
-                await Pasteboard.setItems([{ "public.plain-text": surgeArgumentsOf(draft) } as Pasteboard.Item])
-                setHint("已复制，可以粘回 Surge 模块")
+                await Pasteboard.setItems(
+                  [{ "public.plain-text": surgeArgumentsOf(draft) } as Pasteboard.Item],
+                  { localOnly: true, expirationDate: new Date(Date.now() + 10 * 60 * 1000) }
+                )
+                setHint("已复制（含密钥，仅留在本机剪贴板，10 分钟后自动清除），可以粘回 Surge 模块")
               } catch (_) {
                 setHint("复制失败")
               }

@@ -23,7 +23,7 @@ DeepSeek 余额/
 打开脚本 → 「设置」：
 
 - **API Key**：`sk-` 开头的 DeepSeek Key，保存在本机 App Group 的 `deepseek/config.json`；
-  旧版「DeepSeek 小组件」用同一个文件，装过就不用重填。
+  旧版「DeepSeek 小组件」用同一个文件，装过就不用重填。Key 以明文保存在该文件中，Scripting 的其他脚本也可访问此 App Group 目录，请只运行可信脚本。
 - **刷新周期**：15 / 30 分钟，1 / 2 / 3 / 6 / 12 小时，默认 15 分钟，iOS 可能延后。
 - **低余额阈值**：默认 10，低于它时余额标红；填 0 关闭。
 - **清除消耗记录**：点两次确认，只清 `usage.json`。

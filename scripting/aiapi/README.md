@@ -27,7 +27,7 @@ CommandCode 显示 5H / W / M 剩余限额。
   `cookie` 填 `auth-token`、`cmdcode` 填 CommandCode Key）。「排序」可选，数值越小越靠前，留空按 CCHP 自动匹配。
   地址或凭据为空的站点不会保存。
 - **刷新间隔**：默认 15 分钟，可选 15 分钟到 12 小时，iOS 可能延后。保存后旧缓存作废。
-- **导出**：「复制当前配置为 cch_endpoints」把含凭据的整段配置复制到剪贴板，用于粘回 Surge。
+- **导出**：「复制当前配置为 cch_endpoints」把含凭据的整段配置复制到本机剪贴板（不随接力同步），10 分钟后系统自动清除，用于粘回 Surge。
 
 凭据保存在 Scripting 的 Storage（本脚本私有域）。
 

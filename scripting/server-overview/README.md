@@ -26,6 +26,7 @@ Surge 脚本 `surge/scripts/server_overview.js` 的 Scripting 版：按「区域
 - **显示今日流量**：多查一轮今日流量，关掉刷新更快。
 - **刷新间隔**：默认 30 分钟，可选 15 分钟到 12 小时，保存后旧缓存作废。
 - **从 Surge 导入 / 导出**：粘贴模块的 `argument="…"` 整段，点「解析并填入上方」；导出把当前配置复制成同样的参数（含密钥）。
+  复制只留在本机剪贴板（不随接力同步），10 分钟后系统自动清除。
   支持 `lightsail_ak`、`lightsail_sk`、`lightsail_region`、`lightsail_ip_mode`、`peekabo_id`、`peekabo_token`；
   刷新间隔与显示开关只存本机。
 
