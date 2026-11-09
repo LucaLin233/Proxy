@@ -96,7 +96,7 @@ const STORE_SITES = "relay.sites.v2"
 const STORE_OPTS = "relay.opts.v1"
 const STORE_CACHE = "relay.panel.v1"
 
-export const DEFAULT_OPTIONS: Options = { monthCap: 70, refreshMinutes: 15 }
+const DEFAULT_OPTIONS: Options = { monthCap: 70, refreshMinutes: 15 }
 
 /* 刷新间隔可选值（分钟）：iOS 对小组件刷新有节流，最短给到 15 分钟 */
 export const REFRESH_CHOICES: number[] = [15, 30, 60, 120, 180, 360, 720]
@@ -597,8 +597,7 @@ function cookieHeader(value: string): Record<string, string> {
   return { Accept: "application/json", Cookie: AUTH_COOKIE + "=" + value }
 }
 
-/* login 模式：Key 换会话 Cookie，缓存到 Storage，被拒时重登一次。
-   按「地址 + 凭据」分区：换 Key 后不会沿用上一账户的会话 */
+/* login 模式：Key 换会话 Cookie，缓存到 Storage，被拒时重登一次 */
 function sessionSlot(site: Site): string {
   return `relay.session.${hash(`${site.base}|${site.credential}`)}`
 }
@@ -636,7 +635,6 @@ async function loginWithKey(base: string, credential: string): Promise<Session> 
 
   const match = new RegExp(AUTH_COOKIE + "=([^;,\\s]+)").exec(raw)
   if (!match) throw new Error("登录成功但未取到会话 Cookie")
-  /* 没有 Max-Age 时按 6 天保守缓存 */
   const ttl = /max-age=(\d+)/i.exec(raw)
   return { value: match[1], expiresAt: Date.now() + (ttl ? Number(ttl[1]) : 6 * 24 * 3600) * 1000 }
 }
@@ -1166,7 +1164,6 @@ async function fetchCchp(site: Site, budget: Budget): Promise<Outcome> {
   const notices: string[] = []
   let timedOut = false
 
-  /* 组织 ID 按「地址 + 令牌」缓存：换成别的组织的令牌不会沿用旧 ID */
   const orgSlot = `relay.cchp.org.${hash(`${site.base}|${site.credential}`)}`
   let orgId = readSlot<string>(orgSlot, 24 * 3600 * 1000) || ""
   if (!orgId) {
@@ -1245,8 +1242,7 @@ async function fetchCchp(site: Site, budget: Budget): Promise<Outcome> {
     if (keyId) repKeyById.set(provider.id, keyId)
   }
 
-  /* 余额实时化：每个可见 provider 只刷代表 key，刷完重取一次聚合列表。
-     balance.status=unsupported（如 CommandCode）上游不支持查余额，与 Surge 版一样不刷 */
+  /* 余额实时化：每个可见 provider 只刷代表 key，刷完重取一次聚合列表 */
   const targets: { id: string; keyId: string }[] = []
   for (const provider of providers) {
     if (hiddenIds.has(provider.id) || isClouder(provider.name)) continue

@@ -149,7 +149,6 @@ export async function loadPanel(force: boolean, cacheMs: number = CACHE_TTL): Pr
   const result = await fetchBalance(config.apiKey)
 
   if (result.ok) {
-    /* api.ts 只在 infos 非空时返回 ok */
     const primary = pickPrimary(result.infos) as BalanceInfo
     config = applyBalance(config, result.infos, now)
     saveConfig(config)

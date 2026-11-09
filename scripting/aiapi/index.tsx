@@ -67,7 +67,6 @@ function SiteFields({
   onChange: (patch: Partial<Site>) => void
   onDelete: () => void
 }) {
-  /* 排序框单独保存文本，输入「1.」这类中间态时不会被立刻改写 */
   const [priorityText, setPriorityText] = useState<string>(site.priority === null ? "" : String(site.priority))
   return (
     <Section header={<Text>{`站点 ${index + 1}${site.enabled ? "" : "（已停用）"}`}</Text>}>
@@ -147,7 +146,6 @@ function SettingsScreen({
             <Button
               title="保存"
               action={() => {
-                /* 新站点的默认地址是 "https://"，要求协议后面真的有主机名 */
                 const cleaned = list
                   .filter((site) => /^https?:\/\/[^\/\s]+/i.test(site.base.trim()) && site.credential.trim() !== "")
                   .map((site) => ({ ...site, name: site.name.trim() || site.base }))
@@ -221,13 +219,9 @@ function SettingsScreen({
           <Button
             title="复制当前配置为 cch_endpoints"
             action={async () => {
-              /* 内容含凭据：只留在本机剪贴板（不经接力同步），10 分钟后系统自动清除 */
               try {
-                await Pasteboard.setItems(
-                  [{ "public.plain-text": sitesToEndpoints(list) } as Pasteboard.Item],
-                  { localOnly: true, expirationDate: new Date(Date.now() + 10 * 60 * 1000) }
-                )
-                setHint("已复制（含凭据，10 分钟后自动从剪贴板清除），可以粘回 Surge 模块")
+                await Pasteboard.setString(sitesToEndpoints(list))
+                setHint("已复制，可以粘回 Surge 模块")
               } catch (_) {
                 setHint("复制失败")
               }
