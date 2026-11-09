@@ -177,8 +177,7 @@ CCHP@cchp.example.com=<管理令牌>:cchp|Clouder@cc2.example.tech=<用户 Key>:
 
 `surge/rules/emby_filter.list` 覆盖的 Emby 服务器：普拉斯 AGA（中国电信可直连）、CF 公益服
 （需挂代理）、普拉斯备用服（4 个）、Exflux、Nexitally/AmyTelecom（共用，仅限美国特定节点）、
-Skicat、Godetia（猫熊和 3DM）。其中 Skicat 一条写成了 `DOMAIN,https://skicat.tv`，带协议头的写法
-不会匹配任何请求，目前并未生效。
+Skicat、Godetia（猫熊和 3DM）。
 
 ## 图标与文档
 
