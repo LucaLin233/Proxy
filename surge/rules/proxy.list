@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-11-08T14:00:02Z
-# Total:   20249
+# Updated: 2026-11-11T14:00:02Z
+# Total:   20254
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -7925,6 +7925,8 @@ DOMAIN-SUFFIX,gr-assets.com
 DOMAIN-SUFFIX,grabhentai.com
 DOMAIN-SUFFIX,grabpussy.com
 DOMAIN-SUFFIX,gradeuptube.com
+DOMAIN-SUFFIX,grafana.com
+DOMAIN-SUFFIX,grafana.net
 DOMAIN-SUFFIX,grafolio.com
 DOMAIN-SUFFIX,graias.com
 DOMAIN-SUFFIX,graiasmovies.com
@@ -14386,6 +14388,7 @@ DOMAIN-SUFFIX,qualphone.com
 DOMAIN-SUFFIX,quanben-xiaoshuo.com
 DOMAIN-SUFFIX,quantil.com
 DOMAIN-SUFFIX,quatrowireless.com
+DOMAIN-SUFFIX,questionablequesting.com
 DOMAIN-SUFFIX,questvisual.com
 DOMAIN-SUFFIX,quicinc.com
 DOMAIN-SUFFIX,quickbooks.com
@@ -15865,6 +15868,7 @@ DOMAIN-SUFFIX,sowers.org.hk
 DOMAIN-SUFFIX,soyinyj.top
 DOMAIN-SUFFIX,soyjak.party
 DOMAIN-SUFFIX,sp.cool
+DOMAIN-SUFFIX,spacebattles.com
 DOMAIN-SUFFIX,spaceexplored.com
 DOMAIN-SUFFIX,spacemail.com
 DOMAIN-SUFFIX,spaces.hightail.com
@@ -17508,6 +17512,7 @@ DOMAIN-SUFFIX,v-has.com
 DOMAIN-SUFFIX,v.recipes
 DOMAIN-SUFFIX,v2.help
 DOMAIN-SUFFIX,v2.hysteria.network
+DOMAIN-SUFFIX,v2ex.co
 DOMAIN-SUFFIX,v2ex.com
 DOMAIN-SUFFIX,v2fly.org
 DOMAIN-SUFFIX,v2ph.com
