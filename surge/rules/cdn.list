@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-11-11T14:00:21Z
-# Total:   6779
+# Updated: 2026-11-13T14:00:28Z
+# Total:   6780
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -2680,6 +2680,7 @@ DOMAIN-SUFFIX,ipfsgateway.makersplace.com
 DOMAIN-SUFFIX,iphone-ld.apple.com
 DOMAIN-SUFFIX,iphone-ld.origin-apple.com.akadns.net
 DOMAIN-SUFFIX,ipns.co
+DOMAIN-SUFFIX,iprsoftwaremedia.com
 DOMAIN-SUFFIX,ipxy.io
 DOMAIN-SUFFIX,irp-cdn.multiscreensite.com
 DOMAIN-SUFFIX,is1-ssl.mzstatic.com
