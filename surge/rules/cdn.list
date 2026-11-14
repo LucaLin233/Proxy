@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-11-13T14:00:28Z
-# Total:   6780
+# Updated: 2026-11-14T14:00:20Z
+# Total:   6781
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -3422,6 +3422,7 @@ DOMAIN-SUFFIX,public.hare200.com
 DOMAIN-SUFFIX,public.komiic.com
 DOMAIN-SUFFIX,public.linear.app
 DOMAIN-SUFFIX,public.mocortech.com
+DOMAIN-SUFFIX,public.popclip.app
 DOMAIN-SUFFIX,public.saasexch.com
 DOMAIN-SUFFIX,public.zoorix.com
 DOMAIN-SUFFIX,publicassets.cdn-apple.com
