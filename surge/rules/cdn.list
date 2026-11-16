@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-11-14T14:00:20Z
-# Total:   6781
+# Updated: 2026-11-16T14:00:24Z
+# Total:   6783
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -2929,6 +2929,7 @@ DOMAIN-SUFFIX,media.convertkit.com
 DOMAIN-SUFFIX,media.crazyshit.com
 DOMAIN-SUFFIX,media.currys.biz
 DOMAIN-SUFFIX,media.daily.dev
+DOMAIN-SUFFIX,media.datacamp.com
 DOMAIN-SUFFIX,media.datacenterdynamics.com
 DOMAIN-SUFFIX,media.dev.to
 DOMAIN-SUFFIX,media.discordapp.net
@@ -4054,6 +4055,7 @@ DOMAIN-SUFFIX,static.javhd.com
 DOMAIN-SUFFIX,static.jsbin.com
 DOMAIN-SUFFIX,static.jup.ag
 DOMAIN-SUFFIX,static.k2s.cc
+DOMAIN-SUFFIX,static.karousell.com
 DOMAIN-SUFFIX,static.killedbygoogle.com
 DOMAIN-SUFFIX,static.klaviyo.com
 DOMAIN-SUFFIX,static.kobo.com
