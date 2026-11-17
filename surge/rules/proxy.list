@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-11-14T14:00:02Z
-# Total:   20255
+# Updated: 2026-11-17T14:00:02Z
+# Total:   20256
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -4706,6 +4706,7 @@ DOMAIN-SUFFIX,cyberghostvpn.com
 DOMAIN-SUFFIX,cybermondaybeats4sale.com
 DOMAIN-SUFFIX,cyberpunk.net
 DOMAIN-SUFFIX,cyberx.com
+DOMAIN-SUFFIX,cygames.com
 DOMAIN-SUFFIX,cygwin.com
 DOMAIN-SUFFIX,cylink.pro
 DOMAIN-SUFFIX,cylink0122.icu
