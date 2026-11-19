@@ -1,6 +1,6 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-11-17T14:00:02Z
+# Updated: 2026-11-19T14:00:02Z
 # Total:   20256
 
 DOMAIN,1password.drift.click
@@ -5810,6 +5810,7 @@ DOMAIN-SUFFIX,elephantsdream.org
 DOMAIN-SUFFIX,elephanttube.com
 DOMAIN-SUFFIX,elephanttubenew.com
 DOMAIN-SUFFIX,elevenlabs.com
+DOMAIN-SUFFIX,elevenlabsusercontent.com
 DOMAIN-SUFFIX,elgaronline.com
 DOMAIN-SUFFIX,elifesciences.org
 DOMAIN-SUFFIX,elite.com
@@ -19118,7 +19119,6 @@ DOMAIN-SUFFIX,yandexcom.net
 DOMAIN-SUFFIX,yandexdataschool.com
 DOMAIN-SUFFIX,yandexgo.com
 DOMAIN-SUFFIX,yandexwebcache.net
-DOMAIN-SUFFIX,yandexwebcache.org
 DOMAIN-SUFFIX,yango-b2b.com
 DOMAIN-SUFFIX,yango-team.com
 DOMAIN-SUFFIX,yango-tech.com
