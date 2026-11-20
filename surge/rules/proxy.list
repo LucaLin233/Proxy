@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-11-19T14:00:02Z
-# Total:   20256
+# Updated: 2026-11-20T14:00:01Z
+# Total:   20257
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -15852,6 +15852,7 @@ DOMAIN-SUFFIX,sotwe.com
 DOMAIN-SUFFIX,soubory.com
 DOMAIN-SUFFIX,souka.xyz
 DOMAIN-SUFFIX,soulcaliburhentai.net
+DOMAIN-SUFFIX,soulogic.com
 DOMAIN-SUFFIX,soundcloud.cloud
 DOMAIN-SUFFIX,soundcloud.com
 DOMAIN-SUFFIX,soundofhope.org
