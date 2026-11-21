@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-11-20T14:00:23Z
-# Total:   6786
+# Updated: 2026-11-21T14:00:21Z
+# Total:   6788
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -336,6 +336,7 @@ DOMAIN-SUFFIX,assets.mayoclinic.org
 DOMAIN-SUFFIX,assets.mcp.corespeed.io
 DOMAIN-SUFFIX,assets.media-platform.com
 DOMAIN-SUFFIX,assets.monei.com
+DOMAIN-SUFFIX,assets.monetizationos.com
 DOMAIN-SUFFIX,assets.monica.im
 DOMAIN-SUFFIX,assets.mozilla.social
 DOMAIN-SUFFIX,assets.msn.com
@@ -582,6 +583,7 @@ DOMAIN-SUFFIX,bunnycdn-video-assets.b-cdn.net
 DOMAIN-SUFFIX,bunnycdn.com
 DOMAIN-SUFFIX,businessunitprofile-cdn.trustpilot.net
 DOMAIN-SUFFIX,busuanzi.ibruce.info
+DOMAIN-SUFFIX,butterfly-effect-cdn.dev
 DOMAIN-SUFFIX,bytebucket.org
 DOMAIN-SUFFIX,bytedapm.com
 DOMAIN-SUFFIX,bytescale.mobbin.com
