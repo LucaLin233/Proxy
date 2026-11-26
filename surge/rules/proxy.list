@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    proxy
-# Updated: 2026-11-22T14:00:02Z
-# Total:   20159
+# Updated: 2026-11-26T14:00:01Z
+# Total:   20166
 
 DOMAIN,1password.drift.click
 DOMAIN,a4e8s8k3.map2.ssl.hwcdn.net
@@ -15,6 +15,7 @@ DOMAIN,cbsservice.aws.syncbak.com
 DOMAIN,cdn-spotify-experiments.conductrics.com
 DOMAIN,cdn.js7k.com
 DOMAIN,cisco.evergage.com
+DOMAIN,courses.myecnu.org
 DOMAIN,crl.versign.net
 DOMAIN,databank.worldbank.org
 DOMAIN,datarouter.apps.netherrealm.com
@@ -3595,6 +3596,7 @@ DOMAIN-SUFFIX,cabletv.com.hk
 DOMAIN-SUFFIX,cabletvdirectv.com
 DOMAIN-SUFFIX,cachefly.com
 DOMAIN-SUFFIX,cachefly.net
+DOMAIN-SUFFIX,cachix.org
 DOMAIN-SUFFIX,cacnw.com
 DOMAIN-SUFFIX,cactusvpn.com
 DOMAIN-SUFFIX,cad-mep.com
@@ -6501,9 +6503,11 @@ DOMAIN-SUFFIX,fastestvpn.com
 DOMAIN-SUFFIX,fastindianporn.com
 DOMAIN-SUFFIX,fastlane.tools
 DOMAIN-SUFFIX,fastly-edge.com
+DOMAIN-SUFFIX,fastly-insights.com
 DOMAIN-SUFFIX,fastly-terrarium.com
 DOMAIN-SUFFIX,fastly.com
 DOMAIN-SUFFIX,fastly.net
+DOMAIN-SUFFIX,fastlydns.net
 DOMAIN-SUFFIX,fastlylabs.com
 DOMAIN-SUFFIX,fastlylb.net
 DOMAIN-SUFFIX,fastssh.com
@@ -11100,6 +11104,7 @@ DOMAIN-SUFFIX,meetyourdevices.com
 DOMAIN-SUFFIX,megacamz.com
 DOMAIN-SUFFIX,megaeth.com
 DOMAIN-SUFFIX,megafilmporno.com
+DOMAIN-SUFFIX,megafon.cloud
 DOMAIN-SUFFIX,megafon.com
 DOMAIN-SUFFIX,megapornfreehd.com
 DOMAIN-SUFFIX,megapornpics.com
@@ -12743,6 +12748,7 @@ DOMAIN-SUFFIX,nytstyle.com
 DOMAIN-SUFFIX,o365weve-dev.com
 DOMAIN-SUFFIX,o365weve-ppe.com
 DOMAIN-SUFFIX,o365weve.com
+DOMAIN-SUFFIX,o7.com
 DOMAIN-SUFFIX,oaistatic.com
 DOMAIN-SUFFIX,oaistatsig.com
 DOMAIN-SUFFIX,oaiusercontent.com
@@ -17705,6 +17711,7 @@ DOMAIN-SUFFIX,viu.com
 DOMAIN-SUFFIX,viu.tv
 DOMAIN-SUFFIX,vivaldi.com
 DOMAIN-SUFFIX,vivaxnxx.com
+DOMAIN-SUFFIX,vivox.com
 DOMAIN-SUFFIX,vivthomas.com
 DOMAIN-SUFFIX,vixen.com
 DOMAIN-SUFFIX,vixengroup.com
