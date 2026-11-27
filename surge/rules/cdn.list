@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-11-21T14:00:21Z
-# Total:   6788
+# Updated: 2026-11-27T14:00:24Z
+# Total:   6787
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -1953,7 +1953,6 @@ DOMAIN-SUFFIX,forest-mt-s3.seekrtech.com
 DOMAIN-SUFFIX,forgecdn.net
 DOMAIN-SUFFIX,form-assets.mailchimp.com
 DOMAIN-SUFFIX,fourhoi.com
-DOMAIN-SUFFIX,frame.claudeusercontent.com
 DOMAIN-SUFFIX,framercdn.com
 DOMAIN-SUFFIX,framerstatic.com
 DOMAIN-SUFFIX,framerusercontent.com
