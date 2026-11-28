@@ -1,7 +1,7 @@
 # Rules Merger - VPS edition
 # Name:    cdn
-# Updated: 2026-11-27T14:00:24Z
-# Total:   6787
+# Updated: 2026-11-28T14:00:21Z
+# Total:   6772
 
 DOMAIN,res-1.cdn.office.net
 DOMAIN,res-2.cdn.office.net
@@ -333,7 +333,6 @@ DOMAIN-SUFFIX,assets.mastercard.com
 DOMAIN-SUFFIX,assets.matters.news
 DOMAIN-SUFFIX,assets.maxon.net
 DOMAIN-SUFFIX,assets.mayoclinic.org
-DOMAIN-SUFFIX,assets.mcp.corespeed.io
 DOMAIN-SUFFIX,assets.media-platform.com
 DOMAIN-SUFFIX,assets.monei.com
 DOMAIN-SUFFIX,assets.monetizationos.com
@@ -701,6 +700,7 @@ DOMAIN-SUFFIX,cdn-public-apis.moonlock.com
 DOMAIN-SUFFIX,cdn-public.sociabble.com
 DOMAIN-SUFFIX,cdn-raw.modrinth.com
 DOMAIN-SUFFIX,cdn-rdstaticassets.readdle.com
+DOMAIN-SUFFIX,cdn-resize-prod-com.500px.cloud
 DOMAIN-SUFFIX,cdn-seo.airdroid.com
 DOMAIN-SUFFIX,cdn-service.jp.sumologic.com
 DOMAIN-SUFFIX,cdn-share-sprites.flaticon.com
@@ -1072,6 +1072,7 @@ DOMAIN-SUFFIX,cdn.prod.ext.web.purview.azure.com
 DOMAIN-SUFFIX,cdn.prod.www.spiegel.de
 DOMAIN-SUFFIX,cdn.promo.capcomusa.com
 DOMAIN-SUFFIX,cdn.promotekit.com
+DOMAIN-SUFFIX,cdn.protect.clerk.com
 DOMAIN-SUFFIX,cdn.prowritingaid.com
 DOMAIN-SUFFIX,cdn.pubnub.com
 DOMAIN-SUFFIX,cdn.quadpay.com
@@ -1698,7 +1699,6 @@ DOMAIN-SUFFIX,dreamscape.cloud
 DOMAIN-SUFFIX,drivecdn.com
 DOMAIN-SUFFIX,drop.ndtv.com
 DOMAIN-SUFFIX,dropboxstatic.com
-DOMAIN-SUFFIX,drscdn.500px.org
 DOMAIN-SUFFIX,drtst.com
 DOMAIN-SUFFIX,dsc.cloud
 DOMAIN-SUFFIX,dtci-pe-vp-image-resizer.platform.edgedatg.com
@@ -2952,7 +2952,6 @@ DOMAIN-SUFFIX,media.giphy.com
 DOMAIN-SUFFIX,media.glassdoor.com
 DOMAIN-SUFFIX,media.graphassets.com
 DOMAIN-SUFFIX,media.hachyderm.io
-DOMAIN-SUFFIX,media.hentaifreak.org
 DOMAIN-SUFFIX,media.identity.ui.com
 DOMAIN-SUFFIX,media.infosec.exchange
 DOMAIN-SUFFIX,media.inhumanity.com
@@ -3222,7 +3221,6 @@ DOMAIN-SUFFIX,p16-hera-sg.larksuitecdn.com
 DOMAIN-SUFFIX,p16-hera-va.larksuitecdn.com
 DOMAIN-SUFFIX,p2.bahamut.com.tw
 DOMAIN-SUFFIX,pa1.aninoapps.com
-DOMAIN-SUFFIX,pacdn.500px.org
 DOMAIN-SUFFIX,packages.jetbrains.team
 DOMAIN-SUFFIX,packd.liuxingbaoyu.xyz
 DOMAIN-SUFFIX,pagecdn.io
@@ -3455,8 +3453,6 @@ DOMAIN-SUFFIX,r2.1hanime.com
 DOMAIN-SUFFIX,r2.dejavu.moe
 DOMAIN-SUFFIX,r2.gear4music.com
 DOMAIN-SUFFIX,r2.leadsy.ai
-DOMAIN-SUFFIX,r2cdn.c7d.dev
-DOMAIN-SUFFIX,r2cdn.corespeed.io
 DOMAIN-SUFFIX,r2cdn.myshopline.com
 DOMAIN-SUFFIX,r2cdn.perplexity.ai
 DOMAIN-SUFFIX,r34xyz.b-cdn.net
@@ -3650,7 +3646,6 @@ DOMAIN-SUFFIX,sc-cdn.com
 DOMAIN-SUFFIX,scache.vzw.com
 DOMAIN-SUFFIX,scache1.vzw.com
 DOMAIN-SUFFIX,scache2.vzw.com
-DOMAIN-SUFFIX,scdn.clerk.com
 DOMAIN-SUFFIX,scdn.line-apps.com
 DOMAIN-SUFFIX,scene7.com
 DOMAIN-SUFFIX,schema-cf.bc0a.com
@@ -3704,7 +3699,6 @@ DOMAIN-SUFFIX,seed-sequoia.siri.apple.com
 DOMAIN-SUFFIX,seed-swallow.siri.apple.com
 DOMAIN-SUFFIX,seed.siri.apple.com
 DOMAIN-SUFFIX,seeusercontent.com
-DOMAIN-SUFFIX,segapi.clerk.com
 DOMAIN-SUFFIX,segment.digitalocean.com
 DOMAIN-SUFFIX,sellon.shiprocket.in
 DOMAIN-SUFFIX,sendspace.com
@@ -3742,7 +3736,6 @@ DOMAIN-SUFFIX,shoplineimg.com
 DOMAIN-SUFFIX,shoppulse88.store
 DOMAIN-SUFFIX,shortpixel.ai
 DOMAIN-SUFFIX,shots.codepen.io
-DOMAIN-SUFFIX,showcase.abovemarket.com
 DOMAIN-SUFFIX,sig.grumpybumpers.com
 DOMAIN-SUFFIX,sigma9.scpwikicn.com
 DOMAIN-SUFFIX,signal.cdnbye.com
@@ -3807,7 +3800,6 @@ DOMAIN-SUFFIX,spcdn.incartupsell.com
 DOMAIN-SUFFIX,speedmedia2.jfrog.com
 DOMAIN-SUFFIX,splunkcloud.com
 DOMAIN-SUFFIX,spoprod-a.akamaihd.net
-DOMAIN-SUFFIX,spotlightimage.biggo.com
 DOMAIN-SUFFIX,spreadshirtmedia.com
 DOMAIN-SUFFIX,sprig.figma.com
 DOMAIN-SUFFIX,sqspcdn.com
@@ -4188,7 +4180,6 @@ DOMAIN-SUFFIX,static.wwto.net
 DOMAIN-SUFFIX,static.xgroovy.com
 DOMAIN-SUFFIX,static.xns.one
 DOMAIN-SUFFIX,static.xxxshake.com
-DOMAIN-SUFFIX,static.yfsp.tv
 DOMAIN-SUFFIX,static.zanmei.ai
 DOMAIN-SUFFIX,static.zaobao.com
 DOMAIN-SUFFIX,static.zaobao.com.sg
@@ -4549,7 +4540,6 @@ DOMAIN-SUFFIX,unavatar.io
 DOMAIN-SUFFIX,ungh.cc
 DOMAIN-SUFFIX,ungrounded.net
 DOMAIN-SUFFIX,unleash.codeium.com
-DOMAIN-SUFFIX,unlimited-cdn.waifu2x.net
 DOMAIN-SUFFIX,unpkg.co
 DOMAIN-SUFFIX,unpkg.com
 DOMAIN-SUFFIX,unsplash.it
@@ -5026,7 +5016,6 @@ DOMAIN-SUFFIX,cpan.ip-connect.vn.ua
 DOMAIN-SUFFIX,cpan.lagoon.nc
 DOMAIN-SUFFIX,cpan.lnx.sk
 DOMAIN-SUFFIX,cpan.metacpan.org
-DOMAIN-SUFFIX,cpan.mines-albi.fr
 DOMAIN-SUFFIX,cpan.mmgdesigns.com.ar
 DOMAIN-SUFFIX,cpan.pair.com
 DOMAIN-SUFFIX,cpan.pesat.net.id
@@ -5406,7 +5395,6 @@ DOMAIN-SUFFIX,ftp.kddilabs.jp
 DOMAIN-SUFFIX,ftp.kddlabs.co.jp
 DOMAIN-SUFFIX,ftp.klid.dk
 DOMAIN-SUFFIX,ftp.kr.freebsd.org
-DOMAIN-SUFFIX,ftp.ktug.org
 DOMAIN-SUFFIX,ftp.lanet.kr
 DOMAIN-SUFFIX,ftp.leg.uct.ac.za
 DOMAIN-SUFFIX,ftp.linux.cz
@@ -5825,7 +5813,6 @@ DOMAIN-SUFFIX,mirror.lchost.net
 DOMAIN-SUFFIX,mirror.leitecastro.com
 DOMAIN-SUFFIX,mirror.letscloud.io
 DOMAIN-SUFFIX,mirror.level66.network
-DOMAIN-SUFFIX,mirror.library.ucy.ac.cy
 DOMAIN-SUFFIX,mirror.limda.net
 DOMAIN-SUFFIX,mirror.linkdata.com
 DOMAIN-SUFFIX,mirror.linux-ia64.org
@@ -5859,7 +5846,6 @@ DOMAIN-SUFFIX,mirror.nbtelecom.com.br
 DOMAIN-SUFFIX,mirror.neftm.ru
 DOMAIN-SUFFIX,mirror.neolabs.kz
 DOMAIN-SUFFIX,mirror.netcologne.de
-DOMAIN-SUFFIX,mirror.netcologne.de.org
 DOMAIN-SUFFIX,mirror.netone.nl
 DOMAIN-SUFFIX,mirror.netsite.dk
 DOMAIN-SUFFIX,mirror.netspace.net.au
@@ -5952,7 +5938,6 @@ DOMAIN-SUFFIX,mirror.techlabs.co.kr
 DOMAIN-SUFFIX,mirror.tefexia.net
 DOMAIN-SUFFIX,mirror.telepoint.bg
 DOMAIN-SUFFIX,mirror.thegigabit.com
-DOMAIN-SUFFIX,mirror.thunderhosting.cloud
 DOMAIN-SUFFIX,mirror.timeweb.ru
 DOMAIN-SUFFIX,mirror.tngnet.com
 DOMAIN-SUFFIX,mirror.tochlab.net
